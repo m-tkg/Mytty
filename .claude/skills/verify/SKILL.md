@@ -1,42 +1,46 @@
 ---
 name: verify
-description: Mytty (macOS AppKit/SwiftUI terminal app) をビルド・起動して GUI 動作を実機検証する手順。
+description: Steps for building and launching Mytty (macOS AppKit/SwiftUI terminal app) to verify GUI behavior against the real app.
 ---
 
-# Mytty の実機検証
+# Verifying Mytty against the real app
 
-## ビルドと起動
+## Build and launch
 
 ```bash
 swift build
-nohup .build/debug/Mytty > /tmp/mytty-dev.log 2>&1 &   # pid を控える
+nohup .build/debug/Mytty > /tmp/mytty-dev.log 2>&1 &   # note the pid
 ```
 
-- 開発ビルド(非 .app)は `ApplicationPathProfile.development` になり、
-  設定と状態は `~/.config/mytty-dev` / `~/Library/Application Support/mytty-dev`
-  に分離される。ユーザーの本番 Mytty(release プロファイル)とは干渉しない。
-- 前回の dev セッションのウィンドウが復元される(全ウィンドウが同座標に
-  重なって出ることが多い)。
+- A debug build (not a `.app`) runs under `ApplicationPathProfile.development`,
+  keeping its settings and state separate under `~/.config/mytty-dev` and
+  `~/Library/Application Support/mytty-dev`. It doesn't interfere with the
+  user's production Mytty (release profile).
+- Windows from the previous dev session get restored, often stacked at the
+  same coordinates.
 
-## GUI 操作の自動化
+## Automating GUI interaction
 
-- `screencapture -x out.png` は許可済みで動く。`sips -c H W --cropOffset Y X`
-  で切り出すとトークン節約になる。
-- CGEvent の合成(クリック・ドラッグ・キー送信)も許可済み。
-  スクラッチパッドに `driver.swift` を作って `swiftc -O -o driver driver.swift`
-  でビルドする(過去セッションの例: `windows <pid>` で CGWindowList の
-  ウィンドウ座標一覧、`drag x1 y1 x2 y2 [ms]`、`path x1 y1 x2 y2 x3 y3`
-  (経由点付きドラッグ)、`key <pid> <keycode> cmd`、`activate <pid>`)。
-- 座標系: CGWindowList と CGEvent は左上原点のポイント座標で一致する。
-  AppKit(`draggingSession(endedAt:)` など)は左下原点なので変換に注意。
-  画面は 1512x982pt(2x Retina)。
-- キーコード: T=17, N=45, W=13。`postToPid` でアプリが背面でも届く。
+- `screencapture -x out.png` is pre-approved and works. Crop the output with
+  `sips -c H W --cropOffset Y X` to save tokens.
+- Synthesizing CGEvents (clicks, drags, key input) is also pre-approved.
+  Write a `driver.swift` in the scratchpad and build it with
+  `swiftc -O -o driver driver.swift` (from past sessions: `windows <pid>`
+  lists CGWindowList window coordinates, `drag x1 y1 x2 y2 [ms]`,
+  `path x1 y1 x2 y2 x3 y3` for a drag through waypoints,
+  `key <pid> <keycode> cmd`, `activate <pid>`).
+- Coordinate systems: CGWindowList and CGEvent agree on a top-left-origin
+  point coordinate system. AppKit (e.g. `draggingSession(endedAt:)`) uses a
+  bottom-left origin, so convert between them. The screen is 1512x982pt
+  (2x Retina).
+- Key codes: T=17, N=45, W=13. `postToPid` reaches the app even when it's in
+  the background.
 
-## 検証のコツ
+## Verification tips
 
-- ウィンドウ増減は `driver windows <pid>` の行数で判定できる。
-- タブ行はサイドバー上端からタイトルバー+ヘッダー約 102pt 下が 1 行目、
-  行ストライドは縦置きで 53pt。
-- タブのタイトルが全部同じ("masaki" など)場合、並べ替えの検証は
-  選択ハイライトの位置変化で判定する。
-- 終了は `kill <pid>`。終了時にセッションが保存される。
+- Judge window count changes by the line count from `driver windows <pid>`.
+- The tab row's first line sits about 102pt below the sidebar's top edge
+  (title bar + header); the row stride is 53pt for a vertical layout.
+- When all tab titles are identical (e.g. "masaki"), verify reordering by
+  the position change of the selection highlight instead.
+- Quit with `kill <pid>`. The session is saved on quit.
