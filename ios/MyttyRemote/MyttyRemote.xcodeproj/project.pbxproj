@@ -1,0 +1,586 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07B3312067479242F8EC7ABB /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA96B610EB4E285CC4503310 /* PairingView.swift */; };
+		0D33A5E15DD89D5FC2B4EF7B /* SessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F8455379E84BE5CE9B54CD2 /* SessionView.swift */; };
+		103670DA00702D8ABD9A545C /* MyTTYRemoteKit in Frameworks */ = {isa = PBXBuildFile; productRef = 60E6D3077DDAE94151188CB7 /* MyTTYRemoteKit */; };
+		164513ACD60C1E862B1DBF2B /* MyttyRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */; };
+		1BDCC0E23B673954D4ADA3D1 /* RemoteConnectionTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */; };
+		3560DE16932FC0A3E31F6033 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620711CDAE55208289C2B7D0 /* RootView.swift */; };
+		40C4D5441936E703EE7B29EF /* MyTTYRemoteKit in Frameworks */ = {isa = PBXBuildFile; productRef = 91B79CF80CACAEB40A34B79A /* MyTTYRemoteKit */; };
+		4C1EAEC4503FC03304E8D321 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDED8D1B400C193E24439EE /* NotificationService.swift */; };
+		5277ABFABD30B9995CF78F24 /* TerminalKeyInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */; };
+		52B66DCD48CF4D1EA252BF22 /* ControlKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF3755C591827EC66BBDDDB /* ControlKey.swift */; };
+		5DCF79438D6DE91716AE61A7 /* MacDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED23B73DC454862E82D06F36 /* MacDiscovery.swift */; };
+		76ABD08D9E4826505375B62E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CED5F80CB9270934F11FC2B1 /* HomeView.swift */; };
+		76C5ED65FF3F36F8C8C9345D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19F0032493B6608E5D824252 /* Assets.xcassets */; };
+		7EA8BB1A4EB1CD2CB1C03FCA /* PaneTextSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */; };
+		7EB1BDBD11C543FFF4A6D6B3 /* PushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */; };
+		89623AF0313CA885A247FE3A /* PairedMacStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */; };
+		8D512BAD77D592E549D4A23B /* BrowserPaneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707312338CC10A1193F36F6F /* BrowserPaneDetailView.swift */; };
+		9AB9F6E54D50F75ECB98B4FC /* PairedMacEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391900120E29A643CFD654EA /* PairedMacEditView.swift */; };
+		A83FBE84A7FB9C4739A182D9 /* PairedMacStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */; };
+		A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */; };
+		B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */; };
+		C10E44FAE58110C63FBD03C9 /* PaneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */; };
+		EA2984E72181A0DF73569E6D /* DeviceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */; };
+		ECF0DA3877534B2A0E57E6E6 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1845AA39C4A2E2BE81812C3D /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		77EE6238028128B0A57C8806 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D2BF96B8CFFCAEA54157FFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 95C7D39A4E77CD31812F7BDB;
+			remoteInfo = NotificationService;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F1DFFCD3D021D0CD5EA5D0D9 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				ECF0DA3877534B2A0E57E6E6 /* NotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0632BF2AF1B23244785979F3 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		0AAC6C9025752042EAA507DB /* NotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NotificationService.entitlements; sourceTree = "<group>"; };
+		10CEA16A5A7C93736D4F908D /* MyttyRemote.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MyttyRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1845AA39C4A2E2BE81812C3D /* NotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		19F0032493B6608E5D824252 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteClient.swift; sourceTree = "<group>"; };
+		2646F5D89B99D79E5A36E17E /* mytty */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mytty; path = ../..; sourceTree = SOURCE_ROOT; };
+		2EF3755C591827EC66BBDDDB /* ControlKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKey.swift; sourceTree = "<group>"; };
+		2F8455379E84BE5CE9B54CD2 /* SessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionView.swift; sourceTree = "<group>"; };
+		318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacStore.swift; sourceTree = "<group>"; };
+		391900120E29A643CFD654EA /* PairedMacEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacEditView.swift; sourceTree = "<group>"; };
+		43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKeyBarView.swift; sourceTree = "<group>"; };
+		4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionTransport.swift; sourceTree = "<group>"; };
+		620711CDAE55208289C2B7D0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTextSelectionView.swift; sourceTree = "<group>"; };
+		65F7A5EEE363CDC0CC9D4F3B /* MyttyRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MyttyRemote.entitlements; sourceTree = "<group>"; };
+		694D7EF0306FAD4398E8B2CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistration.swift; sourceTree = "<group>"; };
+		6FDED8D1B400C193E24439EE /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		707312338CC10A1193F36F6F /* BrowserPaneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserPaneDetailView.swift; sourceTree = "<group>"; };
+		928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyttyRemoteApp.swift; sourceTree = "<group>"; };
+		9D09CAD07207914BF2366DEE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSettingsView.swift; sourceTree = "<group>"; };
+		ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneDetailView.swift; sourceTree = "<group>"; };
+		BA96B610EB4E285CC4503310 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		CED5F80CB9270934F11FC2B1 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyInputView.swift; sourceTree = "<group>"; };
+		ED23B73DC454862E82D06F36 /* MacDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDiscovery.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		95816355775576D74044D306 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				40C4D5441936E703EE7B29EF /* MyTTYRemoteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9786EEE40E232488358F3AE9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				103670DA00702D8ABD9A545C /* MyTTYRemoteKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3E136E329EA53A023AFCC2F5 /* NotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				9D09CAD07207914BF2366DEE /* Info.plist */,
+				0AAC6C9025752042EAA507DB /* NotificationService.entitlements */,
+				6FDED8D1B400C193E24439EE /* NotificationService.swift */,
+			);
+			path = NotificationService;
+			sourceTree = "<group>";
+		};
+		3EBF4DA7EEC995854C57A42C /* MyttyRemote */ = {
+			isa = PBXGroup;
+			children = (
+				19F0032493B6608E5D824252 /* Assets.xcassets */,
+				707312338CC10A1193F36F6F /* BrowserPaneDetailView.swift */,
+				2EF3755C591827EC66BBDDDB /* ControlKey.swift */,
+				43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */,
+				A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */,
+				CED5F80CB9270934F11FC2B1 /* HomeView.swift */,
+				694D7EF0306FAD4398E8B2CE /* Info.plist */,
+				ED23B73DC454862E82D06F36 /* MacDiscovery.swift */,
+				65F7A5EEE363CDC0CC9D4F3B /* MyttyRemote.entitlements */,
+				928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */,
+				391900120E29A643CFD654EA /* PairedMacEditView.swift */,
+				318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */,
+				BA96B610EB4E285CC4503310 /* PairingView.swift */,
+				ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */,
+				645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */,
+				6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */,
+				1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */,
+				4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */,
+				620711CDAE55208289C2B7D0 /* RootView.swift */,
+				2F8455379E84BE5CE9B54CD2 /* SessionView.swift */,
+				D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */,
+			);
+			path = MyttyRemote;
+			sourceTree = "<group>";
+		};
+		5AF9FAB276EEAFE678BBECFA = {
+			isa = PBXGroup;
+			children = (
+				FB404C4B257BC4EF70D0051E /* Config */,
+				3EBF4DA7EEC995854C57A42C /* MyttyRemote */,
+				3E136E329EA53A023AFCC2F5 /* NotificationService */,
+				E2F1F17269A8A55B4129DC37 /* Packages */,
+				E40E7808AED1388EACCABE85 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E2F1F17269A8A55B4129DC37 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2646F5D89B99D79E5A36E17E /* mytty */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		E40E7808AED1388EACCABE85 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				10CEA16A5A7C93736D4F908D /* MyttyRemote.app */,
+				1845AA39C4A2E2BE81812C3D /* NotificationService.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FB404C4B257BC4EF70D0051E /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0632BF2AF1B23244785979F3 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		95C7D39A4E77CD31812F7BDB /* NotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1D2017A8B119ACCDBBCB8BB0 /* Build configuration list for PBXNativeTarget "NotificationService" */;
+			buildPhases = (
+				F9EE04F54E3C49E8E50DF72A /* Sources */,
+				9786EEE40E232488358F3AE9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NotificationService;
+			packageProductDependencies = (
+				60E6D3077DDAE94151188CB7 /* MyTTYRemoteKit */,
+			);
+			productName = NotificationService;
+			productReference = 1845AA39C4A2E2BE81812C3D /* NotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AC11F2DB5D90E3A52603F515 /* MyttyRemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77ACD4BF1ED9F0D8507CAC2A /* Build configuration list for PBXNativeTarget "MyttyRemote" */;
+			buildPhases = (
+				74C932A3C7A9F3CBFB2858A5 /* Sources */,
+				00BDF3C4D60F5DB2B0A61FAC /* Resources */,
+				95816355775576D74044D306 /* Frameworks */,
+				F1DFFCD3D021D0CD5EA5D0D9 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F8D19019DFC6FB7891B3CB8 /* PBXTargetDependency */,
+			);
+			name = MyttyRemote;
+			packageProductDependencies = (
+				91B79CF80CACAEB40A34B79A /* MyTTYRemoteKit */,
+			);
+			productName = MyttyRemote;
+			productReference = 10CEA16A5A7C93736D4F908D /* MyttyRemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5D2BF96B8CFFCAEA54157FFC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					95C7D39A4E77CD31812F7BDB = {
+						DevelopmentTeam = G72M73C546;
+						ProvisioningStyle = Automatic;
+					};
+					AC11F2DB5D90E3A52603F515 = {
+						DevelopmentTeam = G72M73C546;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 45051D9164D8D99ABD784B11 /* Build configuration list for PBXProject "MyttyRemote" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 5AF9FAB276EEAFE678BBECFA;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1106E4BCE6FDF2BB15950AE0 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E40E7808AED1388EACCABE85 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AC11F2DB5D90E3A52603F515 /* MyttyRemote */,
+				95C7D39A4E77CD31812F7BDB /* NotificationService */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		00BDF3C4D60F5DB2B0A61FAC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				76C5ED65FF3F36F8C8C9345D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		74C932A3C7A9F3CBFB2858A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D512BAD77D592E549D4A23B /* BrowserPaneDetailView.swift in Sources */,
+				52B66DCD48CF4D1EA252BF22 /* ControlKey.swift in Sources */,
+				A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */,
+				EA2984E72181A0DF73569E6D /* DeviceSettingsView.swift in Sources */,
+				76ABD08D9E4826505375B62E /* HomeView.swift in Sources */,
+				5DCF79438D6DE91716AE61A7 /* MacDiscovery.swift in Sources */,
+				164513ACD60C1E862B1DBF2B /* MyttyRemoteApp.swift in Sources */,
+				9AB9F6E54D50F75ECB98B4FC /* PairedMacEditView.swift in Sources */,
+				A83FBE84A7FB9C4739A182D9 /* PairedMacStore.swift in Sources */,
+				07B3312067479242F8EC7ABB /* PairingView.swift in Sources */,
+				C10E44FAE58110C63FBD03C9 /* PaneDetailView.swift in Sources */,
+				7EA8BB1A4EB1CD2CB1C03FCA /* PaneTextSelectionView.swift in Sources */,
+				7EB1BDBD11C543FFF4A6D6B3 /* PushRegistration.swift in Sources */,
+				B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */,
+				1BDCC0E23B673954D4ADA3D1 /* RemoteConnectionTransport.swift in Sources */,
+				3560DE16932FC0A3E31F6033 /* RootView.swift in Sources */,
+				0D33A5E15DD89D5FC2B4EF7B /* SessionView.swift in Sources */,
+				5277ABFABD30B9995CF78F24 /* TerminalKeyInputView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F9EE04F54E3C49E8E50DF72A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C1EAEC4503FC03304E8D321 /* NotificationService.swift in Sources */,
+				89623AF0313CA885A247FE3A /* PairedMacStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2F8D19019DFC6FB7891B3CB8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 95C7D39A4E77CD31812F7BDB /* NotificationService */;
+			targetProxy = 77EE6238028128B0A57C8806 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1E4E4C91F48CC0838B20B6EE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = MyttyRemote/MyttyRemote.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = MyttyRemote/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		244AD31F243B218781DBB127 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MYTTY_BUNDLE_ID).NotificationService";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2F21B37C10288938EA936917 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0632BF2AF1B23244785979F3 /* Signing.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		33B77F5085703B4E3BED8DD2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = MyttyRemote/MyttyRemote.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = MyttyRemote/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B212CCE31053284749EB15EB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NotificationService/NotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MYTTY_BUNDLE_ID).NotificationService";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		CFD0BB0FA4AEAACF95662AB0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0632BF2AF1B23244785979F3 /* Signing.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1D2017A8B119ACCDBBCB8BB0 /* Build configuration list for PBXNativeTarget "NotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				244AD31F243B218781DBB127 /* Debug */,
+				B212CCE31053284749EB15EB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		45051D9164D8D99ABD784B11 /* Build configuration list for PBXProject "MyttyRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F21B37C10288938EA936917 /* Debug */,
+				CFD0BB0FA4AEAACF95662AB0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		77ACD4BF1ED9F0D8507CAC2A /* Build configuration list for PBXNativeTarget "MyttyRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				33B77F5085703B4E3BED8DD2 /* Debug */,
+				1E4E4C91F48CC0838B20B6EE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1106E4BCE6FDF2BB15950AE0 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		60E6D3077DDAE94151188CB7 /* MyTTYRemoteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MyTTYRemoteKit;
+		};
+		91B79CF80CACAEB40A34B79A /* MyTTYRemoteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MyTTYRemoteKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5D2BF96B8CFFCAEA54157FFC /* Project object */;
+}

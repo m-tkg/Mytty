@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$TAG" ]; then
+            echo "Expected a v-prefixed release tag" >&2
+            exit 1
+          fi
+          case "$TAG" in
+            *-*) PRERELEASE=true ;;
+            *) PRERELEASE=false ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare libghostty
+        if: steps.existing.outputs.exists == 'false'
+        uses: ./.github/actions/prepare-ghostty
+
+      - name: Test
+        if: steps.existing.outputs.exists == 'false'
+        run: |
+          swift test
+          Tests/ReleasePackagingTests.sh
+
+      - name: Check signing and notarization secrets
+        id: signing
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          P12: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          if [ -z "$P12" ] || [ -z "$P12_PASSWORD" ] \
+            || [ -z "$SIGNING_IDENTITY" ] || [ -z "$NOTARY_APPLE_ID" ] \
+            || [ -z "$NOTARY_PASSWORD" ] || [ -z "$NOTARY_TEAM_ID" ]; then
+            echo "Signing and notarization secrets are required" >&2
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "notarize=true" >> "$GITHUB_OUTPUT"
+
+      - name: Import signing certificate
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE="$RUNNER_TEMP/signing.p12"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$P12_BASE64" | base64 --decode > "$CERTIFICATE"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERTIFICATE" -k "$KEYCHAIN" \
+            -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          echo "SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Build application bundle
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          SIGN_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+        run: scripts/bundle.sh release
+
+      - name: Notarize and staple
+        if: steps.signing.outputs.notarize == 'true'
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent dist/Mytty.app "$RUNNER_TEMP/Mytty-notary.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Mytty-notary.zip" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --wait
+          xcrun stapler staple dist/Mytty.app
+          xcrun stapler validate dist/Mytty.app
+
+      - name: Create release archive
+        if: steps.existing.outputs.exists == 'false'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Mytty.app dist/Mytty.zip
+
+      - name: Create GitHub Release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS=""
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+            FLAGS="--prerelease"
+          fi
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            $FLAGS \
+            dist/Mytty.zip
+
+      - name: Clean up signing keychain
+        if: ${{ always() && steps.signing.outputs.signed == 'true' }}
+        run: security delete-keychain "$SIGN_KEYCHAIN" || true

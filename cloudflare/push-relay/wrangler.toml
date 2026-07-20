@@ -1,0 +1,26 @@
+# The Attention push relay. See README.md for the one-time deploy steps.
+name = "mytty-push-relay"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Every deployed version would otherwise get its own public URL, all of
+# them holding the same APNs key and writing the same KV namespace. That
+# leaves superseded code reachable indefinitely, which is not a trade
+# worth making for a relay whose whole job is guarding a provider key.
+preview_urls = false
+
+# Holds one entry per registered phone: its APNs device token, the APNs
+# environment that token belongs to, and the secret its Mac signs with.
+# Create with: wrangler kv namespace create REGISTRATIONS
+[[kv_namespaces]]
+binding = "REGISTRATIONS"
+id = "74d4eee44d0e434c99f6887e50c0f285"
+
+[vars]
+# The iOS app's bundle identifier, sent to APNs as apns-topic.
+APNS_TOPIC = "com.m-tkg.mytty.remote"
+
+# APNS_TEAM_ID, APNS_KEY_ID and APNS_PRIVATE_KEY are secrets, never vars:
+#   wrangler secret put APNS_TEAM_ID
+#   wrangler secret put APNS_KEY_ID
+#   wrangler secret put APNS_PRIVATE_KEY   < AuthKey_XXXXXXXXXX.p8

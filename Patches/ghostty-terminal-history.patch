@@ -1,0 +1,142 @@
+diff --git a/include/ghostty.h b/include/ghostty.h
+index 72bbb57..69d00c0 100644
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1162,6 +1162,12 @@ GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
+                                               ghostty_selection_s,
+                                               ghostty_text_s*);
++GHOSTTY_API bool ghostty_surface_read_text_vt(ghostty_surface_t,
++                                               ghostty_selection_s,
++                                               ghostty_text_s*);
+ GHOSTTY_API void ghostty_surface_free_text(ghostty_surface_t, ghostty_text_s*);
++GHOSTTY_API bool ghostty_surface_write_text(ghostty_surface_t,
++                                             const char*,
++                                             size_t);
+ 
+ #ifdef __APPLE__
+ GHOSTTY_API void ghostty_surface_set_display_id(ghostty_surface_t, uint32_t);
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index 7310159..06a0471 100644
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -1642,6 +1642,62 @@ pub const CAPI = struct {
+         return readTextLocked(surface, core_sel, result);
+     }
+ 
++    /// Read arbitrary surface text as replayable VT output. This preserves
++    /// colors and character attributes in addition to the textual content.
++    export fn ghostty_surface_read_text_vt(
++        surface: *Surface,
++        sel: Selection,
++        result: *Text,
++    ) bool {
++        surface.core_surface.renderer_state.mutex.lock();
++        defer surface.core_surface.renderer_state.mutex.unlock();
++
++        const core_sel = sel.core(
++            surface.core_surface.renderer_state.terminal.screens.active,
++        ) orelse return false;
++        const terminal_ptr = &surface.core_surface.io.terminal;
++
++        var buf: std.Io.Writer.Allocating = .init(global.alloc);
++        defer buf.deinit();
++        var formatter: terminal.formatter.TerminalFormatter = .init(
++            terminal_ptr,
++            .{
++                .emit = .vt,
++                .unwrap = false,
++                .trim = false,
++            },
++        );
++        formatter.content = .{ .selection = core_sel };
++        formatter.extra = .styles;
++        // Injecting a full OSC 4 palette redefinition into an
++        // already-running surface (as opposed to a freshly created one at
++        // app launch) reliably corrupts the replay: the terminal ends up
++        // showing only the shell's fresh prompt with none of the replayed
++        // lines. Per-cell SGR/hyperlink styling (screen.style/hyperlink,
++        // still enabled via `.styles` above) is unaffected and gives
++        // faithful color reproduction against the surface's current
++        // palette, so we skip only the standalone palette dump.
++        formatter.extra.palette = false;
++        formatter.format(&buf.writer) catch |err| {
++            log.warn("error reading VT text err={}", .{err});
++            return false;
++        };
++        const text = buf.toOwnedSliceSentinel(0) catch |err| {
++            log.warn("error allocating VT text err={}", .{err});
++            return false;
++        };
++
++        result.* = .{
++            .tl_px_x = -1,
++            .tl_px_y = -1,
++            .offset_start = 0,
++            .offset_len = 0,
++            .text = text.ptr,
++            .text_len = text.len,
++        };
++        return true;
++    }
++
+     fn readTextLocked(
+         surface: *Surface,
+         core_sel: terminal.Selection,
+@@ -1681,6 +1737,25 @@ pub const CAPI = struct {
+         ptr.deinit();
+     }
+ 
++    /// Replay trusted VT output directly into the terminal parser. This is
++    /// output injection, not keyboard input, so it does not reach the shell.
++    export fn ghostty_surface_write_text(
++        surface: *Surface,
++        ptr: [*]const u8,
++        len: usize,
++    ) bool {
++        const io = &surface.core_surface.io;
++        const copy = io.alloc.dupe(u8, ptr[0..len]) catch |err| {
++            log.warn("error allocating VT replay text err={}", .{err});
++            return false;
++        };
++        io.queueMessage(.{ .inject_output = .{
++            .ptr = copy.ptr,
++            .len = copy.len,
++        } }, .unlocked);
++        return true;
++    }
++
+     /// Tell the surface that it needs to schedule a render
+     export fn ghostty_surface_refresh(surface: *Surface) void {
+         surface.refresh();
+diff --git a/src/termio/Thread.zig b/src/termio/Thread.zig
+index 13ee9cb..3da9ee5 100644
+--- a/src/termio/Thread.zig
++++ b/src/termio/Thread.zig
+@@ -333,6 +333,10 @@ fn drainMailbox(self: *Thread, cb: *xev.Completion) !void {
+             .start_synchronized_output => self.startSynchronizedOutput(cb),
+             .linefeed_mode => |v| self.flags.linefeed_mode = v,
+             .focused => |v| try io.focusGained(data, v),
++            .inject_output => |v| {
++                defer io.alloc.free(v.ptr[0..v.len]);
++                io.processOutput(v.ptr[0..v.len]);
++            },
+             .write_small => |v| try io.queueWrite(
+                 data,
+                 v.data[0..v.len],
+diff --git a/src/termio/message.zig b/src/termio/message.zig
+index 1cd4681..540dc30 100644
+--- a/src/termio/message.zig
++++ b/src/termio/message.zig
+@@ -73,6 +73,12 @@ pub const Message = union(enum) {
+     /// The surface gained or lost focus.
+     focused: bool,
+ 
++    /// Allocated output to replay through the terminal parser on the IO thread.
++    inject_output: struct {
++        ptr: [*]u8,
++        len: usize,
++    },
++
+     /// Write where the data fits in the union.
+     write_small: WriteReq.Small,
+ 

@@ -1,0 +1,9 @@
+{
+  "id" : "82e1dbf8-887c-4caf-9d5b-a83788e0cef8",
+  "targets" : [
+    {
+      "id" : "c3523c57-b431-40cb-aaad-4a6c67b5736f",
+      "name" : "MyttyRemote"
+    }
+  ]
+}

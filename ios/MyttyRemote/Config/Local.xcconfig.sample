@@ -1,0 +1,6 @@
+// cp Config/Local.xcconfig.sample Config/Local.xcconfig して編集する。
+// DEVELOPMENT_TEAM と MYTTY_BUNDLE_ID は必ずセットで上書きする。
+// 既存の Bundle ID は元のチームに登録済みで、他アカウントでは使えない。
+// 通知拡張の Bundle ID は MYTTY_BUNDLE_ID から導出されるので、ここでは設定しない。
+DEVELOPMENT_TEAM = XXXXXXXXXX
+MYTTY_BUNDLE_ID = com.example.mytty.remote

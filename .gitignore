@@ -1,0 +1,21 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+build/
+dist/
+*.xcuserstate
+xcuserdata/
+.zig-cache/
+zig-out/
+
+# Local runtime and generated artifacts
+.codex/tmp/
+*.sock
+*.log
+
+# Per-developer signing overrides (see ios/MyttyRemote/Config/Local.xcconfig.sample)
+ios/MyttyRemote/Config/Local.xcconfig
+
+# Wrangler leaves per-machine state wherever it is run from.
+.wrangler/

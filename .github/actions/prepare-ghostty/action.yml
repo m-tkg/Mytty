@@ -1,0 +1,56 @@
+name: Prepare libghostty
+description: Restore or build the pinned Ghostty native library and resources
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve Ghostty cache identity
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        REVISION="$(git -C Vendor/ghostty rev-parse HEAD)"
+        ZIG_VERSION="$(
+          sed -n 's/.*\.minimum_zig_version = "\([^"]*\)".*/\1/p' \
+            Vendor/ghostty/build.zig.zon
+        )"
+        if [ -z "$REVISION" ] || [ -z "$ZIG_VERSION" ]; then
+          echo "Could not resolve the Ghostty cache identity" >&2
+          exit 1
+        fi
+        SCRIPT_HASH="$(shasum -a 256 scripts/build-ghostty.sh | cut -d ' ' -f 1)"
+        CACHE_KEY="libghostty-${RUNNER_OS}-${RUNNER_ARCH}-${REVISION}"
+        CACHE_KEY="${CACHE_KEY}-zig-${ZIG_VERSION}-${SCRIPT_HASH}"
+        echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+        echo "zig-version=$ZIG_VERSION" >> "$GITHUB_OUTPUT"
+        echo "cache-key=$CACHE_KEY" >> "$GITHUB_OUTPUT"
+
+    - name: Restore libghostty build
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |
+          Vendor/ghostty/macos/GhosttyKit.xcframework
+          Vendor/ghostty/zig-out
+        key: ${{ steps.metadata.outputs.cache-key }}
+
+    - name: Install Zig
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: brew install zig@0.15
+
+    - name: Build libghostty
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/build-ghostty.sh
+
+    - name: Verify libghostty build
+      shell: bash
+      run: |
+        set -euo pipefail
+        LIBRARY="Vendor/ghostty/macos/GhosttyKit.xcframework/macos-arm64/libghostty-internal-fat.a"
+        test -f "$LIBRARY"
+        lipo "$LIBRARY" -verify_arch arm64
+        test -d Vendor/ghostty/zig-out/share/ghostty/themes
+        test -d Vendor/ghostty/zig-out/share/ghostty/shell-integration
+        test -d Vendor/ghostty/zig-out/share/terminfo

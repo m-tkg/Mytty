@@ -1,0 +1,13 @@
+// 署名まわりの既定値。
+// 自分のアカウントでビルドする場合はこのファイルを編集せず、
+// Config/Local.xcconfig を作って上書きする（Config/Local.xcconfig.sample 参照）。
+
+DEVELOPMENT_TEAM = G72M73C546
+// 通知拡張の Bundle ID をアプリ側から導出するため、実体は MYTTY_BUNDLE_ID に置く。
+// 上書きするときも PRODUCT_BUNDLE_IDENTIFIER ではなくこちらを設定する。
+MYTTY_BUNDLE_ID = com.m-tkg.mytty.remote
+PRODUCT_BUNDLE_IDENTIFIER = $(MYTTY_BUNDLE_ID)
+
+// 末尾の "?" は「ファイルが無ければ無視する」の意味。
+// これにより Local.xcconfig が無い環境（CI 等）でもそのままビルドできる。
+#include? "Local.xcconfig"
