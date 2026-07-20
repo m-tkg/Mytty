@@ -58,7 +58,7 @@ SwiftPM package with strict target boundaries (`Package.swift`):
 
 ### Agent integration model
 
-Agent state is **event-driven, never scraped from terminal output**. Enabling a provider in Settings installs hooks into that provider's global config (`~/.codex/hooks.json`, `~/.claude/settings.json`, etc.); the hooks call `mytty-agent-hook`, which sends versioned, idempotent events over a pane-scoped Unix socket (each surface gets its own `MYTTY_*` environment). An append-only event log plus a pure reducer derive the run state; Attention policy derives inbox items from that. See `docs/agent-events.md` and `docs/agent-integrations.md` (the latter documents the per-provider lifecycle mapping and status-bar data sources).
+Agent state is **event-driven, never scraped from terminal output**. Enabling a provider in Settings installs hooks into that provider's global config (`~/.codex/hooks.json`, `~/.claude/settings.json`, etc.); the hooks call `mytty-agent-hook`, which sends versioned, idempotent events over a pane-scoped Unix socket (each surface gets its own `MYTTY_*` environment). An append-only event log plus a pure reducer derive the run state; Attention policy derives inbox items from that. See `docs/reference/agent-event-protocol.md` and `docs/reference/agent-providers.md` (the latter documents the per-provider lifecycle mapping and status-bar data sources).
 
 Complementing the hooks, `TerminalWindowController`'s `AgentStatusPollingCoordinator` polls each pane's foreground process (0.5s) and:
 

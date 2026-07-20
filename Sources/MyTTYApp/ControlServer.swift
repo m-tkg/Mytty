@@ -63,7 +63,7 @@ protocol ControlServerDelegate: AnyObject {
 /// user-only Unix socket (`ApplicationPaths.aiControlSocket`) — no
 /// pairing/encryption, since the socket file permissions already restrict
 /// it to the same local user who could otherwise drive Mytty directly via
-/// CGEvent. See `docs/mytty-ctl.md`.
+/// CGEvent. See `docs/reference/mytty-ctl.md`.
 @MainActor
 final class ControlServer {
     private static let pollInterval: UInt64 = 300_000_000 // 300ms
