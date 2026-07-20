@@ -41,7 +41,7 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 ## ドキュメント
 
 詳細なドキュメントは [`docs/`](docs/README_ja.md) 配下にあり、
-[Diataxis](https://diataxis.fr) の構成に従います。
+4つの区分に分かれています。
 
 - [チュートリアル](docs/README_ja.md#チュートリアル): 実際に使いながら覚える
 - [ハウツー](docs/README_ja.md#ハウツー): 特定の作業の手順

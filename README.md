@@ -40,8 +40,8 @@ how-to guides, reference pages, and the design rationale behind each part.
 
 ## Documentation
 
-Full documentation lives under [`docs/`](docs/README.md) and follows the
-[Diataxis](https://diataxis.fr) framework:
+Full documentation lives under [`docs/`](docs/README.md), split into four
+sections:
 
 - [Tutorials](docs/README.md#tutorials) to learn Mytty by using it
 - [How-to guides](docs/README.md#how-to-guides) for a specific task
