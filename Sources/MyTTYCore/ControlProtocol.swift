@@ -4,7 +4,7 @@ import Foundation
 /// Mytty panes (create/split panes, type text, read the screen, and wait
 /// for an agent to go idle or need attention) so a "team" of subagents can
 /// run as real, visible panes instead of hidden background processes. See
-/// `docs/mytty-ctl.md`.
+/// `docs/reference/mytty-ctl.md`.
 ///
 /// Unlike `RemoteMessage` (paired, encrypted, TCP), this protocol only ever
 /// travels over a local Unix-domain socket restricted to the current user
@@ -24,7 +24,7 @@ public enum ControlWaitCondition: String, Codable, Equatable, Sendable {
     case idle
     /// Satisfied once the pane's most relevant agent run is waiting on
     /// input or approval. Cursor and Antigravity hooks don't expose these
-    /// events (see `docs/agent-integrations.md`), so this never resolves
+    /// events (see `docs/reference/agent-providers.md`), so this never resolves
     /// for panes running those providers until the timeout.
     case attention
 }

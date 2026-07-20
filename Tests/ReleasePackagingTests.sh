@@ -10,22 +10,22 @@ ghostty_action="$root/.github/actions/prepare-ghostty/action.yml"
 bundle_script="$root/scripts/bundle.sh"
 readme="$root/README.md"
 readme_ja="$root/README_ja.md"
-building="$root/docs/building.md"
-building_ja="$root/docs/building_ja.md"
+building="$root/docs/how-to/build-macos-app.md"
+building_ja="$root/docs/how-to/build-macos-app_ja.md"
 
 for document in "$readme" "$readme_ja" "$building" "$building_ja"; do
   test -f "$document"
 done
 grep -F '[日本語](README_ja.md)' "$readme" >/dev/null
-for heading in '## Overview' '## Features' '## Feature Guide' '## Build'; do
+for heading in '## Overview' '## Features' '## Documentation' '## Build'; do
   grep -F "$heading" "$readme" >/dev/null
 done
 grep -F '[English](README.md)' "$readme_ja" >/dev/null
-for heading in '## 概要' '## 特徴' '## 機能説明' '## ビルド方法'; do
+for heading in '## 概要' '## 特徴' '## ドキュメント' '## ビルド方法'; do
   grep -F "$heading" "$readme_ja" >/dev/null
 done
-grep -F 'docs/building.md' "$readme" >/dev/null
-grep -F 'docs/building_ja.md' "$readme_ja" >/dev/null
+grep -F 'docs/how-to/build-macos-app.md' "$readme" >/dev/null
+grep -F 'docs/how-to/build-macos-app_ja.md' "$readme_ja" >/dev/null
 
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$plist")" = "Mytty"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist")" = "Mytty"

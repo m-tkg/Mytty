@@ -25,7 +25,7 @@ public enum ControlCommandLineParser {
 
     Every command prints one JSON object to stdout on success and exits 0.
     On failure it prints a message to stderr and exits 1. See
-    docs/mytty-ctl.md for the JSON shapes and the pane-team recipes this is
+    docs/reference/mytty-ctl.md for the JSON shapes and the pane-team recipes this is
     meant to support.
     """
 
