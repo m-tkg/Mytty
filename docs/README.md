@@ -2,9 +2,9 @@
 
 # Mytty documentation
 
-This documentation follows the [Diataxis](https://diataxis.fr) framework.
-Each of the four sections answers a different kind of question, so start
-with whichever matches what you actually need right now.
+This documentation is split into four sections. Each answers a different
+kind of question, so start with whichever matches what you actually need
+right now.
 
 ## Tutorials
 
