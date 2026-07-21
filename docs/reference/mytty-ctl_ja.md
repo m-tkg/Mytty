@@ -157,7 +157,7 @@ mytty-ctl agent close "$job"
 
 ### guide
 
-ペインチームの手順書(環境変数、split/send/wait/read の流れ、provider ごとの起動コマンド)をプレーンテキストで標準出力に出し、終了コード 0 で終わります。`MYTTY_CONTROL_SOCKET` も起動中の Mytty も不要です。このファイルはコマンド引数と JSON の形を説明する場所なので、手順の一次情報は `mytty-ctl guide` の出力そのものを見てください。`mytty-ctl --help`(`-h` や引数なしでも同じ)を実行すると、代わりに上のコマンド一覧が出ます。
+ペインチームの手順書(環境変数、split/send/wait/read の流れ、provider ごとの起動コマンド)をプレーンテキストで標準出力に出し、終了コード 0 で終わります。`MYTTY_CONTROL_SOCKET` も起動中の Mytty も不要です。このファイルはコマンド引数と JSON の形を説明する場所なので、手順の一次情報は `mytty-ctl guide` の出力そのものを見てください。`mytty-ctl --help`(`-h` や引数なしでも同じ)を実行すると、代わりに上のコマンド一覧が出ます。Mytty 本体はこれと同じ内容を起動のたびに `~/Library/Application Support/mytty/mytty-ctl.md` へ書き出しており、Claude Code / Codex 向けの「Agent に Mytty オーケストレーションの使い方を教える」設定はこのファイルへの参照を書き込みます([agent-providers リファレンス](agent-providers_ja.md) 参照)。
 
 ```bash
 mytty-ctl guide

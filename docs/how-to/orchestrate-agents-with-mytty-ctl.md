@@ -31,8 +31,8 @@ Everything this feature needs is gathered under Settings > Orchestration.
 
 **Put the CLI on PATH** "Install CLI" creates a symlink in `~/.local/bin`.
 
-**Teach agents how to use it** Turning on "Teach agents about Mytty orchestration" writes `mytty-ctl` usage into `~/.claude/skills/mytty-panes/SKILL.md` and `~/.codex/AGENTS.md`.
+**Teach agents how to use it** Turning on "Teach agents about Mytty orchestration" writes a short reference into `~/.claude/skills/mytty-panes/SKILL.md` and `~/.codex/AGENTS.md`. The actual usage text lives in `~/Library/Application Support/mytty/mytty-ctl.md`, which Mytty (re)writes on every launch to match `mytty-ctl guide`'s output -- both references just point at that file's absolute path. So when the usage changes in a Mytty update, only the bundled guide gets rewritten; the references themselves never need to change.
 
-"Show what will be written" reveals the exact text before anything is saved; opening it alone doesn't write anything.
+"Show what will be written" reveals the exact short reference before anything is saved; opening it alone doesn't write anything.
 
 The bottom of the same screen lists example prompts to copy from.

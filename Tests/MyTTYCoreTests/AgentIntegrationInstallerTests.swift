@@ -805,6 +805,158 @@ struct AgentIntegrationInstallerTests {
         }
     }
 
+    @Test("writes the guide markdown file matching ControlCommandLineParser.paneTeamGuide")
+    func guideMarkdownWritesGuideText() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+        let guideURL = harness.applicationSupport
+            .appendingPathComponent("mytty-ctl.md")
+
+        #expect(installer.guideMarkdownStatus() == .notInstalled)
+        try installer.installGuideMarkdown()
+
+        #expect(installer.guideMarkdownStatus() == .installed)
+        let written = try String(contentsOf: guideURL, encoding: .utf8)
+        #expect(written == ControlCommandLineParser.paneTeamGuide)
+        #expect(installer.installedGuideMarkdown.standardizedFileURL
+            == guideURL.standardizedFileURL)
+    }
+
+    @Test("repairs a stale guide markdown file on the next write")
+    func guideMarkdownRepairsStaleContent() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+        let guideURL = installer.installedGuideMarkdown
+        try FileManager.default.createDirectory(
+            at: guideURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "stale guide text\n".write(
+            to: guideURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        #expect(installer.guideMarkdownStatus() == .needsRepair)
+
+        try installer.installGuideMarkdown()
+
+        #expect(installer.guideMarkdownStatus() == .installed)
+        let rewritten = try String(contentsOf: guideURL, encoding: .utf8)
+        #expect(rewritten == ControlCommandLineParser.paneTeamGuide)
+    }
+
+    @Test(
+        "pane-team pointers reference the guide markdown's absolute path",
+        arguments: [PaneTeamPointerLanguage.english, .japanese]
+    )
+    func paneTeamPointersReferenceGuideMarkdownPath(
+        language: PaneTeamPointerLanguage
+    ) throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+        let guidePath = installer.installedGuideMarkdown.path
+
+        for provider: AgentProvider in [.claudeCode, .codex] {
+            let preview = try #require(
+                installer.paneTeamPointerPreview(
+                    for: provider,
+                    language: language
+                )
+            )
+            #expect(preview.contains(guidePath))
+            // The pointer must stay thin: it should point at the guide
+            // rather than re-embed the recipe it contains.
+            #expect(!preview.contains("PROVIDER LAUNCH COMMANDS"))
+            #expect(!preview.contains("WAIT PITFALLS"))
+        }
+    }
+
+    @Test("migrates a pre-existing embedded pane-team pointer to the thin, guide-referencing one")
+    func paneTeamPointerMigratesFromEmbeddedBody() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+        let skillURL = harness.home
+            .appendingPathComponent(".claude/skills/mytty-panes", isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        let agentsURL = harness.home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md")
+
+        // Simulates a pre-upgrade install that embedded the full recipe
+        // instead of pointing at the guide markdown file.
+        try FileManager.default.createDirectory(
+            at: skillURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        ---
+        name: mytty-panes
+        description: old embedded pointer
+        ---
+
+        # mytty-panes
+
+        Run this first, then do what it says:
+
+            "$MYTTY_CTL_BIN" guide
+
+        PROVIDER LAUNCH COMMANDS embedded verbatim here, unlike the new
+        thin pointer.
+        """.write(to: skillURL, atomically: true, encoding: .utf8)
+
+        try FileManager.default.createDirectory(
+            at: agentsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <!-- mytty:pane-team:begin -->
+        ## Mytty pane team
+
+        WAIT PITFALLS embedded verbatim here, unlike the new thin pointer.
+        <!-- mytty:pane-team:end -->
+        """.write(to: agentsURL, atomically: true, encoding: .utf8)
+
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .needsRepair
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .codex,
+                language: .english
+            ) == .needsRepair
+        )
+
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
+        try installer.installPaneTeamPointer(.codex, language: .english)
+
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .installed
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .codex,
+                language: .english
+            ) == .installed
+        )
+        let migratedSkill = try String(contentsOf: skillURL, encoding: .utf8)
+        #expect(migratedSkill.contains(installer.installedGuideMarkdown.path))
+        #expect(!migratedSkill.contains("PROVIDER LAUNCH COMMANDS"))
+        let migratedAgents = try String(contentsOf: agentsURL, encoding: .utf8)
+        #expect(migratedAgents.contains(installer.installedGuideMarkdown.path))
+        #expect(!migratedAgents.contains("WAIT PITFALLS"))
+    }
+
     @Test("repairs an installed hook helper after the app updates")
     func outdatedHookHelper() throws {
         let harness = try Harness()

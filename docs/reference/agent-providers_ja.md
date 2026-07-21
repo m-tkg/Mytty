@@ -20,16 +20,16 @@ Codex、Claude Code、Cursor の設定は JSON で、構造的にパースして
 
 各 provider の設定画面の行は、トグルを押したかどうかではなく実際のファイルの中身から **Installed** / **Needs Repair** / **Not Installed** を導出します。手で編集された、あるいは部分的に削除されたインストールは **Needs Repair** と表示されます。
 
-**Agent に Mytty オーケストレーションの使い方を教える**(設定 > Orchestration、デフォルトオン)は、グローバルなポインタの置き場所が確認できている2つの provider に対して、上記とは別のファイルを書き込みます。
+**Agent に Mytty オーケストレーションの使い方を教える**(設定 > Orchestration、デフォルトオン)は、グローバルなポインタの置き場所が確認できている2つの provider に対して、上記とは別のファイルに短い参照を書き込みます。
 
 | Provider | ファイル | 内容 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/skills/mytty-panes/SKILL.md` | Mytty が全体を所有する user skill |
-| Codex | `~/.codex/AGENTS.md` | `<!-- mytty:pane-team:begin -->` / `:end` の管理ブロック。ブロックの外側は一切触らない |
+| Claude Code | `~/.claude/skills/mytty-panes/SKILL.md` | Mytty が全体を所有する user skill。本文は数行の参照のみ |
+| Codex | `~/.codex/AGENTS.md` | `<!-- mytty:pane-team:begin -->` / `:end` の管理ブロック。ブロックの外側は一切触らない。本文は数行の参照のみ |
 
-どちらも中身を複製せず `mytty-ctl guide` を指すだけなので、Mytty がアップデートされても手直しなしで正確な内容を保ちます。Cursor・OpenCode・ Antigravity はグローバルな指示の置き場所がまだ確認できていないため対象外です。
+実際の使い方の本文(環境変数、split/send/wait/read の流れ、provider ごとの起動フラグ)は埋め込まれません。代わりに Mytty が起動のたびに `~/Library/Application Support/mytty/mytty-ctl.md` へ書き出します(`ControlCommandLineParser.paneTeamGuide`、`mytty-ctl guide` の出力と同一の英語のみのテキスト)。SKILL.md と AGENTS.md の管理ブロックはどちらもこのファイルの絶対パスを指すだけで、中身を複製しません。そのため Mytty がアップデートされて使い方が変わっても、書き直しが必要なのは `mytty-ctl.md` 側だけで、2つの参照ファイルは(パスが変わらない限り)書き直し不要のまま正確であり続けます。Cursor・OpenCode・Antigravity はグローバルな指示の置き場所がまだ確認できていないため対象外です。
 
-書き込まれる文面は 設定 > General の言語設定(英語・日本語)に従います。`AppLanguage.systemDefault` の解決はアプリ層が行い、MyTTYCore には解決済みの言語だけが渡ります。言語を切り替えると、次にアプリケーション設定が変わったタイミングで既存のファイルが新しい言語の文面に書き直されます(`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`)。管理ブロックの `<!-- mytty:pane-team:begin -->` / `:end` マーカーと SKILL.md の `name: mytty-panes` は言語に関係なく共通です。
+参照文自体の文面は 設定 > General の言語設定(英語・日本語)に従います。`mytty-ctl.md` の本文(`paneTeamGuide`)は英語のみで、言語設定の影響を受けません。`AppLanguage.systemDefault` の解決はアプリ層が行い、MyTTYCore には解決済みの言語だけが渡ります。言語を切り替えると、次にアプリケーション設定が変わったタイミングで既存のファイルが新しい言語の参照文に書き直されます(`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`)。管理ブロックの `<!-- mytty:pane-team:begin -->` / `:end` マーカーと SKILL.md の `name: mytty-panes` は言語に関係なく共通です。
 
 ## Lifecycle マッピング
 

@@ -224,7 +224,7 @@ struct LocalizationTests {
         )
         #expect(
             english[.teachPaneTeamPointersDescription]
-                == "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
+                == "For Claude Code and Codex, add a short reference to the bundled usage guide (mytty-ctl.md) when asked to run sub-agents across panes."
         )
         #expect(english[.orchestration] == "Orchestration")
         #expect(
@@ -236,6 +236,10 @@ struct LocalizationTests {
         )
         #expect(
             english[.orchestrationPointerTargetsHeading] == "Target files"
+        )
+        #expect(
+            english[.orchestrationPointerGuideMarkdownFormat]
+                == "Both files below just point at the guide Mytty writes and keeps up to date at %@."
         )
         #expect(
             english[.orchestrationPointerPreviewButton]
@@ -374,7 +378,7 @@ struct LocalizationTests {
         )
         #expect(
             japanese[.teachPaneTeamPointersDescription]
-                == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
+                == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は同梱の使い方ガイド (mytty-ctl.md) への短い参照を追加します。"
         )
         #expect(japanese[.orchestration] == "オーケストレーション")
         #expect(
@@ -385,6 +389,10 @@ struct LocalizationTests {
                 == "mytty-ctl へのシンボリックリンクを ~/.local/bin/%@ に作成します。Mytty が開いたペインではすでに PATH が通っているため、これが必要なのは Mytty の外(別のターミナルアプリやスクリプト)から mytty-ctl を呼びたい場合だけです。"
         )
         #expect(japanese[.orchestrationPointerTargetsHeading] == "対象ファイル")
+        #expect(
+            japanese[.orchestrationPointerGuideMarkdownFormat]
+                == "以下のどちらのファイルも、Mytty が書き出して最新の状態に保つガイド (%@) を参照するだけです。"
+        )
         #expect(
             japanese[.orchestrationPointerPreviewButton]
                 == "書き込む内容を表示"

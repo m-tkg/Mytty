@@ -157,7 +157,7 @@ mytty-ctl agent close "$job"
 
 ### guide
 
-Prints the pane-team playbook -- environment variables, the split/send/wait/read flow, and per-provider launch commands -- as plain text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl guide` is the primary source for the recipes themselves, so run it directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`, or no arguments) prints the shorter command list above instead.
+Prints the pane-team playbook -- environment variables, the split/send/wait/read flow, and per-provider launch commands -- as plain text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl guide` is the primary source for the recipes themselves, so run it directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`, or no arguments) prints the shorter command list above instead. Mytty itself writes this same text to `~/Library/Application Support/mytty/mytty-ctl.md` on every launch, and the "Teach agents about Mytty orchestration" setting for Claude Code / Codex writes a reference to that file (see the [agent providers reference](agent-providers.md)).
 
 ```bash
 mytty-ctl guide
