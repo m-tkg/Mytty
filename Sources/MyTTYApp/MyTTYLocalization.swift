@@ -4,6 +4,17 @@ import MyTTYCore
 enum ResolvedAppLanguage: Equatable {
     case english
     case japanese
+
+    /// Maps to MyTTYCore's `PaneTeamPointerLanguage` -- MyTTYCore only
+    /// receives an already-resolved language (never `.systemDefault`), so
+    /// callers writing or previewing the pane-team pointer convert through
+    /// here rather than resolving the system locale themselves.
+    var paneTeamPointerLanguage: PaneTeamPointerLanguage {
+        switch self {
+        case .english: .english
+        case .japanese: .japanese
+        }
+    }
 }
 
 extension AppLanguage {
@@ -97,7 +108,7 @@ enum MyTTYText: String {
     case defaultTerminalActive = "Mytty is the default terminal."
     case defaultTerminalRegistrationFailed = "Mytty could not be set as the default terminal."
     case commandLineTool = "Command Line Tool"
-    case installCommandLineTool = "Install to PATH"
+    case installCommandLineTool = "Install CLI"
     case commandLineToolInstalled = "%@ is on your PATH."
     case commandLineToolConflict = "Something else already exists at ~/.local/bin/%@. Remove it, then try again."
     case commandLineToolInstallFailed = "Couldn't install %@."
@@ -137,8 +148,21 @@ enum MyTTYText: String {
     case preventSleepWhileAgentRunningDescription = "Choose when Mytty keeps this Mac awake for agents."
     case attentionUnreadOnly = "Show unread only"
     case attentionUnreadOnlyDescription = "Hide resolved and acknowledged items from the Attention list."
-    case teachPaneTeamPointers = "Teach agents about pane teams"
+    case teachPaneTeamPointers = "Teach agents about Mytty orchestration"
     case teachPaneTeamPointersDescription = "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
+    case orchestration = "Orchestration"
+    case orchestrationOverviewDescription = "Any agent running in a Mytty pane can drive mytty-ctl to open another pane, launch a second agent in it, and work with it as a team. No background process is required. This section gathers the pieces that setup needs: the CLI, the note that teaches an agent to find it, and how to actually ask for it."
+    case orchestrationCommandLineToolDescriptionFormat = "A symlink to mytty-ctl, placed at ~/.local/bin/%@. Panes Mytty opens already have it on PATH, so this only matters for calling mytty-ctl from outside Mytty: another terminal app or a script."
+    case orchestrationPointerTargetsHeading = "Target files"
+    case orchestrationPointerPreviewButton = "Show what will be written"
+    case orchestrationExamplesHeading = "How to ask for it"
+    case orchestrationExampleGuidanceOnCLIInstalledLabel = "Guidance on, CLI installed"
+    case orchestrationExampleGuidanceOnCLINotInstalledLabel = "Guidance on, CLI not installed"
+    case orchestrationExampleGuidanceOffLabel = "Guidance off"
+    case orchestrationExampleCLINote = "Inside a Mytty pane, mytty-ctl is already on PATH either way, so these two read the same. Installing the CLI to PATH only matters outside Mytty."
+    case orchestrationExampleCurrentBadge = "Matches your current setting"
+    case orchestrationExamplePromptGuided = "Split the pane and have Claude Code review this diff in parallel."
+    case orchestrationExamplePromptUnguided = "Run \"mytty-ctl guide\" first, then split the pane and have Claude Code review this diff in parallel."
     case sleepClamshellArmedStatus =
         "sleep is disabled even with the lid closed"
     case sleepClamshellApprovalStatus =
@@ -517,7 +541,7 @@ struct MyTTYLocalizer: Equatable {
         case .defaultTerminalActive: "Mytty はデフォルトターミナルです。"
         case .defaultTerminalRegistrationFailed: "Mytty をデフォルトターミナルに設定できませんでした。"
         case .commandLineTool: "コマンドラインツール"
-        case .installCommandLineTool: "PATH にインストール"
+        case .installCommandLineTool: "CLI をインストール"
         case .commandLineToolInstalled: "%@ が PATH に追加されています。"
         case .commandLineToolConflict: "~/.local/bin/%@ に別のものが存在します。削除してからもう一度お試しください。"
         case .commandLineToolInstallFailed: "%@ をインストールできませんでした。"
@@ -557,8 +581,21 @@ struct MyTTYLocalizer: Equatable {
         case .preventSleepWhileAgentRunningDescription: "Agent 実行時、Mac のスリープを防ぐか選択します。"
         case .attentionUnreadOnly: "未読のみ表示"
         case .attentionUnreadOnlyDescription: "解決済み・既読の項目を Attention 一覧から非表示にします。"
-        case .teachPaneTeamPointers: "Agent にペインチームの使い方を教える"
+        case .teachPaneTeamPointers: "Agent に Mytty オーケストレーションの使い方を教える"
         case .teachPaneTeamPointersDescription: "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
+        case .orchestration: "オーケストレーション"
+        case .orchestrationOverviewDescription: "ペインで動いている Agent は mytty-ctl を使って別のペインを開き、そこに別の Agent を起動してチームとして動かせます。常駐プロセスは不要です。このセクションには、そのために必要なもの(CLI、それを見つけさせる案内、実際の呼び出し方)をまとめています。"
+        case .orchestrationCommandLineToolDescriptionFormat: "mytty-ctl へのシンボリックリンクを ~/.local/bin/%@ に作成します。Mytty が開いたペインではすでに PATH が通っているため、これが必要なのは Mytty の外(別のターミナルアプリやスクリプト)から mytty-ctl を呼びたい場合だけです。"
+        case .orchestrationPointerTargetsHeading: "対象ファイル"
+        case .orchestrationPointerPreviewButton: "書き込む内容を表示"
+        case .orchestrationExamplesHeading: "呼び出し方"
+        case .orchestrationExampleGuidanceOnCLIInstalledLabel: "案内あり・CLI インストール済み"
+        case .orchestrationExampleGuidanceOnCLINotInstalledLabel: "案内あり・CLI 未インストール"
+        case .orchestrationExampleGuidanceOffLabel: "案内なし"
+        case .orchestrationExampleCLINote: "Mytty のペイン内ではどちらの場合も mytty-ctl の PATH が通っているため、実際には同じ書き方になります。差が出るのは Mytty の外から使う場合だけです。"
+        case .orchestrationExampleCurrentBadge: "現在の設定"
+        case .orchestrationExamplePromptGuided: "ペインを分割して、この diff を Claude Code に並行でレビューさせて。"
+        case .orchestrationExamplePromptUnguided: "まず「mytty-ctl guide」を実行してから、ペインを分割してこの diff を Claude Code に並行でレビューさせて。"
         case .sleepClamshellArmedStatus: "モニタを閉じてもスリープしません"
         case .sleepClamshellApprovalStatus:
             "システム設定で Mytty のバックグラウンド項目を許可するとモニタを閉じてもスリープしなくなります"

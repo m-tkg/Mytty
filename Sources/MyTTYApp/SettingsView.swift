@@ -99,7 +99,6 @@ struct SettingsView: View {
                 GeneralSettingsView(
                     model: settings,
                     defaultTerminal: defaultTerminal,
-                    commandLineToolInstall: commandLineToolInstall,
                     localizer: localizer
                 )
             case .shell:
@@ -111,6 +110,12 @@ struct SettingsView: View {
                 AgentIntegrationSettingsView(
                     settings: settings,
                     model: integrations,
+                    localizer: localizer
+                )
+            case .orchestration:
+                OrchestrationSettingsView(
+                    model: integrations,
+                    commandLineToolInstall: commandLineToolInstall,
                     localizer: localizer
                 )
             case .keyBindings:
@@ -151,6 +156,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case shell
     case agents
+    case orchestration
     case keyBindings
     case remote
     case update
@@ -162,6 +168,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: .general
         case .shell: .shell
         case .agents: .agents
+        case .orchestration: .orchestration
         case .keyBindings: .keyBindings
         case .remote: .remote
         case .update: .update
@@ -173,6 +180,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .shell: "terminal"
         case .agents: "bell.badge"
+        case .orchestration: "person.3"
         case .keyBindings: "keyboard"
         case .remote: "iphone"
         case .update: "arrow.triangle.2.circlepath"
@@ -208,6 +216,12 @@ enum SettingsSection: String, CaseIterable, Identifiable {
                 "agents", "attention", "codex", "claude", "opencode",
                 "gemini", "antigravity", "cursor", "sleep",
             ]
+        case .orchestration:
+            [
+                "orchestration", "subagent", "sub-agent", "pane team",
+                "mytty-ctl", "cli", "command line tool", "path",
+                "agents.md", "claude.md", "skill", "guide", "worker",
+            ]
         case .keyBindings:
             ["keybindings", "keyboard", "shortcut", "keys", "conflict"]
         case .remote:
@@ -224,7 +238,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 private struct GeneralSettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var defaultTerminal: DefaultTerminalModel
-    @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     let localizer: MyTTYLocalizer
 
     var body: some View {
@@ -276,50 +289,6 @@ private struct GeneralSettingsView: View {
                     Text(localizer[.defaultTerminalRegistrationFailed])
                         .font(.caption)
                         .foregroundStyle(.red)
-                }
-
-                LabeledContent(localizer[.commandLineTool]) {
-                    if commandLineToolInstall.isInstalled {
-                        Label(
-                            String(
-                                format: localizer[.commandLineToolInstalled],
-                                commandLineToolInstall.linkName
-                            ),
-                            systemImage: "checkmark.circle.fill"
-                        )
-                        .foregroundStyle(.secondary)
-                    } else {
-                        Button(localizer[.installCommandLineTool]) {
-                            commandLineToolInstall.install()
-                        }
-                        .disabled(commandLineToolInstall.isUpdating)
-                    }
-                }
-
-                if commandLineToolInstall.isUpdating {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if let failure = commandLineToolInstall.failure {
-                    Text(
-                        String(
-                            format: failure == .conflict
-                                ? localizer[.commandLineToolConflict]
-                                : localizer[.commandLineToolInstallFailed],
-                            commandLineToolInstall.linkName
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                } else if commandLineToolInstall.isInstalled,
-                          commandLineToolInstall.pathHintNeeded {
-                    Text(
-                        String(
-                            format: localizer[.commandLineToolPathHint],
-                            commandLineToolInstall.pathExportLine
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
             }
 

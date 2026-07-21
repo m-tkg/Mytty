@@ -18,11 +18,6 @@ struct AgentIntegrationSettingsView: View {
             Divider()
                 .padding(.leading, 44)
 
-            paneTeamPointerRow
-
-            Divider()
-                .padding(.leading, 44)
-
             ForEach(model.states) { state in
                 integrationRow(state)
                 if state.id != model.states.last?.id {
@@ -129,37 +124,6 @@ struct AgentIntegrationSettingsView: View {
         .padding(.vertical, 4)
     }
 
-    private var paneTeamPointerRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.3")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(localizer[.teachPaneTeamPointers])
-                    .font(.system(size: 13, weight: .semibold))
-                Text(localizer[.teachPaneTeamPointersDescription])
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { model.paneTeamPointerEnabled },
-                    set: { model.setPaneTeamPointerEnabled($0) }
-                )
-            )
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .accessibilityLabel(localizer[.teachPaneTeamPointers])
-        }
-        .frame(minHeight: 64)
-        .padding(.vertical, 4)
-    }
-
     private func integrationRow(
         _ state: AgentIntegrationSettingsState
     ) -> some View {
@@ -198,7 +162,10 @@ struct AgentIntegrationSettingsView: View {
 
             if state.status == .needsRepair {
                 Button {
-                    model.repair(state.provider)
+                    model.repair(
+                        state.provider,
+                        language: localizer.language.paneTeamPointerLanguage
+                    )
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .frame(width: 22, height: 22)
@@ -214,7 +181,13 @@ struct AgentIntegrationSettingsView: View {
                 "",
                 isOn: Binding(
                     get: { state.status != .notInstalled },
-                    set: { model.setInstalled($0, for: state.provider) }
+                    set: {
+                        model.setInstalled(
+                            $0,
+                            for: state.provider,
+                            language: localizer.language.paneTeamPointerLanguage
+                        )
+                    }
                 )
             )
             .labelsHidden()

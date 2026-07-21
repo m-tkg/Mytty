@@ -11,13 +11,16 @@ struct SettingsNavigationTests {
     func categories() {
         #expect(
             SettingsSection.allCases
-                == [.general, .shell, .agents, .keyBindings, .remote, .update]
+                == [
+                    .general, .shell, .agents, .orchestration, .keyBindings,
+                    .remote, .update,
+                ]
         )
         #expect(
             SettingsSection.allCases.map { localizer[$0.textKey] }
                 == [
-                    "General", "Shell", "Agents", "Key Bindings",
-                    "iOS Remote Access", "Update",
+                    "General", "Shell", "Agents", "Orchestration",
+                    "Key Bindings", "iOS Remote Access", "Update",
                 ]
         )
     }
@@ -32,6 +35,25 @@ struct SettingsNavigationTests {
         #expect(SettingsSection.shell.matches("suggestion", localizer: localizer))
         #expect(SettingsSection.keyBindings.matches("shortcut", localizer: localizer))
         #expect(SettingsSection.agents.matches("cursor", localizer: localizer))
+        #expect(
+            SettingsSection.orchestration.matches(
+                "mytty-ctl",
+                localizer: localizer
+            )
+        )
+        #expect(
+            SettingsSection.orchestration.matches(
+                "pane team",
+                localizer: localizer
+            )
+        )
+        #expect(
+            SettingsSection.orchestration.matches(
+                "AGENTS.md",
+                localizer: localizer
+            )
+        )
+        #expect(!SettingsSection.orchestration.matches("cursor", localizer: localizer))
         #expect(SettingsSection.remote.matches("pairing", localizer: localizer))
         #expect(SettingsSection.update.matches("release", localizer: localizer))
         #expect(!SettingsSection.general.matches("cursor", localizer: localizer))

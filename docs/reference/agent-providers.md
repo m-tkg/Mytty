@@ -49,7 +49,8 @@ Each provider's Settings row derives **Installed** / **Needs Repair** /
 toggle was clicked. A hand-edited or partially removed installation
 shows **Needs Repair**.
 
-**Teach agents about pane teams** (Settings > Agents, on by default) writes
+**Teach agents about Mytty orchestration** (Settings > Orchestration, on by
+default) writes
 a second, independent artifact for the two providers where a global pointer
 location is known:
 
@@ -63,6 +64,15 @@ contents, so they stay accurate across Mytty updates without needing their
 own repair logic beyond rewriting the block/file to match the current
 build. Cursor, OpenCode, and Antigravity are not covered: no documented
 global-instruction location has been confirmed for them.
+
+The prose that gets written follows Settings > General's language setting
+(English or Japanese). Resolving `AppLanguage.systemDefault` stays the app
+layer's job -- MyTTYCore only ever receives an already-resolved language.
+Switching the setting rewrites any already-installed pointer to match on
+the next application preference change
+(`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`).
+The managed block's `<!-- mytty:pane-team:begin -->` / `:end` markers and
+the skill's `name: mytty-panes` stay the same regardless of language.
 
 ## Lifecycle mapping
 

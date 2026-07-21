@@ -53,9 +53,9 @@ struct AgentIntegrationSettingsModelTests {
         #expect(model.state(for: .cursor).status == .installed)
         #expect(model.states.count == 5)
 
-        model.setInstalled(false, for: .codex)
-        model.setInstalled(true, for: .claudeCode)
-        model.repair(.openCode)
+        model.setInstalled(false, for: .codex, language: .english)
+        model.setInstalled(true, for: .claudeCode, language: .english)
+        model.repair(.openCode, language: .english)
 
         #expect(installer.removed == [.codex])
         #expect(installer.installed == [.claudeCode, .openCode])
@@ -79,7 +79,7 @@ struct AgentIntegrationSettingsModelTests {
             preferenceStore: FakePaneTeamPointerPreferenceStore()
         )
 
-        model.repairInstalledIntegrations()
+        model.repairInstalledIntegrations(language: .english)
 
         #expect(installer.installed == [.codex, .cursor])
         #expect(model.state(for: .codex).status == .installed)
@@ -113,7 +113,7 @@ struct AgentIntegrationSettingsModelTests {
             preferenceStore: FakePaneTeamPointerPreferenceStore()
         )
 
-        model.repairInstalledIntegrations()
+        model.repairInstalledIntegrations(language: .english)
 
         #expect(Set(installer.pointerInstalled) == [.codex, .claudeCode])
     }
@@ -135,7 +135,7 @@ struct AgentIntegrationSettingsModelTests {
             )
         )
 
-        model.repairInstalledIntegrations()
+        model.repairInstalledIntegrations(language: .english)
 
         #expect(installer.pointerInstalled.isEmpty)
         #expect(model.paneTeamPointerEnabled == false)
@@ -197,12 +197,13 @@ struct AgentIntegrationSettingsModelTests {
             preferenceStore: FakePaneTeamPointerPreferenceStore()
         )
 
-        model.setInstalled(true, for: .claudeCode)
+        model.setInstalled(true, for: .claudeCode, language: .japanese)
 
         #expect(installer.pointerInstalled == [.claudeCode])
+        #expect(installer.pointerLanguages[.claudeCode] == .japanese)
         #expect(model.paneTeamPointerEnabled == true)
 
-        model.setInstalled(false, for: .claudeCode)
+        model.setInstalled(false, for: .claudeCode, language: .japanese)
 
         #expect(installer.pointerRemoved == [.claudeCode])
     }
@@ -223,17 +224,61 @@ struct AgentIntegrationSettingsModelTests {
             preferenceStore: preferenceStore
         )
 
-        model.setPaneTeamPointerEnabled(false)
+        model.setPaneTeamPointerEnabled(false, language: .english)
 
         #expect(Set(installer.pointerRemoved) == [.codex, .claudeCode])
         #expect(model.paneTeamPointerEnabled == false)
         #expect(preferenceStore.paneTeamPointersEnabled == false)
 
-        model.setPaneTeamPointerEnabled(true)
+        model.setPaneTeamPointerEnabled(true, language: .japanese)
 
         #expect(Set(installer.pointerInstalled) == [.codex, .claudeCode])
+        #expect(installer.pointerLanguages[.codex] == .japanese)
+        #expect(installer.pointerLanguages[.claudeCode] == .japanese)
         #expect(model.paneTeamPointerEnabled == true)
         #expect(preferenceStore.paneTeamPointersEnabled == true)
+    }
+
+    @Test("exposes pane-team pointer URL, preview, and status for the Orchestration section")
+    @MainActor
+    func paneTeamPointerDisplayInfo() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        installer.pointerStatuses[.codex] = .needsRepair
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
+
+        #expect(
+            model.paneTeamPointerStatus(for: .codex, language: .english)
+                == .needsRepair
+        )
+        #expect(
+            model.paneTeamPointerStatus(for: .claudeCode, language: .english)
+                == .notInstalled
+        )
+        #expect(model.paneTeamPointerURL(for: .codex) != nil)
+        #expect(model.paneTeamPointerURL(for: .cursor) == nil)
+        #expect(
+            model.paneTeamPointerPreview(for: .claudeCode, language: .english)
+                != nil
+        )
+        #expect(
+            model.paneTeamPointerPreview(for: .openCode, language: .english)
+                == nil
+        )
+        // The preview text itself carries the requested language through
+        // to the installer, not just the status/install calls.
+        #expect(
+            model.paneTeamPointerPreview(for: .claudeCode, language: .japanese)
+                == "preview for claude-code in japanese"
+        )
     }
 
     @Test("keeps a provider error visible without changing its state")
@@ -250,11 +295,97 @@ struct AgentIntegrationSettingsModelTests {
             preferenceStore: FakePaneTeamPointerPreferenceStore()
         )
 
-        model.setInstalled(true, for: .codex)
+        model.setInstalled(true, for: .codex, language: .english)
 
         let state = model.state(for: .codex)
         #expect(state.status == .notInstalled)
         #expect(state.errorMessage == "Hook helper is unavailable")
+    }
+
+    // This exercises the actual on-disk write path with the real
+    // `AgentIntegrationInstaller` (in a temp home directory, never the
+    // developer's real `~/.claude`/`~/.codex`), standing in for the
+    // Settings-window flow: AppDelegate's `applyApplicationPreferences`
+    // calls `repairInstalledIntegrations(language:)` on every application
+    // preference change, including a language switch made while the
+    // Orchestration section is open. It isn't practical to drive
+    // `AppDelegate`/`NSApplication` from a unit test, so this reproduces
+    // that call sequence directly against the model.
+    @Test("rewrites the pane-team pointer in the new language when repaired after a live language switch")
+    @MainActor
+    func repairRewritesPointerAfterLiveLanguageSwitch() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let sourceExecutable = root
+            .appendingPathComponent("source", isDirectory: true)
+            .appendingPathComponent("mytty-agent-hook")
+        try FileManager.default.createDirectory(
+            at: sourceExecutable.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("test helper".utf8).write(to: sourceExecutable)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: sourceExecutable.path
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let installer = AgentIntegrationInstaller(
+            homeDirectory: home,
+            applicationSupportDirectory: home
+                .appendingPathComponent(
+                    "Library/Application Support/mytty",
+                    isDirectory: true
+                ),
+            sourceHookExecutable: sourceExecutable
+        )
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
+
+        // Settings > Agents: enable Claude Code while the app is in
+        // English, same as `setInstalled` wired from
+        // `AgentIntegrationSettingsView`.
+        model.setInstalled(true, for: .claudeCode, language: .english)
+        #expect(
+            model.paneTeamPointerStatus(for: .claudeCode, language: .english)
+                == .installed
+        )
+        let skillURL = try #require(
+            model.paneTeamPointerURL(for: .claudeCode)
+        )
+        let englishContent = try String(
+            contentsOf: skillURL,
+            encoding: .utf8
+        )
+        #expect(!englishContent.contains("ペイン"))
+
+        // The user flips Settings > General > Language to Japanese. Status
+        // against the new language reads as needing repair even though
+        // nothing has been reinstalled yet.
+        #expect(
+            model.paneTeamPointerStatus(for: .claudeCode, language: .japanese)
+                == .needsRepair
+        )
+
+        // AppDelegate.applyApplicationPreferences calling
+        // repairInstalledIntegrations(language:) on every preference
+        // change is what makes that repair happen without a restart.
+        model.repairInstalledIntegrations(language: .japanese)
+
+        #expect(
+            model.paneTeamPointerStatus(for: .claudeCode, language: .japanese)
+                == .installed
+        )
+        let japaneseContent = try String(
+            contentsOf: skillURL,
+            encoding: .utf8
+        )
+        #expect(japaneseContent.contains("ペイン"))
+        #expect(japaneseContent.contains("name: mytty-panes"))
+        #expect(japaneseContent.contains("$MYTTY_CTL_BIN\" guide"))
     }
 }
 
@@ -288,20 +419,45 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
         statuses[provider] = .notInstalled
     }
 
+    var pointerLanguages: [AgentProvider: PaneTeamPointerLanguage] = [:]
+
     func paneTeamPointerStatus(
-        for provider: AgentProvider
+        for provider: AgentProvider,
+        language: PaneTeamPointerLanguage
     ) throws -> AgentIntegrationStatus {
         pointerStatuses[provider] ?? .notInstalled
     }
 
-    func installPaneTeamPointer(_ provider: AgentProvider) throws {
+    func installPaneTeamPointer(
+        _ provider: AgentProvider,
+        language: PaneTeamPointerLanguage
+    ) throws {
         pointerInstalled.append(provider)
         pointerStatuses[provider] = .installed
+        pointerLanguages[provider] = language
     }
 
     func removePaneTeamPointer(_ provider: AgentProvider) throws {
         pointerRemoved.append(provider)
         pointerStatuses[provider] = .notInstalled
+        pointerLanguages.removeValue(forKey: provider)
+    }
+
+    func paneTeamPointerURL(for provider: AgentProvider) -> URL? {
+        guard AgentIntegrationInstaller.paneTeamPointerProviders
+            .contains(provider)
+        else { return nil }
+        return URL(fileURLWithPath: "/tmp/\(provider.rawValue)-pointer")
+    }
+
+    func paneTeamPointerPreview(
+        for provider: AgentProvider,
+        language: PaneTeamPointerLanguage
+    ) -> String? {
+        guard AgentIntegrationInstaller.paneTeamPointerProviders
+            .contains(provider)
+        else { return nil }
+        return "preview for \(provider.rawValue) in \(language)"
     }
 }
 
