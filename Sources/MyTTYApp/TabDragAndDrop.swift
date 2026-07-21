@@ -29,14 +29,25 @@ enum TabDropInsertionPlan {
         rowSize: CGSize,
         placement: MyTTYTabPlacement
     ) -> Int {
-        let inLeadingHalf: Bool
+        let inLeadingHalf = isInLeadingHalf(
+            location: location,
+            rowSize: rowSize,
+            placement: placement
+        )
+        return inLeadingHalf ? rowIndex : rowIndex + 1
+    }
+
+    private static func isInLeadingHalf(
+        location: CGPoint,
+        rowSize: CGSize,
+        placement: MyTTYTabPlacement
+    ) -> Bool {
         switch placement {
         case .left, .right:
-            inLeadingHalf = location.y < rowSize.height / 2
+            location.y < rowSize.height / 2
         case .top, .bottom:
-            inLeadingHalf = location.x < rowSize.width / 2
+            location.x < rowSize.width / 2
         }
-        return inLeadingHalf ? rowIndex : rowIndex + 1
     }
 
     static func moveDestination(

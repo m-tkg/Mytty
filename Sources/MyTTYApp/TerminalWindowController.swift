@@ -449,7 +449,22 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         do {
             let tab = TabSession(initialSurface: state)
             let surface = try makeSurface(for: state, initialInput: initialInput)
-            try session.add(tab: tab, select: true)
+            switch applicationPreferences.newTabPosition {
+            case .end:
+                try session.add(tab: tab, select: true)
+            case .afterCurrent:
+                if let currentIndex = session.tabs.firstIndex(
+                    where: { $0.id == session.selectedTabID }
+                ) {
+                    try session.insert(
+                        tab: tab,
+                        at: currentIndex + 1,
+                        select: true
+                    )
+                } else {
+                    try session.add(tab: tab, select: true)
+                }
+            }
             surfaces[state.id] = surface
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
