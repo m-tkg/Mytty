@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var integrations: AgentIntegrationSettingsModel
     @ObservedObject var updates: ApplicationUpdateModel
     @ObservedObject var defaultTerminal: DefaultTerminalModel
+    @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     @ObservedObject var remoteAccess: RemoteAccessSettingsModel
     @State private var selection: SettingsSection? = .general
     @State private var searchText = ""
@@ -98,6 +99,7 @@ struct SettingsView: View {
                 GeneralSettingsView(
                     model: settings,
                     defaultTerminal: defaultTerminal,
+                    commandLineToolInstall: commandLineToolInstall,
                     localizer: localizer
                 )
             case .shell:
@@ -222,6 +224,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 private struct GeneralSettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var defaultTerminal: DefaultTerminalModel
+    @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     let localizer: MyTTYLocalizer
 
     var body: some View {
@@ -273,6 +276,50 @@ private struct GeneralSettingsView: View {
                     Text(localizer[.defaultTerminalRegistrationFailed])
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+
+                LabeledContent(localizer[.commandLineTool]) {
+                    if commandLineToolInstall.isInstalled {
+                        Label(
+                            String(
+                                format: localizer[.commandLineToolInstalled],
+                                commandLineToolInstall.linkName
+                            ),
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .foregroundStyle(.secondary)
+                    } else {
+                        Button(localizer[.installCommandLineTool]) {
+                            commandLineToolInstall.install()
+                        }
+                        .disabled(commandLineToolInstall.isUpdating)
+                    }
+                }
+
+                if commandLineToolInstall.isUpdating {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let failure = commandLineToolInstall.failure {
+                    Text(
+                        String(
+                            format: failure == .conflict
+                                ? localizer[.commandLineToolConflict]
+                                : localizer[.commandLineToolInstallFailed],
+                            commandLineToolInstall.linkName
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                } else if commandLineToolInstall.isInstalled,
+                          commandLineToolInstall.pathHintNeeded {
+                    Text(
+                        String(
+                            format: localizer[.commandLineToolPathHint],
+                            commandLineToolInstall.pathExportLine
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 

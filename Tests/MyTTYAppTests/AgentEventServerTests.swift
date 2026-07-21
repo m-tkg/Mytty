@@ -31,6 +31,7 @@ struct AgentEventServerTests {
             aiControlSocketURL: controlSocket,
             aiControlExecutableURL: directory
                 .appendingPathComponent("mytty-ctl"),
+            inheritedSearchPath: "/usr/bin:/bin",
             onEvent: { event in try center.append(event) },
             onError: { serverErrors.append(String(describing: $0)) }
         )
@@ -47,6 +48,10 @@ struct AgentEventServerTests {
         let environment = try server.environment(for: surfaceID)
         let capability = try #require(
             environment[AgentEventServer.capabilityEnvironmentKey]
+        )
+        #expect(
+            environment[AgentEventServer.searchPathEnvironmentKey]
+                == "/usr/bin:/bin:\(directory.path)"
         )
         let optionalStartedDelivery = try AgentHookBridge.makeDelivery(
             provider: .codex,

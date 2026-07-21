@@ -22,24 +22,46 @@
 ## 環境変数
 
 Mytty が開くすべてのペインには次の3変数が自動設定される
-(`AgentEventServer.environment(for:)`)。そのためペイン内から
-`mytty-ctl` を呼ぶのに事前設定は不要。
+(`AgentEventServer.environment(for:)`)。同じ箇所で `mytty-ctl` の
+置き場所を `PATH` にも足しているので、ペイン内では `mytty-ctl`
+と名前で呼ぶだけでよく、事前設定は不要。
 
 | 変数 | 意味 |
 | --- | --- |
 | `MYTTY_CONTROL_SOCKET` | `mytty-ctl` が接続する Unix ソケットの絶対パス |
-| `MYTTY_CTL_BIN` | `mytty-ctl` バイナリの絶対パス(`PATH` 登録不要) |
+| `MYTTY_CTL_BIN` | `mytty-ctl` バイナリの絶対パス(名前で呼べるか怪しい場面向け) |
 | `MYTTY_SURFACE_ID` | このペイン自身の pane ID。コマンド中で "自分自身" として使える |
 
 ```bash
-"$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree
+mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree
 ```
 
-`mytty-ctl` が `PATH` に通っていれば、名前だけで呼んでも同じように動く。
 dev ビルド(`Mytty Dev`)と release ビルドはそれぞれ別の
 `~/.config/mytty(-dev)` 配下にソケットを持つが、`mytty-ctl` 自身はどちら
 と通信しているかを意識しない。それはどのペインの環境変数を継承したかで
 決まる。
+
+## Mytty の外から使う
+
+上の PATH 追加はあくまで Mytty が開いたペインの中だけの話。別の
+ターミナルアプリやスクリプトなど、Mytty の外から `mytty-ctl` を
+呼びたい場合は、設定 > General の「PATH にインストール」ボタンで
+`~/.local/bin` にシンボリックリンクを作れる。管理者権限のプロンプトは
+出ない。すでに同じ名前で別のもの(Mytty 以外を指すリンクや実ファイル)
+があるときはボタンは失敗として扱い、黙って上書きはしない。
+
+`~/.local/bin` がまだシェルの `PATH` に無い場合、インストール後に
+次の行を追加するよう案内が表示される。
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+`.zshrc` など普段使っているシェルの設定ファイルに追記して、新しい
+シェルを開くか設定を読み直せば `mytty-ctl` が名前で呼べるようになる。
+
+開発ビルド(Mytty Dev)はリリース版のリンクを奪わないよう、
+`~/.local/bin/mytty-ctl-dev` という別名でインストールする。
 
 ## 終了ステータスと出力
 
