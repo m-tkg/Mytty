@@ -65,6 +65,17 @@ public enum ControlCommandLineParser {
     PATH automatically); use "$MYTTY_CTL_BIN" only if you're not sure this is
     a Mytty-managed pane.
 
+    CODEX SANDBOX NOTE
+
+    mytty-ctl run inside Codex's own sandbox (Seatbelt, review or
+    workspace-write) cannot connect to the Unix socket at all -- every
+    command fails with `socketOperation(1)` (EPERM), not just wait. This
+    happens regardless of which command is run, including `list` and
+    `agent spawn`. If Codex is the orchestrator driving other panes as a
+    team, ask for approval to run mytty-ctl commands outside the sandbox.
+    Workers spawned into other panes are unaffected -- they run in their
+    own shell, not inside the orchestrator's sandbox.
+
     AGENT ORCHESTRATION API (preferred)
 
     Use these commands to run a team of workers. `agent spawn` creates the

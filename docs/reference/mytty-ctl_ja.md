@@ -32,6 +32,10 @@ export PATH="$HOME/.local/bin:$PATH"
 
 開発ビルド(Mytty Dev)は、リリース版のリンクを奪わないよう `~/.local/bin/mytty-ctl-dev` という別名でインストールします。
 
+## Codex のサンドボックス内から呼んだ場合
+
+Codex が実行するシェルコマンドは macOS の Seatbelt サンドボックス(`review` でも `workspace-write` でも)の中で動くため、そこから呼んだ `mytty-ctl` は Unix ドメインソケットへの `connect(2)`自体をオペレーティングシステムに拒否され、`socketOperation(1)`(`EPERM`)であらゆるコマンド(`list` や `agent spawn` を含む)が失敗します。ソケットファイル・権限・`MYTTY_CONTROL_SOCKET` はどれも正常で、サンドボックスの外(他のペインや通常のシェル)からは同じソケットに問題なく繋がります。Codex を司令塔にして他のペインを操作させたい場合は、`mytty-ctl` コマンドをサンドボックス外で実行するよう承認を求めてください。`agent spawn` で別ペインに起動した worker 側はこの制約を受けません(worker 自身のシェルで動くため)。
+
 ## 終了ステータスと出力
 
 すべてのコマンドは、成功時に JSON を1行だけ標準出力に印字し、終了コード `0` で終わります。失敗時は標準エラーにメッセージを出し、終了コード `1` で終わります。

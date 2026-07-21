@@ -32,6 +32,10 @@ Add that to your shell profile (`.zshrc` or similar) and open a new shell, or re
 
 A development build (Mytty Dev) installs under a different name, `~/.local/bin/mytty-ctl-dev`, so it never takes over the release build's link.
 
+## Calling mytty-ctl from inside Codex's sandbox
+
+Shell commands Codex runs execute inside a macOS Seatbelt sandbox (`review` or `workspace-write`), so `mytty-ctl` called from there gets `connect(2)` to the Unix domain socket denied outright by the operating system — every command, including `list` and `agent spawn`, fails with `socketOperation(1)` (`EPERM`). The socket file, its permissions, and `MYTTY_CONTROL_SOCKET` are all fine; the same socket connects normally from outside the sandbox (another pane, a plain shell). If Codex is the orchestrator driving other panes, ask for approval to run `mytty-ctl` commands outside the sandbox. Workers `agent spawn` launches into other panes aren't affected — they run in their own shell, not the orchestrator's sandbox.
+
 ## Exit status and output
 
 Every command prints exactly one line of JSON to stdout and exits `0` on success. On failure it prints a message to stderr and exits `1`.

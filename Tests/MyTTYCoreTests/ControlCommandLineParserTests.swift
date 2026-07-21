@@ -226,6 +226,15 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("still be initializing and drops"))
     }
 
+    @Test("paneTeamGuide warns that Codex's own sandbox blocks every mytty-ctl command, not just wait")
+    func paneTeamGuideCodexSandboxNote() {
+        let guide = ControlCommandLineParser.paneTeamGuide
+        #expect(guide.contains("CODEX SANDBOX NOTE"))
+        #expect(guide.contains("socketOperation(1)"))
+        #expect(guide.contains("EPERM"))
+        #expect(guide.contains("outside the sandbox"))
+    }
+
     @Test("paneTeamGuide prefers the high-level agent API and stages a full example")
     func paneTeamGuidePrefersAgentAPI() {
         let guide = ControlCommandLineParser.paneTeamGuide

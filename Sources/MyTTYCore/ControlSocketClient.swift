@@ -10,6 +10,72 @@ public enum ControlSocketClientError: Error, Equatable, Sendable {
     case appNotRunning
 }
 
+extension ControlSocketClientError: CustomStringConvertible {
+    /// `mytty-ctl`'s top-level `catch` prints errors with `"\(error)"`, so
+    /// this is what a caller actually sees on stderr. `.socketOperation`
+    /// gets special handling for `EPERM`: that errno almost always means
+    /// `connect(2)` itself was denied by the operating system, which in
+    /// practice means mytty-ctl is running inside a sandbox -- most
+    /// commonly a shell command Codex executes under its own macOS
+    /// Seatbelt sandbox (review or workspace-write). The socket file, its
+    /// permissions, and `MYTTY_CONTROL_SOCKET` are unaffected; this is
+    /// strictly an OS-level denial of the connection attempt, and the
+    /// bare errno number alone gives the caller no way to tell that
+    /// apart from every other failure mode. Every other errno still gets
+    /// `strerror(3)` appended so the raw number is never the only
+    /// information given.
+    public var description: String {
+        switch self {
+        case .socketPathTooLong:
+            return "socketPathTooLong"
+        case let .socketOperation(code):
+            return ControlSocketErrorFormatting.socketOperationDescription(
+                code
+            )
+        case .emptyResponse:
+            return "emptyResponse"
+        case .responseTooLarge:
+            return "responseTooLarge"
+        case .invalidResponse:
+            return "invalidResponse"
+        case .appNotRunning:
+            return "appNotRunning"
+        }
+    }
+}
+
+/// Shared with `AgentEventSocketClientError`, whose `.socketOperation` case
+/// fails the exact same way when a provider's hook runs inside a sandbox.
+enum ControlSocketErrorFormatting {
+    static func socketOperationDescription(_ code: Int32) -> String {
+        guard code == EPERM else {
+            return "socketOperation(\(code)): "
+                + "\(String(cString: strerror(code)))"
+        }
+        return """
+        connect to the Mytty control socket was denied by the operating \
+        system (EPERM). This happens when mytty-ctl runs inside a \
+        sandbox -- for example, a shell command Codex executes under its \
+        own sandbox. Ask for approval to run mytty-ctl outside the \
+        sandbox, or re-run it without sandboxing.
+        """
+    }
+
+    static func hookSocketOperationDescription(_ code: Int32) -> String {
+        guard code == EPERM else {
+            return "socketOperation(\(code)): "
+                + "\(String(cString: strerror(code)))"
+        }
+        return """
+        connect to Mytty's agent-event socket was denied by the operating \
+        system (EPERM). This happens when mytty-agent-hook runs inside a \
+        sandbox -- for example, a provider hook executed inside its own \
+        sandboxed process. Ask for approval to run the hook outside the \
+        sandbox, or re-run it without sandboxing.
+        """
+    }
+}
+
 /// Client half of the `mytty-ctl` control protocol: connects to
 /// `ApplicationPaths.aiControlSocket`, writes one newline-terminated JSON
 /// `ControlRequest`, and blocks for a single newline-terminated JSON
