@@ -35,7 +35,7 @@ provider in **Settings > Agents** writes to:
 | Claude Code | `~/.claude/settings.json` | Command handlers for prompt, permission, post-tool, notification, stop, and failure events |
 | OpenCode | `~/.config/opencode/plugins/mytty.js` | One mytty-owned global plugin file |
 | Antigravity | `~/.gemini/config/plugins/mytty/` | One mytty-owned plugin directory with invocation and stop hooks |
-| Cursor | `~/.cursor/hooks.json` | Command handlers for prompt, post-tool, and stop events |
+| Cursor | `~/.cursor/hooks.json` | Command handlers for prompt, post-tool, shell-execution, and stop events |
 
 Codex, Claude Code, and Cursor configuration is JSON, parsed
 structurally and rewritten atomically; unrelated top-level values,
@@ -60,18 +60,35 @@ previous one completes.
 | mytty event | Codex | Claude Code | OpenCode | Antigravity | Cursor |
 | --- | --- | --- | --- | --- | --- |
 | `started` | `UserPromptSubmit` | `UserPromptSubmit` | user `message.updated` | not exposed | `beforeSubmitPrompt` |
-| `approval-requested` | `PermissionRequest` | `PermissionRequest` or permission notification | `permission.asked` / `permission.updated` | not exposed | not exposed |
+| `approval-requested` | `PermissionRequest` | `PermissionRequest` or permission notification | `permission.asked` / `permission.updated` | not exposed | estimated (see below) |
 | `input-requested` | input-oriented permission tool | input notification or `AskUserQuestion` | `question.asked` | not exposed | not exposed |
-| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `postToolUse` / `postToolUseFailure` |
-| `succeeded` | `Stop` | `Stop` | `session.idle` | idle `Stop` | `stop` with `completed` |
+| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `postToolUse` / `postToolUseFailure` / `beforeShellExecution` / `afterShellExecution` |
+| `succeeded` | `Stop` | `Stop` | `session.idle` | idle `Stop` | `stop` with `completed`, or no `status` field at all |
 | `failed` | not exposed by the installed hooks | `StopFailure` | `session.error` | error `Stop` | `stop` with `error` |
 | `disconnected` | not exposed | not exposed | not exposed | not exposed | `stop` with `aborted` |
 
-Cursor and Antigravity's installed hooks provide lifecycle and result
-status only. They never produce `approval-requested` or
-`input-requested`, which is why `mytty-ctl wait --until attention` never
-resolves for panes running those two providers (see
-[mytty-ctl reference](mytty-ctl.md)).
+Antigravity's installed hooks provide lifecycle and result status only;
+they never produce `approval-requested` or `input-requested`, which is
+why `mytty-ctl wait --until attention` never resolves for panes running
+that provider (see [mytty-ctl reference](mytty-ctl.md)).
+
+Cursor has no hook of its own for a permission prompt either, but mytty
+estimates one from the two hooks it does fire around every shell
+command: `beforeShellExecution` starts a 10-second timer for that
+`(run, command)` pair; if `afterShellExecution` (matched by command),
+`postToolUse`, `postToolUseFailure`, or `stop` arrives first, the timer
+is cancelled. If nothing arrives in time, mytty synthesizes an
+`approval-requested` event itself — `CursorApprovalPendingTracker` holds
+the pending state, `CursorApprovalCoordinator`
+(`Sources/MyTTYApp/CursorApprovalCoordinator.swift`) owns the timer, and
+`AgentHookEventAdapter.pendingApprovalEvent` builds the event. Once
+`afterShellExecution` (or any other progress hook) does arrive, the run
+transitions back to `running` the same way a real approval resolves, so
+no separate resolution step is needed. Auto-approved commands that
+finish inside the 10-second window never trigger this at all; one that
+runs long but was in fact auto-approved briefly shows as
+`approval-requested` in Attention and then resolves itself once
+`afterShellExecution` lands.
 
 Provider-native identifiers are converted to mytty run identifiers as
 follows: Codex `turn_id`, Claude Code `prompt_id`, the active OpenCode

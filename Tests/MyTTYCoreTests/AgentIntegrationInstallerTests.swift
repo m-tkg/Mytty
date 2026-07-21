@@ -281,6 +281,8 @@ struct AgentIntegrationInstallerTests {
             "beforeSubmitPrompt",
             "postToolUse",
             "postToolUseFailure",
+            "beforeShellExecution",
+            "afterShellExecution",
             "stop",
         ] {
             #expect(
@@ -298,6 +300,18 @@ struct AgentIntegrationInstallerTests {
                 commandContaining: "./hooks/metrics.sh"
             ) == 1
         )
+
+        let hooks = try #require(installedTwice["hooks"] as? [String: Any])
+        let beforeShellHandlers = try #require(
+            hooks["beforeShellExecution"] as? [[String: Any]]
+        )
+        let ownedHandler = try #require(
+            beforeShellHandlers.first {
+                ($0["command"] as? String)?
+                    .contains("mytty-agent-hook' cursor") == true
+            }
+        )
+        #expect(ownedHandler["type"] as? String == "command")
 
         try installer.remove(.cursor)
         let removed = try harness.readJSON(hooksURL)

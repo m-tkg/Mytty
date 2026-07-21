@@ -266,11 +266,16 @@ mytty-ctl focus "$paneA"
   するまでブロックし続ける。「まだ何も来ていない=idle 扱い」という
   デフォルトは無い。
 - `--until attention` は、実行状態が `waiting-input` または
-  `waiting-approval` になった時点で解決する。Cursor と Antigravity の
-  導入済み hook は承認・入力待ちイベントを一切出さないため
-  ([Agent providers](agent-providers_ja.md) 参照)、これらの provider が
+  `waiting-approval` になった時点で解決する。Antigravity の導入済み
+  hook は承認・入力待ちイベントを一切出さないため
+  ([Agent providers](agent-providers_ja.md) 参照)、この provider が
   動くペインでは `wait --until attention` は常にタイムアウトする。
-  この2 provider には `--until idle` を使う。
+  Antigravity には `--until idle` を使う。Cursor も入力待ちイベントは
+  出さないが、承認待ちには到達しうる: mytty は Cursor の
+  `beforeShellExecution` と `afterShellExecution` の間隔から承認待ちを
+  推定するため、その推定が発火した時点(何も解決しなければコマンド開始
+  からおおよそ10秒後)で Cursor ペインの `wait --until attention` も
+  解決する。
 - 対象 provider の hook 連携が設定でまだ有効化されていない場合、
   エージェントイベントが一切 Mytty に届かないため、条件に関わらず
   `wait` はタイムアウトするまでブロックし続ける。provider を初めて

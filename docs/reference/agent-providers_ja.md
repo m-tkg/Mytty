@@ -37,7 +37,7 @@ hook helper の共有バイナリは
 | Claude Code | `~/.claude/settings.json` | prompt、permission、post-tool、notification、stop、failure イベント用の command handler |
 | OpenCode | `~/.config/opencode/plugins/mytty.js` | mytty 専有の global plugin ファイル1つ |
 | Antigravity | `~/.gemini/config/plugins/mytty/` | invocation と stop hook を持つ mytty 専有の plugin ディレクトリ1つ |
-| Cursor | `~/.cursor/hooks.json` | prompt、post-tool、stop イベント用の command handler |
+| Cursor | `~/.cursor/hooks.json` | prompt、post-tool、shell 実行、stop イベント用の command handler |
 
 Codex、Claude Code、Cursor の設定は JSON で、構造的にパースしてから
 atomic に書き戻す。無関係なトップレベルの値、matcher グループ、handler
@@ -62,18 +62,35 @@ mytty の1 agent run は1プロンプトまたは1ターンを表し、長時間
 | mytty event | Codex | Claude Code | OpenCode | Antigravity | Cursor |
 | --- | --- | --- | --- | --- | --- |
 | `started` | `UserPromptSubmit` | `UserPromptSubmit` | user `message.updated` | 非対応 | `beforeSubmitPrompt` |
-| `approval-requested` | `PermissionRequest` | `PermissionRequest` または permission notification | `permission.asked` / `permission.updated` | 非対応 | 非対応 |
+| `approval-requested` | `PermissionRequest` | `PermissionRequest` または permission notification | `permission.asked` / `permission.updated` | 非対応 | 推定(下記参照) |
 | `input-requested` | input 系の permission tool | input notification または `AskUserQuestion` | `question.asked` | 非対応 | 非対応 |
-| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `postToolUse` / `postToolUseFailure` |
-| `succeeded` | `Stop` | `Stop` | `session.idle` | idle 時の `Stop` | `completed` を伴う `stop` |
+| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `postToolUse` / `postToolUseFailure` / `beforeShellExecution` / `afterShellExecution` |
+| `succeeded` | `Stop` | `Stop` | `session.idle` | idle 時の `Stop` | `completed` を伴う `stop`、または `status` フィールド自体が無い `stop` |
 | `failed` | 導入済み hook では非対応 | `StopFailure` | `session.error` | error 時の `Stop` | `error` を伴う `stop` |
 | `disconnected` | 非対応 | 非対応 | 非対応 | 非対応 | `aborted` を伴う `stop` |
 
-Cursor と Antigravity の導入済み hook は lifecycle と結果の status しか
-提供しない。`approval-requested` や `input-requested` は一切発生しない
-ため、この2 provider が動くペインでは `mytty-ctl wait --until attention`
-が解決しない
+Antigravity の導入済み hook は lifecycle と結果の status しか提供しない。
+`approval-requested` や `input-requested` は一切発生しないため、この
+provider が動くペインでは `mytty-ctl wait --until attention` が解決しない
 ([mytty-ctl リファレンス](mytty-ctl_ja.md) 参照)。
+
+Cursor にも permission prompt 専用の hook は無いが、mytty はシェル
+コマンドの前後で必ず発火する2つの hook からそれを推定する。
+`beforeShellExecution` がその `(run, command)` の組に対して10秒の
+タイマーを開始し、コマンドが一致する `afterShellExecution`、あるいは
+`postToolUse` / `postToolUseFailure` / `stop` が先に届けばタイマーは
+キャンセルされる。時間内に何も届かなければ、mytty 自身が
+`approval-requested` event を合成する — pending 状態は
+`CursorApprovalPendingTracker` が保持し、タイマーは
+`CursorApprovalCoordinator`
+(`Sources/MyTTYApp/CursorApprovalCoordinator.swift`) が持ち、event 自体は
+`AgentHookEventAdapter.pendingApprovalEvent` が組み立てる。その後
+`afterShellExecution`(または他の進行系 hook)が届けば、実際の
+approval が解決する場合と同じ経路で run は `running` に戻るため、
+解決処理を別途書く必要はない。10秒以内に終わる自動承認コマンドはそもそも
+発火しない。自動承認だが実行が長引いたコマンドは、一時的に Attention に
+`approval-requested` として出た後、`afterShellExecution` が届いた時点で
+自動的に解決する。
 
 provider ネイティブの識別子は次のように mytty の run 識別子へ変換
 される: Codex の `turn_id`、Claude Code の `prompt_id`、OpenCode の

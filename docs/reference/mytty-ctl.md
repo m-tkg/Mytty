@@ -264,11 +264,16 @@ met or the deadline passes.
   received an agent event blocks until timeout; there is no "already
   idle" default.
 - `--until attention` resolves once the run reaches `waiting-input` or
-  `waiting-approval`. Cursor and Antigravity's installed hooks never emit
-  approval- or input-requested events (see
-  [Agent providers](agent-providers.md)), so `wait --until attention`
-  always times out for panes running those two providers; use
-  `--until idle` for them instead.
+  `waiting-approval`. Antigravity's installed hooks never emit approval-
+  or input-requested events (see [Agent providers](agent-providers.md)),
+  so `wait --until attention` always times out for panes running that
+  provider; use `--until idle` for it instead. Cursor never emits
+  input-requested either, but it can reach `waiting-approval`: mytty
+  estimates a stuck shell approval from a delay between Cursor's
+  `beforeShellExecution` and `afterShellExecution` hooks, so `wait
+  --until attention` resolves for a Cursor pane once that estimate fires
+  (roughly 10 seconds after the command starts, if nothing resolves it
+  sooner).
 - If the target provider's hook integration has not been enabled yet in
   Settings, no agent events reach Mytty at all and `wait` blocks until
   timeout regardless of condition. This is the most common cause of an

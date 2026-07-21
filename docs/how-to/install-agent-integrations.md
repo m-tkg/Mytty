@@ -55,9 +55,14 @@ Start a fresh session with the provider and work through this checklist:
 6. Disable the provider in Settings and confirm any unrelated hooks already
    in that config file keep running.
 
-Cursor and Antigravity's installed hooks only report lifecycle and result
-status; they never create approval or input requests, so step 2 does not
-apply to them.
+Antigravity's installed hooks only report lifecycle and result status;
+they never create approval or input requests, so step 2 does not apply
+to it. Cursor's hooks don't create one directly either, but mytty
+estimates a shell approval request from a delay between its
+`beforeShellExecution` and `afterShellExecution` hooks (see
+[Agent providers](../reference/agent-providers.md)) — to see it in step
+2, run a command Cursor doesn't auto-approve and wait roughly 10 seconds
+without answering the prompt in Cursor's own UI.
 
 ## Provider hook references
 
