@@ -502,7 +502,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             applicationSupportDirectory:
                 sharedIntegrationPaths.applicationSupportDirectory
         )
-        agentIntegrationSettingsModel.repairInstalledIntegrations()
+        // Repaired below, in `applyApplicationPreferences`, once the app's
+        // language preference has actually been loaded from disk -- that
+        // call also re-runs on every later preference change, so a
+        // mid-session language switch repairs the pointer's prose too
+        // instead of requiring a restart.
         self.agentIntegrationSettingsModel = agentIntegrationSettingsModel
         remoteAccessCoordinator = RemoteAccessCoordinator(
             deviceStoreURL: paths.remoteDevices,
@@ -822,6 +826,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remotePushNotifier?.updateLocalization(localizer)
         remoteAccessCoordinator?.updateRemoteAccessServer(
             enabled: preferences.remoteAccessEnabled
+        )
+        // Runs on every preference change, not only language switches --
+        // the pointer status check is a cheap disk read and only rewrites
+        // when the on-disk prose actually disagrees with the current
+        // language, so this is a no-op for unrelated preference changes
+        // (tab placement, key bindings, ...). This is what makes a
+        // mid-session language switch rewrite the pointer immediately,
+        // rather than waiting for the next launch's repair pass.
+        agentIntegrationSettingsModel?.repairInstalledIntegrations(
+            language: localizer.language.paneTeamPointerLanguage
         )
     }
 

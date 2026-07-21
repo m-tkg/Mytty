@@ -456,17 +456,21 @@ struct AgentIntegrationInstallerTests {
         let installer = harness.installer
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .claudeCode)
-                == .notInstalled
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .notInstalled
         )
-        try installer.installPaneTeamPointer(.claudeCode)
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
         let installedOnce = try String(contentsOf: skillURL, encoding: .utf8)
-        try installer.installPaneTeamPointer(.claudeCode)
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
         let installedTwice = try String(contentsOf: skillURL, encoding: .utf8)
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .claudeCode)
-                == .installed
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .installed
         )
         #expect(installedOnce == installedTwice)
         #expect(installedOnce.contains("name: mytty-panes"))
@@ -475,8 +479,10 @@ struct AgentIntegrationInstallerTests {
         try installer.removePaneTeamPointer(.claudeCode)
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .claudeCode)
-                == .notInstalled
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .notInstalled
         )
         #expect(!FileManager.default.fileExists(atPath: skillURL.path))
         #expect(
@@ -495,7 +501,7 @@ struct AgentIntegrationInstallerTests {
             .appendingPathComponent(".claude/skills/mytty-panes", isDirectory: true)
             .appendingPathComponent("SKILL.md")
         let installer = harness.installer
-        try installer.installPaneTeamPointer(.claudeCode)
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
         try "stale content\n".write(
             to: skillURL,
             atomically: true,
@@ -503,16 +509,115 @@ struct AgentIntegrationInstallerTests {
         )
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .claudeCode)
-                == .needsRepair
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .needsRepair
         )
 
-        try installer.installPaneTeamPointer(.claudeCode)
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .claudeCode)
-                == .installed
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .installed
         )
+    }
+
+    @Test("reports the pane-team pointer as needing repair after the app language changes, and repair rewrites it in the new language")
+    func paneTeamPointerLanguageSwitchNeedsRepairThenRewrites() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let skillURL = harness.home
+            .appendingPathComponent(".claude/skills/mytty-panes", isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        let agentsURL = harness.home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md")
+        let installer = harness.installer
+
+        try installer.installPaneTeamPointer(.claudeCode, language: .english)
+        try installer.installPaneTeamPointer(.codex, language: .english)
+
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .installed
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .codex,
+                language: .english
+            ) == .installed
+        )
+
+        // Switching the app's language without touching the files:
+        // English content is still on disk, so it now reads as needing
+        // repair against Japanese, and as still installed against English.
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .japanese
+            ) == .needsRepair
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .codex,
+                language: .japanese
+            ) == .needsRepair
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .english
+            ) == .installed
+        )
+
+        try installer.installPaneTeamPointer(.claudeCode, language: .japanese)
+        try installer.installPaneTeamPointer(.codex, language: .japanese)
+
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .claudeCode,
+                language: .japanese
+            ) == .installed
+        )
+        #expect(
+            try installer.paneTeamPointerStatus(
+                for: .codex,
+                language: .japanese
+            ) == .installed
+        )
+        let claudeSkill = try String(contentsOf: skillURL, encoding: .utf8)
+        #expect(claudeSkill.contains("name: mytty-panes"))
+        #expect(claudeSkill.contains("$MYTTY_CTL_BIN\" guide"))
+        #expect(claudeSkill.contains("ペイン"))
+        let agentsBody = try String(contentsOf: agentsURL, encoding: .utf8)
+        #expect(agentsBody.contains("<!-- mytty:pane-team:begin -->"))
+        #expect(agentsBody.contains("<!-- mytty:pane-team:end -->"))
+        #expect(agentsBody.contains("ペイン"))
+        // The block marker stays the same across languages -- overwriting a
+        // Japanese block with an English one (or vice versa) must not
+        // duplicate it.
+        #expect(
+            agentsBody.components(
+                separatedBy: "<!-- mytty:pane-team:begin -->"
+            ).count == 2
+        )
+
+        try installer.installPaneTeamPointer(.codex, language: .english)
+        let agentsBodyAfterEnglishOverwrite = try String(
+            contentsOf: agentsURL,
+            encoding: .utf8
+        )
+        #expect(
+            agentsBodyAfterEnglishOverwrite.components(
+                separatedBy: "<!-- mytty:pane-team:begin -->"
+            ).count == 2
+        )
+        #expect(!agentsBodyAfterEnglishOverwrite.contains("ペイン"))
     }
 
     @Test("appends a managed Codex AGENTS.md block without touching the rest")
@@ -531,14 +636,18 @@ struct AgentIntegrationInstallerTests {
         let installer = harness.installer
 
         #expect(
-            try installer.paneTeamPointerStatus(for: .codex) == .notInstalled
+            try installer.paneTeamPointerStatus(for: .codex, language: .english)
+                == .notInstalled
         )
-        try installer.installPaneTeamPointer(.codex)
+        try installer.installPaneTeamPointer(.codex, language: .english)
         let installedOnce = try String(contentsOf: agentsURL, encoding: .utf8)
-        try installer.installPaneTeamPointer(.codex)
+        try installer.installPaneTeamPointer(.codex, language: .english)
         let installedTwice = try String(contentsOf: agentsURL, encoding: .utf8)
 
-        #expect(try installer.paneTeamPointerStatus(for: .codex) == .installed)
+        #expect(
+            try installer.paneTeamPointerStatus(for: .codex, language: .english)
+                == .installed
+        )
         #expect(installedOnce == installedTwice)
         #expect(installedOnce.hasPrefix(existingBody))
         #expect(installedOnce.contains("<!-- mytty:pane-team:begin -->"))
@@ -553,7 +662,10 @@ struct AgentIntegrationInstallerTests {
         try installer.removePaneTeamPointer(.codex)
         let removed = try String(contentsOf: agentsURL, encoding: .utf8)
 
-        #expect(try installer.paneTeamPointerStatus(for: .codex) == .notInstalled)
+        #expect(
+            try installer.paneTeamPointerStatus(for: .codex, language: .english)
+                == .notInstalled
+        )
         #expect(removed == existingBody)
     }
 
@@ -567,16 +679,22 @@ struct AgentIntegrationInstallerTests {
         let installer = harness.installer
 
         #expect(!FileManager.default.fileExists(atPath: agentsURL.path))
-        try installer.installPaneTeamPointer(.codex)
+        try installer.installPaneTeamPointer(.codex, language: .english)
 
-        #expect(try installer.paneTeamPointerStatus(for: .codex) == .installed)
+        #expect(
+            try installer.paneTeamPointerStatus(for: .codex, language: .english)
+                == .installed
+        )
         let installed = try String(contentsOf: agentsURL, encoding: .utf8)
         #expect(installed.contains("<!-- mytty:pane-team:begin -->"))
 
         try installer.removePaneTeamPointer(.codex)
         let removed = try String(contentsOf: agentsURL, encoding: .utf8)
 
-        #expect(try installer.paneTeamPointerStatus(for: .codex) == .notInstalled)
+        #expect(
+            try installer.paneTeamPointerStatus(for: .codex, language: .english)
+                == .notInstalled
+        )
         #expect(removed.isEmpty)
     }
 
@@ -597,13 +715,21 @@ struct AgentIntegrationInstallerTests {
         #expect(throws: AgentIntegrationInstallerError.invalidConfiguration(
             agentsURL.path
         )) {
-            try harness.installer.installPaneTeamPointer(.codex)
+            try harness.installer.installPaneTeamPointer(
+                .codex,
+                language: .english
+            )
         }
         #expect(try Data(contentsOf: agentsURL) == malformed)
     }
 
-    @Test("previews the exact pane-team pointer content without writing it")
-    func paneTeamPointerPreviewMatchesRealWrite() throws {
+    @Test(
+        "previews the exact pane-team pointer content without writing it",
+        arguments: [PaneTeamPointerLanguage.english, .japanese]
+    )
+    func paneTeamPointerPreviewMatchesRealWrite(
+        language: PaneTeamPointerLanguage
+    ) throws {
         let harness = try Harness()
         defer { harness.remove() }
         let installer = harness.installer
@@ -611,14 +737,17 @@ struct AgentIntegrationInstallerTests {
         for provider: AgentProvider in [.claudeCode, .codex] {
             let url = try #require(installer.paneTeamPointerURL(for: provider))
             let preview = try #require(
-                installer.paneTeamPointerPreview(for: provider)
+                installer.paneTeamPointerPreview(
+                    for: provider,
+                    language: language
+                )
             )
 
             // The preview must never touch disk: nothing should exist at
             // the pointer's URL (or, for Codex, its parent AGENTS.md) yet.
             #expect(!FileManager.default.fileExists(atPath: url.path))
 
-            try installer.installPaneTeamPointer(provider)
+            try installer.installPaneTeamPointer(provider, language: language)
             let written = try String(contentsOf: url, encoding: .utf8)
 
             switch provider {
@@ -643,7 +772,12 @@ struct AgentIntegrationInstallerTests {
 
         for provider: AgentProvider in [.openCode, .antigravity, .cursor] {
             #expect(installer.paneTeamPointerURL(for: provider) == nil)
-            #expect(installer.paneTeamPointerPreview(for: provider) == nil)
+            #expect(
+                installer.paneTeamPointerPreview(
+                    for: provider,
+                    language: .english
+                ) == nil
+            )
         }
     }
 
@@ -655,13 +789,17 @@ struct AgentIntegrationInstallerTests {
 
         for provider: AgentProvider in [.openCode, .antigravity, .cursor] {
             #expect(
-                try installer.paneTeamPointerStatus(for: provider)
-                    == .notInstalled
+                try installer.paneTeamPointerStatus(
+                    for: provider,
+                    language: .english
+                ) == .notInstalled
             )
-            try installer.installPaneTeamPointer(provider)
+            try installer.installPaneTeamPointer(provider, language: .english)
             #expect(
-                try installer.paneTeamPointerStatus(for: provider)
-                    == .notInstalled
+                try installer.paneTeamPointerStatus(
+                    for: provider,
+                    language: .english
+                ) == .notInstalled
             )
             try installer.removePaneTeamPointer(provider)
         }

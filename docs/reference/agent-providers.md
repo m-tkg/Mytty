@@ -65,6 +65,15 @@ own repair logic beyond rewriting the block/file to match the current
 build. Cursor, OpenCode, and Antigravity are not covered: no documented
 global-instruction location has been confirmed for them.
 
+The prose that gets written follows Settings > General's language setting
+(English or Japanese). Resolving `AppLanguage.systemDefault` stays the app
+layer's job -- MyTTYCore only ever receives an already-resolved language.
+Switching the setting rewrites any already-installed pointer to match on
+the next application preference change
+(`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`).
+The managed block's `<!-- mytty:pane-team:begin -->` / `:end` markers and
+the skill's `name: mytty-panes` stay the same regardless of language.
+
 ## Lifecycle mapping
 
 One mytty agent run represents one prompt or turn, not an entire

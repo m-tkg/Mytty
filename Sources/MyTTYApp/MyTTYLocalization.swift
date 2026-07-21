@@ -4,6 +4,17 @@ import MyTTYCore
 enum ResolvedAppLanguage: Equatable {
     case english
     case japanese
+
+    /// Maps to MyTTYCore's `PaneTeamPointerLanguage` -- MyTTYCore only
+    /// receives an already-resolved language (never `.systemDefault`), so
+    /// callers writing or previewing the pane-team pointer convert through
+    /// here rather than resolving the system locale themselves.
+    var paneTeamPointerLanguage: PaneTeamPointerLanguage {
+        switch self {
+        case .english: .english
+        case .japanese: .japanese
+        }
+    }
 }
 
 extension AppLanguage {

@@ -30,7 +30,10 @@ With "Teach agents about Mytty orchestration" on, a supported agent reads
 panes. The note goes to `~/.claude/skills/mytty-panes/SKILL.md` for Claude
 Code and `~/.codex/AGENTS.md` for Codex, and the screen reports the
 current state of each. "Show what will be written" reveals the exact text
-that would land there; opening it writes nothing.
+that would land there; opening it writes nothing. The text itself follows
+Settings > General's language setting -- English or Japanese -- and
+switching that setting rewrites any already-written note to match on the
+next preference change.
 
 Below that, the same screen lists example prompts for each situation. The
 wording differs depending on whether the pointer is installed, so copy

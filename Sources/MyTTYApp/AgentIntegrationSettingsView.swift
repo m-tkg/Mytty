@@ -162,7 +162,10 @@ struct AgentIntegrationSettingsView: View {
 
             if state.status == .needsRepair {
                 Button {
-                    model.repair(state.provider)
+                    model.repair(
+                        state.provider,
+                        language: localizer.language.paneTeamPointerLanguage
+                    )
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .frame(width: 22, height: 22)
@@ -178,7 +181,13 @@ struct AgentIntegrationSettingsView: View {
                 "",
                 isOn: Binding(
                     get: { state.status != .notInstalled },
-                    set: { model.setInstalled($0, for: state.provider) }
+                    set: {
+                        model.setInstalled(
+                            $0,
+                            for: state.provider,
+                            language: localizer.language.paneTeamPointerLanguage
+                        )
+                    }
                 )
             )
             .labelsHidden()

@@ -172,7 +172,12 @@ struct OrchestrationSettingsView: View {
                 "",
                 isOn: Binding(
                     get: { model.paneTeamPointerEnabled },
-                    set: { model.setPaneTeamPointerEnabled($0) }
+                    set: {
+                        model.setPaneTeamPointerEnabled(
+                            $0,
+                            language: localizer.language.paneTeamPointerLanguage
+                        )
+                    }
                 )
             )
             .labelsHidden()
@@ -221,7 +226,10 @@ struct OrchestrationSettingsView: View {
     }
 
     private func pointerTargetRow(_ provider: AgentProvider) -> some View {
-        let status = model.paneTeamPointerStatus(for: provider)
+        let status = model.paneTeamPointerStatus(
+            for: provider,
+            language: localizer.language.paneTeamPointerLanguage
+        )
         return HStack(spacing: 6) {
             Text(providerPointerTitle(provider))
                 .font(.system(size: 11, weight: .medium))
@@ -242,7 +250,10 @@ struct OrchestrationSettingsView: View {
 
     @ViewBuilder
     private func pointerPreview(_ provider: AgentProvider) -> some View {
-        if let preview = model.paneTeamPointerPreview(for: provider) {
+        if let preview = model.paneTeamPointerPreview(
+            for: provider,
+            language: localizer.language.paneTeamPointerLanguage
+        ) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(providerPointerTitle(provider))

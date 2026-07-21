@@ -6,6 +6,18 @@ public enum AgentIntegrationStatus: Equatable, Sendable {
     case needsRepair
 }
 
+/// The already-resolved language the pane-team pointer's prose should be
+/// written in. `AppLanguage.systemDefault` has no meaning here -- resolving
+/// it against the user's system locale is the app layer's job (see
+/// `ResolvedAppLanguage` in MyTTYApp), so MyTTYCore only ever sees a
+/// concrete choice. Callers must pass the current language on every call
+/// rather than caching it, since the preference can change while the app
+/// is running.
+public enum PaneTeamPointerLanguage: Equatable, Sendable {
+    case english
+    case japanese
+}
+
 public enum AgentIntegrationInstallerError: Error, Equatable, Sendable {
     case invalidConfiguration(String)
     case missingHookExecutable(String)
@@ -260,7 +272,8 @@ public struct AgentIntegrationInstaller {
     }
 
     public func paneTeamPointerStatus(
-        for provider: AgentProvider
+        for provider: AgentProvider,
+        language: PaneTeamPointerLanguage
     ) throws -> AgentIntegrationStatus {
         switch provider {
         case .claudeCode:
@@ -269,7 +282,9 @@ public struct AgentIntegrationInstaller {
             guard let data = try? Data(contentsOf: paneTeamSkillURL) else {
                 return .needsRepair
             }
-            return data == paneTeamSkillData() ? .installed : .needsRepair
+            return data == paneTeamSkillData(language: language)
+                ? .installed
+                : .needsRepair
 
         case .codex:
             guard let text = try readText(at: codexAgentsMarkdownURL) else {
@@ -278,7 +293,7 @@ public struct AgentIntegrationInstaller {
             guard let blockRange = paneTeamBlockRange(in: text) else {
                 return .notInstalled
             }
-            return text[blockRange] == paneTeamBlockBody()
+            return text[blockRange] == paneTeamBlockBody(language: language)
                 ? .installed
                 : .needsRepair
 
@@ -287,11 +302,14 @@ public struct AgentIntegrationInstaller {
         }
     }
 
-    public func installPaneTeamPointer(_ provider: AgentProvider) throws {
+    public func installPaneTeamPointer(
+        _ provider: AgentProvider,
+        language: PaneTeamPointerLanguage
+    ) throws {
         switch provider {
         case .claudeCode:
             try writeAtomically(
-                paneTeamSkillData(),
+                paneTeamSkillData(language: language),
                 to: paneTeamSkillURL,
                 defaultMode: 0o600
             )
@@ -299,7 +317,10 @@ public struct AgentIntegrationInstaller {
         case .codex:
             let url = codexAgentsMarkdownURL
             let existing = try readText(at: url) ?? ""
-            let updated = textByInstallingPaneTeamBlock(into: existing)
+            let updated = textByInstallingPaneTeamBlock(
+                into: existing,
+                language: language
+            )
             guard let data = updated.data(using: .utf8) else {
                 throw AgentIntegrationInstallerError.invalidConfiguration(
                     url.path
@@ -357,12 +378,18 @@ public struct AgentIntegrationInstaller {
     /// Returns the same content the installer itself writes -- callers
     /// must not re-derive this text, or the preview can drift from the
     /// real write. `nil` for providers with no pointer location.
-    public func paneTeamPointerPreview(for provider: AgentProvider) -> String? {
+    public func paneTeamPointerPreview(
+        for provider: AgentProvider,
+        language: PaneTeamPointerLanguage
+    ) -> String? {
         switch provider {
         case .claudeCode:
-            String(data: paneTeamSkillData(), encoding: .utf8)
+            String(
+                data: paneTeamSkillData(language: language),
+                encoding: .utf8
+            )
         case .codex:
-            paneTeamBlockBody()
+            paneTeamBlockBody(language: language)
         case .openCode, .antigravity, .cursor:
             nil
         }
@@ -383,60 +410,118 @@ public struct AgentIntegrationInstaller {
             .appendingPathComponent("AGENTS.md", isDirectory: false)
     }
 
-    private func paneTeamSkillData() -> Data {
-        Data(
-            """
-            ---
-            name: mytty-panes
-            description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude Code, Codex, Cursor, etc.) in other panes as a team. Use for requests like "split the pane and work in parallel," "run this across multiple panes," or "have another AI review this."
-            ---
+    private func paneTeamSkillData(
+        language: PaneTeamPointerLanguage
+    ) -> Data {
+        switch language {
+        case .english:
+            Data(
+                """
+                ---
+                name: mytty-panes
+                description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude Code, Codex, Cursor, etc.) in other panes as a team. Use for requests like "split the pane and work in parallel," "run this across multiple panes," or "have another AI review this."
+                ---
 
-            # mytty-panes
+                # mytty-panes
 
-            This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI
-            for splitting panes, launching other AI agents in them, and
-            coordinating with them as a team.
+                This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI
+                for splitting panes, launching other AI agents in them, and
+                coordinating with them as a team.
 
-            Run this first, then do what it says:
+                Run this first, then do what it says:
 
-                "$MYTTY_CTL_BIN" guide
+                    "$MYTTY_CTL_BIN" guide
 
-            That command is the source of truth for the environment
-            variables, the split/send/wait/read flow, and per-provider
-            launch flags. Don't guess at the workflow from memory or
-            duplicate it here -- it can change between Mytty versions.
+                That command is the source of truth for the environment
+                variables, the split/send/wait/read flow, and per-provider
+                launch flags. Don't guess at the workflow from memory or
+                duplicate it here -- it can change between Mytty versions.
 
-            Generated by Mytty. Safe to delete; recreated if the pane-team
-            pointer setting is re-enabled in Mytty's settings.
-            """.utf8
-        )
+                Generated by Mytty. Safe to delete; recreated if the pane-team
+                pointer setting is re-enabled in Mytty's settings.
+                """.utf8
+            )
+        case .japanese:
+            Data(
+                """
+                ---
+                name: mytty-panes
+                description: mytty-ctl を使って複数の Mytty ペイン (pane) を操作し、他のエージェント (Claude Code, Codex, Cursor などの sub-agent) を別ペインで並行 (parallel) に動かしてチームとして扱う。「ペインを分割して並行作業して」「複数ペインにまたがって実行して」「別の AI にレビュー (review) させて」のような依頼で使う。
+                ---
+
+                # mytty-panes
+
+                このペインは Mytty が開いたもので、`mytty-ctl` という CLI が
+                付属する。ペインを分割したり、別の AI エージェントをそこで
+                起動したり、チームとして連携させたりできる。
+
+                まず次を実行し、出力される指示に従う。
+
+                    "$MYTTY_CTL_BIN" guide
+
+                このコマンドが環境変数、split/send/wait/read の流れ、provider
+                ごとの起動フラグに関する唯一の正式な情報源。ここに重複させ
+                たり、記憶や推測で workflow を補ったりしないこと。Mytty の
+                バージョンによって変わることがある。
+
+                Mytty が生成したファイル。削除しても構わない。Mytty の設定
+                で pane-team pointer を再度有効にすれば作り直される。
+                """.utf8
+            )
+        }
     }
 
     /// The managed block written into `~/.codex/AGENTS.md`, bounded by
     /// `paneTeamBlockBegin`/`paneTeamBlockEnd` so it can be found, replaced
     /// on repair, and removed without touching anything else in that file.
-    private func paneTeamBlockBody() -> String {
-        """
-        \(Self.paneTeamBlockBegin)
-        ## Mytty pane team
+    private func paneTeamBlockBody(
+        language: PaneTeamPointerLanguage
+    ) -> String {
+        switch language {
+        case .english:
+            """
+            \(Self.paneTeamBlockBegin)
+            ## Mytty pane team
 
-        This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI for
-        splitting panes, launching other AI agents in them, and coordinating
-        with them as a team. When asked to coordinate work across multiple
-        panes or run other AI agents (Claude Code, Cursor, etc.) as
-        sub-agents, run:
+            This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI for
+            splitting panes, launching other AI agents in them, and coordinating
+            with them as a team. When asked to coordinate work across multiple
+            panes or run other AI agents (Claude Code, Cursor, etc.) as
+            sub-agents, run:
 
-            "$MYTTY_CTL_BIN" guide
+                "$MYTTY_CTL_BIN" guide
 
-        and follow what it prints. That command is the source of truth for
-        the environment variables, the split/send/wait/read flow, and
-        per-provider launch flags -- don't guess at the workflow from
-        memory.
+            and follow what it prints. That command is the source of truth for
+            the environment variables, the split/send/wait/read flow, and
+            per-provider launch flags -- don't guess at the workflow from
+            memory.
 
-        Generated by Mytty; safe to remove, this block is recreated if the
-        pane-team pointer setting is re-enabled in Mytty's settings.
-        \(Self.paneTeamBlockEnd)
-        """
+            Generated by Mytty; safe to remove, this block is recreated if the
+            pane-team pointer setting is re-enabled in Mytty's settings.
+            \(Self.paneTeamBlockEnd)
+            """
+        case .japanese:
+            """
+            \(Self.paneTeamBlockBegin)
+            ## Mytty ペインチーム
+
+            このペインは Mytty が開いたもので、`mytty-ctl` という CLI が
+            付属する。ペインを分割したり、別の AI エージェントをそこで
+            起動したり、チームとして連携させたりできる。複数ペインに
+            またがる作業や、別の AI エージェント (Claude Code, Cursor など)
+            をサブエージェントとして動かす依頼を受けたときは次を実行する。
+
+                "$MYTTY_CTL_BIN" guide
+
+            そして出力される指示に従う。このコマンドが環境変数、
+            split/send/wait/read の流れ、provider ごとの起動フラグに関する
+            唯一の正式な情報源であり、記憶で workflow を推測しないこと。
+
+            Mytty が生成したブロック。削除しても構わない。Mytty の設定で
+            pane-team pointer を再度有効にすればこのブロックは作り直される。
+            \(Self.paneTeamBlockEnd)
+            """
+        }
     }
 
     private func paneTeamBlockRange(
@@ -451,8 +536,11 @@ public struct AgentIntegrationInstaller {
         return beginRange.lowerBound..<endRange.upperBound
     }
 
-    private func textByInstallingPaneTeamBlock(into text: String) -> String {
-        let block = paneTeamBlockBody()
+    private func textByInstallingPaneTeamBlock(
+        into text: String,
+        language: PaneTeamPointerLanguage
+    ) -> String {
+        let block = paneTeamBlockBody(language: language)
         if let blockRange = paneTeamBlockRange(in: text) {
             var updated = text
             updated.replaceSubrange(blockRange, with: block)
