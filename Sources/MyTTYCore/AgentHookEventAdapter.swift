@@ -343,10 +343,10 @@ public enum AgentHookEventAdapter {
             case "aborted":
                 kind = .disconnected
             default:
-                // cursor-agent's CLI stop payload has been observed
-                // without a `status` field; treat it as a normal
-                // completion rather than dropping the event, or a run
-                // that finished this way never clears from Attention.
+                // A `stop` with a missing or unrecognized `status` still
+                // means the turn ended, so treat it as a normal
+                // completion rather than dropping the event: a run that
+                // finished this way would never clear from Attention.
                 kind = .succeeded
             }
         default:
