@@ -1,10 +1,10 @@
 # Agent event protocol リファレンス
 
-コーディングエージェントの hook が実行状態を Mytty に報告するためのワイヤープロトコル。トランスポート、provider ごとのアダプタ、`mytty-agent-hook` helper、provider 別インストーラーはすべて実装済み。出典は `Sources/MyTTYCore/AgentEvent.swift`、`Sources/MyTTYCore/AgentHookBridge.swift`。どの provider がどの event kind を発行するかは [Agent providers](agent-providers_ja.md) を参照。
+コーディングエージェントの hook が実行状態を Mytty に報告するためのワイヤープロトコルです。トランスポート、provider ごとのアダプタ、`mytty-agent-hook` helper、provider 別インストーラーはすべて実装済みです。出典は `Sources/MyTTYCore/AgentEvent.swift`、`Sources/MyTTYCore/AgentHookBridge.swift`。どの provider がどの event kind を発行するかは [Agent providers](agent-providers_ja.md) を参照してください。
 
 ## 環境変数
 
-Mytty の各ターミナル surface には次の3つの環境変数が渡される。
+Mytty の各ターミナル surface には次の3つの環境変数が渡されます。
 
 ```text
 MYTTY_EVENT_SOCKET
@@ -12,11 +12,11 @@ MYTTY_SURFACE_ID
 MYTTY_EVENT_CAPABILITY
 ```
 
-`MYTTY_EVENT_CAPABILITY` はその surface に限定して event 送信を許可するもの。ターミナル入力、画面キャプチャ、他 surface の event を許可するものではない。surface が閉じられると Mytty はこれを失効させる。
+`MYTTY_EVENT_CAPABILITY` はその surface に限定して event 送信を許可するものです。ターミナル入力、画面キャプチャ、他 surface の event を許可するものではありません。surface が閉じられると Mytty はこれを失効させます。
 
 ## トランスポート
 
-`MYTTY_EVENT_SOCKET` に接続する。パーミッション `0600` のユーザー専用 Unix stream socket。1接続につき UTF-8 の JSON エンベロープを1つ、改行終端で送る。リクエストの最大サイズは 64 KiB。日時は ISO 8601。
+`MYTTY_EVENT_SOCKET` に接続します。パーミッション `0600` のユーザー専用 Unix stream socket です。1接続につき UTF-8 の JSON エンベロープを1つ、改行終端で送ります。リクエストの最大サイズは 64 KiB です。日時は ISO 8601 です。
 
 ```json
 {
@@ -36,13 +36,13 @@ MYTTY_EVENT_CAPABILITY
 }
 ```
 
-サーバーは JSON レスポンスを1つ返して接続を閉じる。
+サーバーは JSON レスポンスを1つ返して接続を閉じます。
 
 ```json
 { "ok": true, "inserted": true }
 ```
 
-同一イベントの冪等なリトライは `inserted: false` を返す。不正な JSON、認可失敗、サイズ超過、内部ストレージ障害は `ok: false` と安定したエラーコードを返す。認可失敗のレスポンスに capability の値がそのまま含まれることはない。
+同一イベントの冪等なリトライは `inserted: false` を返します。不正な JSON、認可失敗、サイズ超過、内部ストレージ障害は `ok: false` と安定したエラーコードを返します。認可失敗のレスポンスに capability の値がそのまま含まれることはありません。
 
 ## エンベロープのフィールド
 
@@ -74,15 +74,15 @@ MYTTY_EVENT_CAPABILITY
 | `failed` | run がエラーで終了した |
 | `disconnected` | provider プロセスの切断により run が終了した |
 
-reducer は、run が `succeeded`/`failed` などのあと静かになった時点で内部的な `idle` という `AgentRunState` も導出する(これはワイヤー上の event kind ではない)。`Sources/MyTTYCore/AgentEvent.swift` の `AgentRunState` を参照。
+reducer は、run が `succeeded`/`failed` などのあと静かになった時点で内部的な `idle` という `AgentRunState` も導出します(これはワイヤー上の event kind ではありません)。`Sources/MyTTYCore/AgentEvent.swift` の `AgentRunState` を参照してください。
 
 ## Lifecycle のルール
 
-hook は待機系・終端系のイベントより前に `started` を発行すること。input/approval 待ちのあと処理が再開したら `running` を発行すること。人間が読むターミナル出力をパースしてこれらの event を合成することは禁止。構造化された hook payload のみを使う。
+hook は待機系・終端系のイベントより前に `started` を発行してください。input/approval 待ちのあと処理が再開したら `running` を発行してください。人間が読むターミナル出力をパースしてこれらの event を合成することは禁止です。構造化された hook payload のみを使います。
 
 ## 通知パネルの item 生成
 
-Mytty が通知(Attention)パネルの item を作るのは次の場合のみ。
+Mytty が通知(Attention)パネルの item を作るのは次の場合のみです。
 
 - 承認リクエスト
 - 入力リクエスト
@@ -90,11 +90,11 @@ Mytty が通知(Attention)パネルの item を作るのは次の場合のみ。
 - disconnect
 - 5分以上動き続けた成功実行
 
-確認済み、あるいは何らかの形で解決済みの item は、解決から24時間はパネルに残り続ける。
+確認済み、あるいは何らかの形で解決済みの item は、解決から24時間はパネルに残り続けます。
 
 ## レスポンスコード
 
-`AgentEventServerResponse` は `ok`、`inserted`(成功時のみ設定)、`error`(失敗時のみ設定される安定したコード文字列)の3フィールドを持つ。
+`AgentEventServerResponse` は `ok`、`inserted`(成功時のみ設定)、`error`(失敗時のみ設定される安定したコード文字列)の3フィールドを持ちます。
 
 | レスポンス | 意味 |
 | --- | --- |
@@ -107,5 +107,5 @@ Mytty が通知(Attention)パネルの item を作るのは次の場合のみ。
 
 ## 参考
 
-- [Agent providers](agent-providers_ja.md): 設定ファイルの場所、provider ごとの hook と event の対応、status bar / session inspector の情報源をまとめている。
-- [mytty-ctl リファレンス](mytty-ctl_ja.md): このプロトコルが生成する `AgentRunState` を読み取る `list`/`wait` の仕様を扱う。
+- [Agent providers](agent-providers_ja.md): 設定ファイルの場所、provider ごとの hook と event の対応、status bar / session inspector の情報源をまとめています。
+- [mytty-ctl リファレンス](mytty-ctl_ja.md): このプロトコルが生成する `AgentRunState` を読み取る `list`/`wait` の仕様を扱います。
