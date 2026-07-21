@@ -89,6 +89,6 @@ Closing the app is not something you need to plan around.
 
 - [First agent session](first-agent-session.md) picks up from here and turns
   one of these panes into a Codex or Claude Code session.
-- The [feature guide](../../README.md#feature-guide) documents every pane
+- The [feature list](../../README.md#features) documents every pane
   action, context menu, and shortcut, including the macOS 26-only ones like
   Explain Pane and Auto-Name that were skipped here.

@@ -12,13 +12,13 @@
 - [Mytty を使い始める](tutorials/getting-started_ja.md)
 - [初めてのエージェントセッション](tutorials/first-agent-session_ja.md)
 
-## ハウツー
+## 使い方
 
 基本を知っている前提で、特定の作業をこなす手順。
 
 - [macOS アプリをソースからビルドする](how-to/build-macos-app_ja.md)
 - [バージョンをリリースする](how-to/release-a-version_ja.md)
-- [iOS リモート app をビルドする](how-to/build-ios-remote-app_ja.md)
+- [iOS リモートアプリをビルドする](how-to/build-ios-remote-app_ja.md)
 - [エージェント連携を導入して確認する](how-to/install-agent-integrations_ja.md)
 - [mytty-ctl でエージェントのチームを動かす](how-to/orchestrate-agents-with-mytty-ctl_ja.md)
 - [iPhone から Mac に接続する](how-to/connect-from-iphone_ja.md)

@@ -57,7 +57,7 @@ framework 上で動くため、macOS 26 以降でのみメニューと Key Bindi
 | --- | --- |
 | Start/Stop Recording | Command-Shift-G |
 
-## Customize できないメニューコマンド
+## カスタマイズできないメニューコマンド
 
 **Toggle Attention**(View メニュー、通知パネルの表示/非表示)は
 `MyTTYCommand` ではない。`KeyBindingSettingsCatalog` にエントリが無く、
