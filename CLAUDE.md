@@ -74,7 +74,6 @@ Complementing the hooks, `TerminalWindowController`'s `AgentStatusPollingCoordin
 - **Open a PR for every change.** All work — new features and fixes alike — goes through its own branch and pull request; do not push commits directly to `main`. Build and test the change, commit it as soon as it's finished, then open a PR and merge only after review. Don't let several changes pile up in one PR; interleaved edits in shared files (e.g. `PaneDetailView.swift`) then cannot be split cleanly.
 - **Write PRs in English.** PR titles and descriptions must always be written in English, regardless of the language used in the conversation.
 - **Branch from the latest `main`.** Before creating a new branch, always fetch and start from the latest `main` (e.g. `git fetch origin main && git checkout -B <branch-name> origin/main`) so work doesn't build on stale history.
-- **Document features in the README.** When you implement a user-facing feature, add it to `README.md`, and keep `README.md` and `README_ja.md` in sync — the two must always describe the same behavior. `Tests/ReleasePackagingTests.sh` checks their required headings.
 - **Gate macOS 26+ features.** Features that require macOS 26+ (notably anything built on Foundation Models) must be conditionally available so they only appear on macOS 26 and later — guard with `if #available(macOS 26, *)` / `@available` and hide the UI on older systems. The app's baseline is macOS 15, so such features are additive, never required.
 
 ## Conventions that matter here
