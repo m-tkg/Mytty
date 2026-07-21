@@ -47,6 +47,7 @@ mytty-ctl list | jq .
 
 | コマンド | 引数 | 成功時のレスポンス |
 | --- | --- | --- |
+| `guide` | なし | ペインチームの手順書をプレーンテキストで標準出力、ソケット不要 |
 | `list` | なし | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
 | `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
@@ -59,6 +60,19 @@ mytty-ctl list | jq .
 
 pane ID は `TerminalSurfaceID` の UUID 文字列。`list` のレスポンス、
 `pane` レスポンス、`$MYTTY_SURFACE_ID` のいずれかから取得する。
+
+### guide
+
+ペインチームの手順書(環境変数、split/send/wait/read の流れ、provider
+ごとの起動コマンド)をプレーンテキストで標準出力に出し、終了コード 0
+で終わる。`MYTTY_CONTROL_SOCKET` も起動中の Mytty も不要。このファイル
+はコマンド引数と JSON の形を説明する場所なので、手順の一次情報は
+`mytty-ctl guide` の出力そのものを見ること。`mytty-ctl --help`(`-h`
+や引数なしでも同じ)を実行すると、代わりに上のコマンド一覧が出る。
+
+```bash
+mytty-ctl guide
+```
 
 ### list
 

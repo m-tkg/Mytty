@@ -24,13 +24,25 @@ private enum ControlCommandError: Error, CustomStringConvertible {
 }
 
 private func run() throws {
-    let request: ControlRequest
+    let invocation: ControlCommandLineParser.ControlInvocation
     do {
-        request = try ControlCommandLineParser.parse(
+        invocation = try ControlCommandLineParser.parseInvocation(
             Array(CommandLine.arguments.dropFirst())
         )
     } catch let ControlCommandLineError.invalidArguments(usage) {
         throw ControlCommandError.invalidArguments(usage)
+    }
+
+    let request: ControlRequest
+    switch invocation {
+    case .guide:
+        print(ControlCommandLineParser.paneTeamGuide)
+        return
+    case .help:
+        print(ControlCommandLineParser.usage)
+        return
+    case let .request(parsedRequest):
+        request = parsedRequest
     }
 
     guard let socketPath = ProcessInfo.processInfo.environment[

@@ -47,6 +47,7 @@ mytty-ctl list | jq .
 
 | Command | Arguments | Success response |
 | --- | --- | --- |
+| `guide` | none | pane-team playbook as plain text on stdout, no socket needed |
 | `list` | none | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
 | `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
@@ -59,6 +60,20 @@ mytty-ctl list | jq .
 
 pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a
 `list` response, a `pane` response, or `$MYTTY_SURFACE_ID`.
+
+### guide
+
+Prints the pane-team playbook -- environment variables, the
+split/send/wait/read flow, and per-provider launch commands -- as plain
+text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running
+Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl
+guide` is the primary source for the recipes themselves, so run it
+directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`,
+or no arguments) prints the shorter command list above instead.
+
+```bash
+mytty-ctl guide
+```
 
 ### list
 

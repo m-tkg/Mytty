@@ -13,6 +13,15 @@ command list and JSON output shapes are documented separately in
 [mytty-ctl command reference](../reference/mytty-ctl.md); this page is about
 the shapes of work that are worth building with it.
 
+## Using this from another project
+
+This file and the command reference live in the mytty repo, but a lead
+agent working in some other project's pane won't have either on disk. Tell
+it to run `"$MYTTY_CTL_BIN" guide` instead -- it prints the same
+environment variables, flow, and provider launch commands as plain text,
+straight from the binary that's already running in the pane, so it stays
+in sync with whatever Mytty build is installed.
+
 ## The shape of a run
 
 There is no standing orchestrator process. The "lead" is whichever agent is

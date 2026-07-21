@@ -175,4 +175,53 @@ struct ControlCommandLineParserTests {
             ControlCommandLineParser.waitTimeoutSeconds(for: .list) == nil
         )
     }
+
+    @Test("parseInvocation recognizes guide, --help, -h, and no arguments")
+    func parsesInvocationNonSocketCommands() throws {
+        #expect(
+            try ControlCommandLineParser.parseInvocation(["guide"]) == .guide
+        )
+        #expect(
+            try ControlCommandLineParser.parseInvocation(["--help"]) == .help
+        )
+        #expect(
+            try ControlCommandLineParser.parseInvocation(["-h"]) == .help
+        )
+        #expect(try ControlCommandLineParser.parseInvocation([]) == .help)
+    }
+
+    @Test("parseInvocation wraps existing commands unchanged")
+    func parsesInvocationWrapsRequests() throws {
+        #expect(
+            try ControlCommandLineParser.parseInvocation(["list"])
+                == .request(.list)
+        )
+        #expect(
+            try ControlCommandLineParser.parseInvocation(
+                ["send", "pane-1", "hello", "--enter"]
+            ) == .request(
+                .send(paneID: "pane-1", text: "hello", pressEnter: true)
+            )
+        )
+    }
+
+    @Test("parseInvocation still rejects unknown commands")
+    func parsesInvocationRejectsUnknownCommand() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parseInvocation(["not-a-command"])
+        }
+    }
+
+    @Test("paneTeamGuide covers provider launch commands and the idle wait")
+    func paneTeamGuideContent() {
+        let guide = ControlCommandLineParser.paneTeamGuide
+        #expect(guide.contains("claude --permission-mode acceptEdits"))
+        #expect(guide.contains("codex -s workspace-write -a never"))
+        #expect(guide.contains("cursor-agent --force"))
+        #expect(guide.contains("antigravity"))
+        #expect(guide.contains("--until idle"))
+        #expect(guide.contains("MYTTY_CTL_BIN"))
+        #expect(guide.contains("MYTTY_SURFACE_ID"))
+        #expect(guide.contains("MYTTY_CONTROL_SOCKET"))
+    }
 }

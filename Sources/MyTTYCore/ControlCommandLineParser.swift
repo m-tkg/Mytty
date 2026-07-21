@@ -24,10 +24,127 @@ public enum ControlCommandLineParser {
       focus <pane-id>
 
     Every command prints one JSON object to stdout on success and exits 0.
-    On failure it prints a message to stderr and exits 1. See
-    docs/reference/mytty-ctl.md for the JSON shapes and the pane-team recipes this is
-    meant to support.
+    On failure it prints a message to stderr and exits 1. Run
+    `mytty-ctl guide` for the pane-team recipes this is meant to support,
+    or see https://github.com/m-tkg/mytty for the full documentation.
     """
+
+    /// The pane-team operating manual: environment variables, the
+    /// split/send/wait/read flow, and per-provider launch flags. Written
+    /// for an AI agent to read via `mytty-ctl guide`, not routed through
+    /// `MyTTYLocalization` since it's never shown as app UI. This is the
+    /// single source of truth for the recipe — docs reference it rather
+    /// than duplicating it, so it can't drift out of sync with a shipped
+    /// binary.
+    public static let paneTeamGuide = """
+    Mytty pane-team guide
+
+    This is the operating manual for running other AI agents as sub-agents in
+    Mytty panes via mytty-ctl. It is written for an AI agent to read, not a
+    human GUI user.
+
+    ENVIRONMENT
+
+    Every pane Mytty opens sets these automatically; no setup is needed before
+    calling mytty-ctl from inside a pane:
+
+      MYTTY_CTL_BIN        absolute path to the mytty-ctl binary
+      MYTTY_SURFACE_ID     this pane's own pane ID, usable as "self"
+      MYTTY_CONTROL_SOCKET absolute path of the control socket mytty-ctl talks to
+
+    Prefer "$MYTTY_CTL_BIN" over a bare `mytty-ctl` unless PATH is confirmed.
+
+    BASIC FLOW
+
+      1. split       "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd <dir>
+         Claim a pane. Give each sub-agent its own directory (ideally a git
+         worktree) so they don't fight over the same files.
+      2. send <launch-command> --enter   start the agent (see the provider
+         table below for the right flags).
+      3. send <instructions> --enter     give it the task.
+      4. wait --until idle               block until the run finishes.
+      5. read                            fetch the pane's screen text.
+      6. close-pane, once done with the pane, or focus to hand control back to
+         a human.
+
+    PROVIDER LAUNCH COMMANDS
+
+      claude
+        launch: claude --permission-mode acceptEdits
+        Without this flag Claude Code starts in plan mode, and `send` cannot
+        exit plan mode. Bash commands still need approval: `wait --until
+        attention`, then `send "2" --enter` to approve.
+
+      codex
+        launch: codex -s workspace-write -a never
+        No approval prompts, so `wait --until idle` alone is enough.
+
+      cursor
+        launch: cursor-agent --force
+        `--force` (aka `--yolo`) skips approval prompts. Don't add `--plan`
+        unless the pane's job is read-only investigation -- it disables edits.
+
+      antigravity
+        launch: normal, no extra flags
+        Its hooks never emit approval/input events, so only `wait --until
+        idle` ever resolves for it; `wait --until attention` always times out.
+
+    WAIT PITFALLS
+
+      - If the target provider's integration is not enabled in Mytty Settings,
+        no agent events reach Mytty at all, and `wait` blocks until it times
+        out regardless of condition. This is the single most common
+        first-time failure.
+      - Cursor never emits an input-requested event. A shell approval instead
+        surfaces as `waiting-approval` roughly 10 seconds after the command
+        starts, once Mytty's delay-based estimate fires.
+
+    INSTRUCTIONS TO GIVE A SUB-AGENT
+
+    When writing the prompt to `send` to a worker pane, include:
+
+      - Stay inside the given working directory; don't touch files outside it.
+      - Keep going until the build and tests pass; fix failures yourself
+        instead of stopping to ask.
+      - If a design choice is ambiguous, pick one, note the choice and the
+        reasoning, and continue rather than asking a question back.
+      - End with a bulleted summary: changed files, test results, and any
+        remaining issues.
+
+    RUNNING SEVERAL WORKERS IN PARALLEL
+
+    Give each sub-agent its own `git worktree` so their working directories
+    don't collide. `send` has a 64 KiB limit per call, and any newline in the
+    text becomes an Enter keypress -- so a long or multi-line instruction
+    should be written to a file first and the sub-agent told to read that
+    file, rather than passed as one `send` argument.
+    """
+
+    /// The non-socket entry points (`guide`, `--help`/`-h`, no arguments)
+    /// resolved before falling back to `parse(_:)` for everything else.
+    /// `Sources/MyTTYCtl/main.swift` uses this so `guide` and `--help` never
+    /// require `MYTTY_CONTROL_SOCKET` or a running Mytty.
+    public enum ControlInvocation: Equatable, Sendable {
+        case request(ControlRequest)
+        case guide
+        case help
+    }
+
+    public static func parseInvocation(
+        _ arguments: [String]
+    ) throws -> ControlInvocation {
+        guard let first = arguments.first else {
+            return .help
+        }
+        switch first {
+        case "guide":
+            return .guide
+        case "--help", "-h":
+            return .help
+        default:
+            return .request(try parse(arguments))
+        }
+    }
 
     public static func parse(_ arguments: [String]) throws -> ControlRequest {
         var arguments = arguments
