@@ -33,10 +33,9 @@ public struct AgentIntegrationInstaller {
     ]
     private static let cursorEvents = [
         "beforeSubmitPrompt",
+        "preToolUse",
         "postToolUse",
         "postToolUseFailure",
-        "beforeShellExecution",
-        "afterShellExecution",
         "stop",
     ]
 

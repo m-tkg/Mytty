@@ -60,7 +60,8 @@ public enum AgentHookEventAdapter {
             kind: mapping.kind,
             occurredAt: occurredAt,
             message: mapping.message,
-            hookName: mapping.hookName
+            hookName: mapping.hookName,
+            toolUseID: mapping.toolUseID
         )
     }
 
@@ -98,15 +99,15 @@ public enum AgentHookEventAdapter {
     }
 
     /// Builds the synthetic `approval-requested` event for Cursor, whose
-    /// hooks never report a shell command waiting on user permission (see
+    /// hooks never report a tool call waiting on user permission (see
     /// `CursorApprovalPendingTracker`). `runID` is reused as-is from the
-    /// `beforeShellExecution` event that started the wait, so the
-    /// synthetic event lands on that same run; the event ID is derived
-    /// from `runID` + `command` so re-detecting the same stuck command is
-    /// a no-op.
+    /// `preToolUse` event that started the wait, so the synthetic event
+    /// lands on that same run; the event ID is derived from `runID` +
+    /// `toolUseID` so re-detecting the same stuck tool call is a no-op.
     public static func pendingApprovalEvent(
         runID: AgentRunID,
-        command: String,
+        toolUseID: String,
+        toolName: String,
         sessionID: String?,
         surfaceID: TerminalSurfaceID,
         occurredAt: Date
@@ -114,7 +115,7 @@ public enum AgentHookEventAdapter {
         AgentEvent(
             id: AgentEventID(
                 rawValue: StableAgentUUID.make(
-                    from: "event\u{0}cursor\u{0}pending-approval\u{0}\(runID.rawValue.uuidString)\u{0}\(command)"
+                    from: "event\u{0}cursor\u{0}pending-approval\u{0}\(runID.rawValue.uuidString)\u{0}\(toolUseID)"
                 )
             ),
             runID: runID,
@@ -123,7 +124,11 @@ public enum AgentHookEventAdapter {
             provider: .cursor,
             kind: .approvalRequested,
             occurredAt: occurredAt,
-            message: command,
+            message: message(
+                for: .approvalRequested,
+                toolName: toolName,
+                directMessage: nil
+            ),
             hookName: syntheticPendingApprovalHookName
         )
     }
@@ -322,15 +327,27 @@ public enum AgentHookEventAdapter {
 
         let kind: AgentEventKind
         var directMessage: String?
+        var toolUseID: String?
         switch eventName {
         case "beforeSubmitPrompt":
             kind = .started
+        case "preToolUse":
+            // Cursor has no dedicated approval-prompt hook, so
+            // CursorApprovalPendingTracker watches the gap between
+            // preToolUse and its matching postToolUse /
+            // postToolUseFailure (paired by tool_use_id) to estimate a
+            // stuck approval.
+            kind = .running
+            directMessage = object.string("tool_name")
+            toolUseID = sanitizedToolUseID(object.string("tool_use_id"))
         case "postToolUse", "postToolUseFailure":
             kind = .running
+            toolUseID = sanitizedToolUseID(object.string("tool_use_id"))
         case "beforeShellExecution", "afterShellExecution":
-            // Cursor has no dedicated approval-prompt hook, so these two
-            // just report progress; CursorApprovalPendingTracker watches
-            // the gap between them to estimate a stuck approval.
+            // Retained for anyone who installed these hooks by hand
+            // before this switch to preToolUse; mytty no longer installs
+            // them itself and no longer uses them to detect a pending
+            // approval (see CursorApprovalPendingTracker).
             kind = .running
             directMessage = object.string("command")
         case "stop":
@@ -362,7 +379,8 @@ public enum AgentHookEventAdapter {
             sessionID: sessionID,
             kind: kind,
             message: directMessage,
-            hookName: eventName
+            hookName: eventName,
+            toolUseID: toolUseID
         )
     }
 
@@ -389,6 +407,21 @@ public enum AgentHookEventAdapter {
         return "\(toolName) requires approval"
     }
 
+    /// Sanitizes a Cursor `tool_use_id` for use as a pairing key. Unlike
+    /// `sessionIdentifier`, this never rejects the whole value for
+    /// containing control characters — real payloads have been observed
+    /// with embedded newlines (e.g. `"call-…-1\nfc_…_1"`) — it strips
+    /// them and clamps the length instead.
+    private static func sanitizedToolUseID(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let stripped = String(value.unicodeScalars.filter {
+            !CharacterSet.controlCharacters.contains($0)
+        })
+        guard !stripped.isEmpty else { return nil }
+        guard stripped.utf8.count > 256 else { return stripped }
+        return String(decoding: stripped.utf8.prefix(256), as: UTF8.self)
+    }
+
     private static func sessionIdentifier(_ value: String?) -> String? {
         guard let value,
               !value.isEmpty,
@@ -408,6 +441,23 @@ private struct Mapping {
     let kind: AgentEventKind
     let message: String?
     let hookName: String?
+    let toolUseID: String?
+
+    init(
+        runKey: String?,
+        sessionID: String?,
+        kind: AgentEventKind,
+        message: String?,
+        hookName: String?,
+        toolUseID: String? = nil
+    ) {
+        self.runKey = runKey
+        self.sessionID = sessionID
+        self.kind = kind
+        self.message = message
+        self.hookName = hookName
+        self.toolUseID = toolUseID
+    }
 }
 
 private enum StableAgentUUID {

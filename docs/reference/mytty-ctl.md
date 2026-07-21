@@ -269,10 +269,10 @@ met or the deadline passes.
   so `wait --until attention` always times out for panes running that
   provider; use `--until idle` for it instead. Cursor never emits
   input-requested either, but it can reach `waiting-approval`: mytty
-  estimates a stuck shell approval from a delay between Cursor's
-  `beforeShellExecution` and `afterShellExecution` hooks, so `wait
+  estimates a stuck tool call from a delay between Cursor's `preToolUse`
+  hook and the matching `postToolUse` / `postToolUseFailure`, so `wait
   --until attention` resolves for a Cursor pane once that estimate fires
-  (roughly 10 seconds after the command starts, if nothing resolves it
+  (roughly 10 seconds after the tool call starts, if nothing resolves it
   sooner).
 - If the target provider's hook integration has not been enabled yet in
   Settings, no agent events reach Mytty at all and `wait` blocks until

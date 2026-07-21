@@ -544,46 +544,145 @@ struct AgentHookEventAdapterTests {
         #expect(before?.runID == after?.runID)
     }
 
-    @Test("builds a synthetic pending-approval event that lands on the given run")
-    func pendingApprovalEventTargetsTheGivenRun() throws {
-        let before = try event(
+    @Test("maps Cursor preToolUse to running with tool_name as message and a sanitized tool_use_id")
+    func cursorPreToolUse() throws {
+        let preToolUse = try event(
             provider: .cursor,
             payload: """
             {
               "conversation_id": "cursor-conversation-01",
               "generation_id": "cursor-generation-01",
-              "hook_event_name": "beforeShellExecution",
-              "command": "rm -rf build"
+              "hook_event_name": "preToolUse",
+              "tool_name": "Delete",
+              "tool_use_id": "call-1",
+              "tool_input": { "file_path": "victim.txt" }
             }
             """
         )
-        let beforeEvent = try #require(before)
+
+        #expect(preToolUse?.kind == .running)
+        #expect(preToolUse?.hookName == "preToolUse")
+        #expect(preToolUse?.message == "Delete")
+        #expect(preToolUse?.toolUseID == "call-1")
+    }
+
+    @Test("maps Cursor postToolUse and postToolUseFailure tool_use_id for pairing")
+    func cursorPostToolUseCapturesToolUseID() throws {
+        let postToolUse = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "postToolUse",
+              "tool_name": "Grep",
+              "tool_use_id": "call-2",
+              "duration": 12
+            }
+            """
+        )
+        let postToolUseFailure = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "postToolUseFailure",
+              "tool_name": "Delete",
+              "tool_use_id": "call-3",
+              "duration": 8
+            }
+            """
+        )
+
+        #expect(postToolUse?.toolUseID == "call-2")
+        #expect(postToolUseFailure?.toolUseID == "call-3")
+    }
+
+    @Test("strips control characters from a Cursor tool_use_id instead of rejecting it")
+    func cursorToolUseIDStripsControlCharacters() throws {
+        // Real payloads have been observed with an embedded newline in
+        // tool_use_id, e.g. "call-...-1\nfc_..._1" — unlike session
+        // identifiers, this must not make the identifier nil, since
+        // preToolUse/postToolUse pairing depends on it.
+        let preToolUse = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "preToolUse",
+              "tool_name": "Delete",
+              "tool_use_id": "call-abc-1\\nfc_def_1"
+            }
+            """
+        )
+
+        #expect(preToolUse?.toolUseID == "call-abc-1fc_def_1")
+    }
+
+    @Test("truncates an overlong Cursor tool_use_id to 256 bytes")
+    func cursorToolUseIDTruncatesToLengthLimit() throws {
+        let overlong = String(repeating: "a", count: 300)
+        let preToolUse = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "preToolUse",
+              "tool_name": "Delete",
+              "tool_use_id": "\(overlong)"
+            }
+            """
+        )
+
+        #expect(preToolUse?.toolUseID?.utf8.count == 256)
+    }
+
+    @Test("builds a synthetic pending-approval event that lands on the given run")
+    func pendingApprovalEventTargetsTheGivenRun() throws {
+        let preToolUse = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "preToolUse",
+              "tool_name": "Delete",
+              "tool_use_id": "call-1"
+            }
+            """
+        )
+        let preToolUseEvent = try #require(preToolUse)
 
         let pending = AgentHookEventAdapter.pendingApprovalEvent(
-            runID: beforeEvent.runID,
-            command: "rm -rf build",
-            sessionID: beforeEvent.sessionID,
+            runID: preToolUseEvent.runID,
+            toolUseID: "call-1",
+            toolName: "Delete",
+            sessionID: preToolUseEvent.sessionID,
             surfaceID: surfaceID,
             occurredAt: occurredAt.addingTimeInterval(10)
         )
 
         #expect(pending.kind == .approvalRequested)
-        #expect(pending.runID == beforeEvent.runID)
-        #expect(pending.message == "rm -rf build")
+        #expect(pending.runID == preToolUseEvent.runID)
+        #expect(pending.message == "Delete requires approval")
 
-        // Re-detecting the same stuck command must not produce a second
+        // Re-detecting the same stuck tool call must not produce a second
         // event, so `AttentionCenter` de-duplicates it on append.
         let pendingAgain = AgentHookEventAdapter.pendingApprovalEvent(
-            runID: beforeEvent.runID,
-            command: "rm -rf build",
-            sessionID: beforeEvent.sessionID,
+            runID: preToolUseEvent.runID,
+            toolUseID: "call-1",
+            toolName: "Delete",
+            sessionID: preToolUseEvent.sessionID,
             surfaceID: surfaceID,
             occurredAt: occurredAt.addingTimeInterval(15)
         )
         #expect(pending.id == pendingAgain.id)
 
-        let runs = AgentEventReducer.reduce([beforeEvent, pending])
-        #expect(runs[beforeEvent.runID]?.state == .waitingApproval)
+        let runs = AgentEventReducer.reduce([preToolUseEvent, pending])
+        #expect(runs[preToolUseEvent.runID]?.state == .waitingApproval)
     }
 
     private func event(

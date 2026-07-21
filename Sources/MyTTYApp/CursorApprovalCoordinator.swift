@@ -2,12 +2,12 @@ import Foundation
 import MyTTYCore
 
 /// Owns the wall-clock timer behind `CursorApprovalPendingTracker`. Cursor
-/// never reports a shell command waiting on user permission, so this
-/// watches for the gap after `beforeShellExecution` and, once it passes,
-/// hands the synthetic `approval-requested` event to `deliver` — the same
-/// path real hook events take (`AppDelegate.receiveAgentEvent`), so
-/// focused-pane auto-ack, the phone push, and banner suppression all
-/// apply to it unchanged.
+/// never reports a tool call waiting on user permission, so this watches
+/// for the gap after `preToolUse` and, once it passes, hands the
+/// synthetic `approval-requested` event to `deliver` — the same path real
+/// hook events take (`AppDelegate.receiveAgentEvent`), so focused-pane
+/// auto-ack, the phone push, and banner suppression all apply to it
+/// unchanged.
 @MainActor
 final class CursorApprovalCoordinator: NSObject {
     private let tracker: CursorApprovalPendingTracker
@@ -44,7 +44,8 @@ final class CursorApprovalCoordinator: NSObject {
             deliver(
                 AgentHookEventAdapter.pendingApprovalEvent(
                     runID: approval.runID,
-                    command: approval.command,
+                    toolUseID: approval.toolUseID,
+                    toolName: approval.toolName,
                     sessionID: approval.sessionID,
                     surfaceID: approval.surfaceID,
                     occurredAt: now
