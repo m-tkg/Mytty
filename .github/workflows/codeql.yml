@@ -7,6 +7,15 @@ on:
       - "**/*.md"
       - "docs/**"
       - "LICENSE"
+      - "Tests/**"
+      - "ios/**"
+      - "cloudflare/**"
+      - ".claude/**"
+      - "Resources/**"
+      - "Makefile"
+      - ".gitignore"
+      - ".gitmodules"
+      - "scripts/**"
   schedule:
     - cron: "17 3 * * 1"
 
