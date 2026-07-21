@@ -459,6 +459,10 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
         else { return nil }
         return "preview for \(provider.rawValue) in \(language)"
     }
+
+    var installedGuideMarkdown: URL {
+        URL(fileURLWithPath: "/tmp/mytty-ctl.md")
+    }
 }
 
 @MainActor
