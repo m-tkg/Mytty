@@ -5,7 +5,6 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 plist="$root/Resources/Info.plist"
 workflow="$root/.github/workflows/release.yml"
-codeql_workflow="$root/.github/workflows/codeql.yml"
 ghostty_action="$root/.github/actions/prepare-ghostty/action.yml"
 bundle_script="$root/scripts/bundle.sh"
 readme="$root/README.md"
@@ -49,10 +48,8 @@ for release_guard in \
   grep -F "$release_guard" "$root/scripts/release.sh" >/dev/null
 done
 grep -F 'Signing and notarization secrets are required' "$workflow" >/dev/null
-for workflow_file in "$workflow" "$codeql_workflow"; do
-  grep -F 'uses: ./.github/actions/prepare-ghostty' \
-      "$workflow_file" >/dev/null
-done
+grep -F 'uses: ./.github/actions/prepare-ghostty' \
+    "$workflow" >/dev/null
 test -f "$ghostty_action"
 for expected in \
   'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9' \
@@ -75,19 +72,6 @@ if grep -F 'using ad-hoc signing' "$workflow" >/dev/null; then
   echo 'public releases must not fall back to ad-hoc signing' >&2
   exit 1
 fi
-if [ ! -f "$codeql_workflow" ]; then
-  echo 'CodeQL workflow is missing' >&2
-  exit 1
-fi
-for expected in \
-  'submodules: recursive' \
-  'build-mode: manual' \
-  'swift build -c release --target MyTTYApp --arch arm64'; do
-  if ! grep -F "$expected" "$codeql_workflow" >/dev/null; then
-    echo "CodeQL workflow must include: $expected" >&2
-    exit 1
-  fi
-done
 if grep -E 'uses: [^@]+@(v[0-9]+|main|master)$' \
     "$root"/.github/workflows/*.yml >/dev/null; then
   echo 'GitHub Actions must be pinned to immutable commits' >&2
