@@ -33,10 +33,10 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
   サブエージェントのチームは隠れたバックグラウンド処理ではなく普通の
   見えるペインとして動く。
 - **セッション復元、ローカル autocomplete、アプリ内ブラウザ、GIF 録画、
-  iOS リモート app**(Attention 項目の APNs push 通知つき)。
+  iOS リモートアプリ**(Attention 項目の APNs push 通知つき)。
 
 それ以外のすべては[ドキュメント](docs/README_ja.md)にあります。
-チュートリアル、ハウツー、リファレンス、各部分の設計判断まで揃っています。
+チュートリアル、使い方、リファレンス、各部分の設計判断まで揃っています。
 
 ## ドキュメント
 
@@ -44,7 +44,7 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 4つの区分に分かれています。
 
 - [チュートリアル](docs/README_ja.md#チュートリアル): 実際に使いながら覚える
-- [ハウツー](docs/README_ja.md#ハウツー): 特定の作業の手順
+- [使い方](docs/README_ja.md#使い方): 特定の作業の手順
 - [リファレンス](docs/README_ja.md#リファレンス): 設定・コマンド・プロトコルの正確な仕様
 - [説明](docs/README_ja.md#説明): なぜその仕組みになっているか
 

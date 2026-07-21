@@ -1,8 +1,9 @@
-# iOS リモート app をビルドする
+# iOS リモートアプリをビルドする
 
-companion の iOS app は `ios/MyttyRemote` にあり、Mac app とは別経路、
-`scripts/release.sh` ではなく Xcode Cloud で公開される。ここではローカルで
-のビルド方法と、自分の Apple Developer account でビルドする手順を扱う。
+Mac アプリと対になる iOS アプリは `ios/MyttyRemote` にあり、Mac アプリとは
+別経路、`scripts/release.sh` ではなく Xcode Cloud で公開される。ここでは
+ローカルでのビルド方法と、自分の Apple Developer account でビルドする手順を
+扱う。
 
 ## Simulator 向けにビルドする
 

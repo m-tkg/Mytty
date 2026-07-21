@@ -53,5 +53,5 @@ git push origin v0.1.0
 ```
 
 この flow で公開されるのは macOS app だけである。`ios/MyttyRemote` の iOS
-リモート app は Xcode Cloud 経由で別に公開される。詳細は
-[iOS リモート app をビルドする](build-ios-remote-app_ja.md) を参照。
+リモートアプリは Xcode Cloud 経由で別に公開される。詳細は
+[iOS リモートアプリをビルドする](build-ios-remote-app_ja.md) を参照。

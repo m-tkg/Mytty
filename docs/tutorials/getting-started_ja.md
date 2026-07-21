@@ -86,6 +86,6 @@ Git 管理下の場合はリポジトリと branch を表示します。
 - [初めてのエージェントセッション](first-agent-session_ja.md)は、ここで
   作った pane の 1 つを Codex や Claude Code のセッションにするところから
   始まります。
-- [機能説明](../../README_ja.md#機能説明)には、ここでは省いた macOS 26 限定
+- [特徴](../../README_ja.md#特徴)には、ここでは省いた macOS 26 限定
   の Explain Pane や自動命名も含め、pane 操作と右クリックメニュー、shortcut
   の全体が載っています。

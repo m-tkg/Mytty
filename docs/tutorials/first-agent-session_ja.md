@@ -69,16 +69,16 @@ pane からでも設定なしに使える CLI で、Agent がこれを使って 
 ```
 
 これで、今の pane と同じ作業ディレクトリのまま右側に新しい pane が開きます。
-そこで test を走らせたり、別の Agent を並べて動かしたりできます。
+そこでテストを走らせたり、別の Agent を並べて動かしたりできます。
 `mytty-ctl` の狙いは、サブエージェントのチームを「見えないもの」ではなく、
 目に見えて割り込める実際の pane にすることです。別 pane の Agent 状態を
 待つところまで含めたコマンド全体は、
-[mytty-ctl でエージェントを操る](../how-to/orchestrate-agents-with-mytty-ctl.md)
+[mytty-ctl でエージェントのチームを動かす](../how-to/orchestrate-agents-with-mytty-ctl_ja.md)
 にまとめてあります。
 
 ## この先
 
-- [mytty-ctl でエージェントを操る](../how-to/orchestrate-agents-with-mytty-ctl.md)
+- [mytty-ctl でエージェントのチームを動かす](../how-to/orchestrate-agents-with-mytty-ctl_ja.md)
   では、別の Agent から pane を操作する流れを詳しく扱います。
 - [Agent providers](../reference/agent-providers_ja.md)には、各 provider が実際に
   何を報告し、Mytty がそこからどう状態を組み立てているかが書かれています。
