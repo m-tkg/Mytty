@@ -1,18 +1,18 @@
 # iPhone から Mac に接続する
 
-MyttyRemote という iOS アプリを使って Mac の Mytty に iPhone や iPad からアクセスすることができます。
+MyttyRemote という iOS アプリを使って Mac の Mytty に iPhone や iPad からアクセスできます。
 
 ## iPhone をペアリングする
 
 iOS との連携は、Mac 側で **設定 > iOS Remote Access** から行います。
 
-## iPhone から pane を操作する
+## iPhone からペインを操作する
 
 <p>
-  <img src="../images/ios-pane.png" alt="iPhone に映した Mac の pane" width="280">
+  <img src="../images/ios-pane.png" alt="iPhone に映した Mac のペイン" width="280">
 </p>
 
-iPhone アプリで接続するとタブやペインを参照することができます。
+iPhone アプリで接続するとタブやペインを参照できます。
 
 ペインの内容は Mac 側と同期されます。表示されている内容をコピーしたい場合は、右上のボタンで今のペインの内容を別に表示することで行えます。
 
