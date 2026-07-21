@@ -161,6 +161,22 @@ final class AttentionCenter: ObservableObject {
             .max(by: terminalRunIsOlder)
     }
 
+    /// Every tracked run for `surfaceID`/`provider`, unfiltered by
+    /// relevance or recency — the narrow read `AgentJobTracker.reconcile`
+    /// needs to bind a job to the exact run it spawned. Deliberately not
+    /// `mostRelevantRun`/`latestRun`: those are tuned for "what should the
+    /// status bar show," which can disagree with "which run does this
+    /// specific job own." Returns snapshots (`AgentRun` is a value type),
+    /// not a reference into `runs`, so callers can't mutate tracked state.
+    func runs(
+        forPane surfaceID: TerminalSurfaceID,
+        provider: AgentProvider
+    ) -> [AgentRun] {
+        runs.values.filter {
+            $0.surfaceID == surfaceID && $0.provider == provider
+        }
+    }
+
     private func mostRelevantRun(
         for surfaceIDs: Set<TerminalSurfaceID>
     ) -> AgentRun? {

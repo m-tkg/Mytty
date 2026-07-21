@@ -807,11 +807,7 @@ public struct AgentIntegrationInstaller {
     }
 
     private func codexCommand(provider: AgentProvider) -> String {
-        "\(shellQuote(installedHookExecutable.path)) \(provider.rawValue)"
-    }
-
-    private func shellQuote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+        "\(ShellQuoting.quote(installedHookExecutable.path)) \(provider.rawValue)"
     }
 
     private func installHookExecutable() throws {

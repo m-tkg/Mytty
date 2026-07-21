@@ -40,6 +40,38 @@ struct ControlProtocolTests {
             ),
             .closePane(paneID: "pane-1"),
             .focus(paneID: "pane-1"),
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .codex,
+                cwd: nil,
+                access: .workspaceWrite,
+                task: "investigate the bug",
+                label: nil
+            ),
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .down,
+                provider: .claude,
+                cwd: "/tmp/repo",
+                access: .review,
+                task: "review the diff",
+                label: "review-a"
+            ),
+            .waitAgent(
+                jobID: AgentJobID(),
+                until: .running,
+                timeoutSeconds: 120
+            ),
+            .waitAgent(
+                jobID: AgentJobID(),
+                until: .completed,
+                timeoutSeconds: 30.5
+            ),
+            .agentResult(jobID: AgentJobID()),
+            .sendAgent(jobID: AgentJobID(), text: "hi", pressEnter: true),
+            .focusAgent(jobID: AgentJobID()),
+            .closeAgent(jobID: AgentJobID()),
         ]
 
         for request in requests {
@@ -81,6 +113,49 @@ struct ControlProtocolTests {
             .waitResult(state: "idle", timedOut: false),
             .waitResult(state: nil, timedOut: true),
             .failure(code: "pane-not-found"),
+            .agentJob(
+                AgentJobSnapshot(
+                    jobID: AgentJobID(),
+                    paneID: TerminalSurfaceID(),
+                    provider: .codex,
+                    label: "investigation-a",
+                    state: .launching,
+                    runID: nil,
+                    sessionID: nil,
+                    message: nil
+                )
+            ),
+            .agentWaitResult(
+                job: AgentJobSnapshot(
+                    jobID: AgentJobID(),
+                    paneID: TerminalSurfaceID(),
+                    provider: .claude,
+                    label: nil,
+                    state: .waitingApproval,
+                    runID: AgentRunID(),
+                    sessionID: "session-1",
+                    message: "needs approval"
+                ),
+                timedOut: false
+            ),
+            .agentResult(
+                job: AgentJobSnapshot(
+                    jobID: AgentJobID(),
+                    paneID: TerminalSurfaceID(),
+                    provider: .cursor,
+                    label: nil,
+                    state: .succeeded,
+                    runID: AgentRunID(),
+                    sessionID: nil,
+                    message: "done"
+                ),
+                content: ControlPaneContent(
+                    paneID: "pane-1",
+                    text: "screen text",
+                    cursorRow: 3,
+                    cursorColumn: 1
+                )
+            ),
         ]
 
         for response in responses {
@@ -106,6 +181,26 @@ struct ControlProtocolTests {
         #expect(throws: (any Error).self) {
             let _: ControlRequest = try ControlMessageCodec.decode(
                 missingPaneID
+            )
+        }
+    }
+
+    @Test("rejects an agent request missing its required fields")
+    func rejectsIncompleteAgentRequest() {
+        let missingTask = Data("""
+        {"type":"spawnAgent","anchorPaneID":"pane-1","direction":"right",\
+        "provider":"codex","access":"workspace-write"}
+        """.utf8)
+        #expect(throws: (any Error).self) {
+            let _: ControlRequest = try ControlMessageCodec.decode(
+                missingTask
+            )
+        }
+
+        let missingJobID = Data("{\"type\":\"waitAgent\",\"until\":\"running\",\"timeoutSeconds\":120}".utf8)
+        #expect(throws: (any Error).self) {
+            let _: ControlRequest = try ControlMessageCodec.decode(
+                missingJobID
             )
         }
     }

@@ -51,7 +51,7 @@ enum AgentResumeLaunchPlan {
     }
 
     static func shellQuote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        ShellQuoting.quote(value)
     }
 
     private static func isValid(sessionID: String) -> Bool {
@@ -77,6 +77,31 @@ enum AgentResumeLaunchPlan {
         return basenames.contains("gemini")
             || basenames.contains("gemini-cli")
             || normalized.contains { $0.contains("/gemini-cli/") }
+    }
+}
+
+/// Resolves the single transient `initialInput` a newly created surface is
+/// launched with. There are exactly two sources — a caller-supplied agent
+/// spawn command (`AgentJobCoordinator`) or a persisted resume descriptor
+/// restored from a saved session — and they must never both apply to the
+/// same surface: a resume descriptor is only ever set on a restored
+/// surface, never on a freshly spawned one, and the spawn path always
+/// passes `agentResume: nil`. The precondition documents and enforces that
+/// invariant so future callers can't silently combine the two and end up
+/// replaying a stale resume command instead of the intended spawn command
+/// (or vice versa).
+enum TerminalSurfaceLaunchInput {
+    static func resolve(
+        spawnInitialInput: String?,
+        agentResume: AgentResumeDescriptor?
+    ) -> String? {
+        precondition(
+            spawnInitialInput == nil || agentResume == nil,
+            "Agent spawn initialInput must not be combined with a "
+                + "persisted agent-resume descriptor."
+        )
+        return spawnInitialInput
+            ?? AgentResumeLaunchPlan.initialInput(for: agentResume)
     }
 }
 

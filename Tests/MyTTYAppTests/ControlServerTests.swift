@@ -195,7 +195,256 @@ struct ControlServerTests {
         #expect(response == .failure(code: "invalid-request"))
     }
 
+    // MARK: - agent
+
+    @Test("spawnAgent forwards success and every preflight failure")
+    func agentSpawnSuccessAndFailures() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let job = Self.makeJob(state: .launching)
+        agentDelegate.spawnResult = .success(job)
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .codex,
+                cwd: nil,
+                access: .workspaceWrite,
+                task: "investigate",
+                label: "investigate-a"
+            ),
+            to: socketURL
+        )
+        #expect(response == .agentJob(job))
+        #expect(agentDelegate.lastSpawnTask == "investigate")
+        #expect(agentDelegate.lastSpawnLabel == "investigate-a")
+
+        for code in [
+            "pane-not-found",
+            "provider-integration-not-installed",
+            "provider-integration-needs-repair",
+            "invalid-cwd",
+            "invalid-label",
+            "invalid-task",
+        ] {
+            agentDelegate.spawnResult = .failure(AgentControlFailure(code))
+            let failureResponse = try await perform(
+                .spawnAgent(
+                    anchorPaneID: "pane-1",
+                    direction: .right,
+                    provider: .codex,
+                    cwd: nil,
+                    access: .workspaceWrite,
+                    task: "investigate",
+                    label: nil
+                ),
+                to: socketURL
+            )
+            #expect(failureResponse == .failure(code: code))
+        }
+    }
+
+    @Test("agent wait resolves once running/attention/completed is reached")
+    func agentWaitResolvesOnEachCondition() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let runningJob = Self.makeJob(state: .running)
+        agentDelegate.refreshedSnapshotResult = .success(runningJob)
+        let runningResponse = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .running, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        #expect(runningResponse == .agentWaitResult(
+            job: runningJob,
+            timedOut: false
+        ))
+
+        let attentionJob = Self.makeJob(state: .waitingApproval)
+        agentDelegate.refreshedSnapshotResult = .success(attentionJob)
+        let attentionResponse = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .attention, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        #expect(attentionResponse == .agentWaitResult(
+            job: attentionJob,
+            timedOut: false
+        ))
+
+        let completedJob = Self.makeJob(state: .launchFailed)
+        agentDelegate.refreshedSnapshotResult = .success(completedJob)
+        let completedResponse = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        #expect(completedResponse == .agentWaitResult(
+            job: completedJob,
+            timedOut: false
+        ))
+    }
+
+    @Test("agent wait times out when the condition is never satisfied")
+    func agentWaitTimesOut() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let launchingJob = Self.makeJob(state: .launching)
+        agentDelegate.refreshedSnapshotResult = .success(launchingJob)
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 1),
+            to: socketURL,
+            timeoutSeconds: 1
+        )
+        #expect(response == .agentWaitResult(
+            job: launchingJob,
+            timedOut: true
+        ))
+    }
+
+    @Test("agent wait fails fast for a missing job")
+    func agentWaitFailsForMissingJob() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        agentDelegate.refreshedSnapshotResult = .failure(
+            AgentControlFailure("job-not-found")
+        )
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        #expect(response == .failure(code: "job-not-found"))
+    }
+
+    @Test("agent result returns the job snapshot and pane content")
+    func agentResultReturnsSnapshotAndContent() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let job = Self.makeJob(state: .succeeded)
+        let content = ControlPaneContent(
+            paneID: "pane-1",
+            text: "done",
+            cursorRow: 0,
+            cursorColumn: 0
+        )
+        agentDelegate.resultContentResult = .success((job, content))
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .agentResult(jobID: job.jobID),
+            to: socketURL
+        )
+        #expect(response == .agentResult(job: job, content: content))
+
+        agentDelegate.resultContentResult = .failure(
+            AgentControlFailure("job-not-found")
+        )
+        let missingResponse = try await perform(
+            .agentResult(jobID: AgentJobID()),
+            to: socketURL
+        )
+        #expect(missingResponse == .failure(code: "job-not-found"))
+    }
+
+    @Test("agent send, focus, and close report success or the delegate's failure")
+    func agentSendFocusClose() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        agentDelegate.sendResult = .success(())
+        let sendResponse = try await perform(
+            .sendAgent(jobID: AgentJobID(), text: "hi", pressEnter: true),
+            to: socketURL
+        )
+        #expect(sendResponse == .ok)
+        #expect(agentDelegate.lastSendText == "hi")
+        #expect(agentDelegate.lastSendPressEnter == true)
+
+        agentDelegate.focusResult = .success(())
+        let focusResponse = try await perform(
+            .focusAgent(jobID: AgentJobID()),
+            to: socketURL
+        )
+        #expect(focusResponse == .ok)
+
+        agentDelegate.closeResult = .success(())
+        let closeResponse = try await perform(
+            .closeAgent(jobID: AgentJobID()),
+            to: socketURL
+        )
+        #expect(closeResponse == .ok)
+
+        // A pane that disappeared must surface as something other than
+        // "pane-not-found" through the high-level API.
+        agentDelegate.sendResult = .failure(AgentControlFailure("job-lost"))
+        let lostResponse = try await perform(
+            .sendAgent(jobID: AgentJobID(), text: "hi", pressEnter: false),
+            to: socketURL
+        )
+        #expect(lostResponse == .failure(code: "job-lost"))
+
+        agentDelegate.focusResult = .failure(
+            AgentControlFailure("job-not-found")
+        )
+        let missingResponse = try await perform(
+            .focusAgent(jobID: AgentJobID()),
+            to: socketURL
+        )
+        #expect(missingResponse == .failure(code: "job-not-found"))
+    }
+
     // MARK: - Helpers
+
+    private static func makeJob(
+        jobID: AgentJobID = AgentJobID(),
+        paneID: TerminalSurfaceID = TerminalSurfaceID(),
+        state: AgentJobState
+    ) -> AgentJobSnapshot {
+        AgentJobSnapshot(
+            jobID: jobID,
+            paneID: paneID,
+            provider: .codex,
+            label: "investigate-a",
+            state: state,
+            runID: nil,
+            sessionID: nil,
+            message: nil
+        )
+    }
 
     /// `ControlSocketClient.send` blocks synchronously on Darwin socket
     /// calls; running it directly on this `@MainActor` test's thread would
@@ -219,7 +468,8 @@ struct ControlServerTests {
     }
 
     private func makeServer(
-        delegate: StubControlDelegate
+        delegate: StubControlDelegate,
+        agentDelegate: StubControlAgentDelegate? = nil
     ) async throws -> (ControlServer, URL) {
         // sockaddr_un.sun_path is only 104 bytes on Darwin, so the temp
         // directory's UUID component plus the socket filename has to stay
@@ -239,6 +489,7 @@ struct ControlServerTests {
             onError: { error in Issue.record("server error: \(error)") }
         )
         server.delegate = delegate
+        server.agentDelegate = agentDelegate
         try server.start()
         return (server, socketURL)
     }
@@ -372,5 +623,81 @@ private final class StubControlDelegate: ControlServerDelegate {
         focusPaneID paneID: String
     ) -> Bool {
         knownPaneIDs.contains(paneID)
+    }
+}
+
+@MainActor
+private final class StubControlAgentDelegate: ControlServerAgentDelegate {
+    var spawnResult: Result<AgentJobSnapshot, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+    var refreshedSnapshotResult: Result<AgentJobSnapshot, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+    var resultContentResult:
+        Result<(AgentJobSnapshot, ControlPaneContent), AgentControlFailure> =
+            .failure(AgentControlFailure("job-not-found"))
+    var sendResult: Result<Void, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+    var focusResult: Result<Void, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+    var closeResult: Result<Void, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+
+    var lastSpawnTask: String?
+    var lastSpawnLabel: String?
+    var lastSendText: String?
+    var lastSendPressEnter: Bool?
+
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentAnchorPaneID anchorPaneID: String,
+        direction: ControlSplitDirection,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy,
+        task: String,
+        label: String?
+    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        lastSpawnTask = task
+        lastSpawnLabel = label
+        return spawnResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        refreshedAgentJobSnapshotForJobID jobID: AgentJobID
+    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        refreshedSnapshotResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        agentResultContentForJobID jobID: AgentJobID
+    ) -> Result<(AgentJobSnapshot, ControlPaneContent), AgentControlFailure> {
+        resultContentResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        sendAgentText text: String,
+        pressEnter: Bool,
+        toJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        lastSendText = text
+        lastSendPressEnter = pressEnter
+        return sendResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        focusAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        focusResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        closeAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        closeResult
     }
 }

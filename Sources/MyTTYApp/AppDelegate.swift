@@ -600,6 +600,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             localizerProvider: { [weak self] in
                 self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
             },
+            agentIntegrationStatus: { [weak self] provider in
+                self?.agentIntegrationSettingsModel?
+                    .state(for: provider).status ?? .notInstalled
+            },
             onError: { error in
                 WindowSessionCoordinator.reportPersistenceError(
                     error,

@@ -14,19 +14,34 @@ final class ControlCoordinator {
     private let windowSessionCoordinator: WindowSessionCoordinator
     private let attentionCenter: AttentionCenter
     private let localizerProvider: () -> MyTTYLocalizer
+    private let agentJobCoordinator: AgentJobCoordinator
 
     init(
         socketURL: URL,
         windowSessionCoordinator: WindowSessionCoordinator,
         attentionCenter: AttentionCenter,
         localizerProvider: @escaping () -> MyTTYLocalizer,
+        /// Injected rather than read from `AgentIntegrationSettingsModel`
+        /// directly, so `agent spawn`'s preflight can be tested with a
+        /// stub instead of constructing that model's whole dependency
+        /// chain. `AppDelegate` supplies the real
+        /// `AgentIntegrationSettingsModel.state(for:).status`.
+        agentIntegrationStatus: @escaping (
+            AgentProvider
+        ) -> AgentIntegrationStatus,
         onError: @escaping (Error) -> Void
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenter = attentionCenter
         self.localizerProvider = localizerProvider
-        self.server = ControlServer(socketURL: socketURL, onError: onError)
+        agentJobCoordinator = AgentJobCoordinator(
+            windowSessionCoordinator: windowSessionCoordinator,
+            attentionCenter: attentionCenter,
+            integrationStatus: agentIntegrationStatus
+        )
+        server = ControlServer(socketURL: socketURL, onError: onError)
         server.delegate = self
+        server.agentDelegate = agentJobCoordinator
     }
 
     func start() throws {
@@ -45,9 +60,7 @@ final class ControlCoordinator {
     private func controller(
         owning paneID: TerminalSurfaceID
     ) -> TerminalWindowController? {
-        windowSessionCoordinator.controllers.first {
-            $0.session.tabs.contains { $0.paneIDs.contains(paneID) }
-        }
+        windowSessionCoordinator.controller(owning: paneID)
     }
 }
 

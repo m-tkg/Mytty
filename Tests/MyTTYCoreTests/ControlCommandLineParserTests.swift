@@ -225,4 +225,318 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("MYTTY_CONTROL_SOCKET"))
         #expect(guide.contains("still be initializing and drops"))
     }
+
+    @Test("paneTeamGuide prefers the high-level agent API and stages a full example")
+    func paneTeamGuidePrefersAgentAPI() {
+        let guide = ControlCommandLineParser.paneTeamGuide
+        #expect(guide.contains("agent spawn"))
+        #expect(guide.contains("agent wait"))
+        #expect(guide.contains("agent result"))
+        #expect(guide.contains("agent send"))
+        #expect(guide.contains("agent focus"))
+        #expect(guide.contains("agent close"))
+        #expect(guide.contains("--until running"))
+        #expect(guide.contains("--until attention"))
+        #expect(guide.contains("--until completed"))
+        #expect(guide.contains("escape hatch"))
+        // The staged example from the spec: two parallel investigations,
+        // then an implementation worker fed their combined findings, then
+        // a review worker, then follow-up corrections.
+        #expect(guide.contains("--access review"))
+        #expect(guide.contains("--access workspace-write"))
+    }
+
+    // MARK: - agent spawn
+
+    @Test("agent spawn applies every default")
+    func agentSpawnDefaults() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        #expect(request == .spawnAgent(
+            anchorPaneID: "anchor-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: .workspaceWrite,
+            task: "investigate",
+            label: nil
+        ))
+    }
+
+    @Test("agent spawn accepts every explicit option")
+    func agentSpawnExplicitOptions() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--anchor", "pane-9",
+                "--direction", "down",
+                "--provider", "claude",
+                "--cwd", "/tmp/repo",
+                "--access", "review",
+                "--task", "review the diff",
+                "--label", "review-a",
+            ],
+            environment: [:]
+        )
+        #expect(request == .spawnAgent(
+            anchorPaneID: "pane-9",
+            direction: .down,
+            provider: .claude,
+            cwd: "/tmp/repo",
+            access: .review,
+            task: "review the diff",
+            label: "review-a"
+        ))
+    }
+
+    @Test("agent spawn requires --anchor or MYTTY_SURFACE_ID")
+    func agentSpawnRequiresAnchor() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "spawn", "--provider", "codex", "--task", "x"],
+                environment: [:]
+            )
+        }
+    }
+
+    @Test("agent spawn rejects an unknown provider or access policy")
+    func agentSpawnRejectsUnknownProviderOrAccess() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "gpt", "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--access", "yolo", "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn rejects an unknown direction")
+    func agentSpawnRejectsUnknownDirection() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--direction", "sideways", "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn requires exactly one of --task or --task-file")
+    func agentSpawnTaskExclusivity() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "spawn", "--provider", "codex"],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--task", "x", "--task-file", "/tmp/task.txt",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn rejects an empty task")
+    func agentSpawnRejectsEmptyTask() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "spawn", "--provider", "codex", "--task", ""],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn rejects a task too large for the request envelope")
+    func agentSpawnRejectsOversizedTask() {
+        let hugeTask = String(repeating: "a", count: 70_000)
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--task", hugeTask,
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn --task-file resolves via parseInvocation without reading the file")
+    func agentSpawnTaskFileInvocation() throws {
+        let invocation = try ControlCommandLineParser.parseInvocation(
+            [
+                "agent", "spawn",
+                "--anchor", "pane-1",
+                "--provider", "cursor",
+                "--access", "review",
+                "--task-file", "/tmp/does-not-exist-anywhere.txt",
+                "--label", "investigate-b",
+            ],
+            environment: [:]
+        )
+        #expect(invocation == .agentSpawnPendingTaskFile(
+            ControlCommandLineParser.PendingAgentSpawnRequest(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .cursor,
+                cwd: nil,
+                access: .review,
+                label: "investigate-b",
+                taskFilePath: "/tmp/does-not-exist-anywhere.txt"
+            )
+        ))
+    }
+
+    @Test("spawnAgentRequest(from:task:) validates the resolved task text")
+    func spawnAgentRequestValidatesResolvedTask() throws {
+        let pending = ControlCommandLineParser.PendingAgentSpawnRequest(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: .workspaceWrite,
+            label: nil,
+            taskFilePath: "/tmp/task.txt"
+        )
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.spawnAgentRequest(
+                from: pending,
+                task: ""
+            )
+        }
+        let request = try ControlCommandLineParser.spawnAgentRequest(
+            from: pending,
+            task: "do it"
+        )
+        #expect(request == .spawnAgent(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: .workspaceWrite,
+            task: "do it",
+            label: nil
+        ))
+    }
+
+    // MARK: - agent wait/result/send/focus/close
+
+    @Test("agent wait requires --until and defaults the timeout")
+    func agentWaitDefaults() throws {
+        let jobID = AgentJobID()
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "wait", jobID.rawValue.uuidString, "--until", "running"]
+            ) == .waitAgent(jobID: jobID, until: .running, timeoutSeconds: 120)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "wait", jobID.rawValue.uuidString,
+                    "--until", "completed", "--timeout-seconds", "45",
+                ]
+            ) == .waitAgent(
+                jobID: jobID,
+                until: .completed,
+                timeoutSeconds: 45
+            )
+        )
+    }
+
+    @Test("agent wait rejects an invalid job UUID")
+    func agentWaitRejectsInvalidJobID() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "wait", "not-a-uuid", "--until", "running"]
+            )
+        }
+    }
+
+    @Test("agent result, focus, and close each require exactly one job id")
+    func agentSingleArgumentCommands() throws {
+        let jobID = AgentJobID()
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "result", jobID.rawValue.uuidString]
+            ) == .agentResult(jobID: jobID)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "focus", jobID.rawValue.uuidString]
+            ) == .focusAgent(jobID: jobID)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "close", jobID.rawValue.uuidString]
+            ) == .closeAgent(jobID: jobID)
+        )
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["agent", "result"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "result", "not-a-uuid"]
+            )
+        }
+    }
+
+    @Test("agent send parses the --enter flag and the job id")
+    func agentSendParsing() throws {
+        let jobID = AgentJobID()
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "send", jobID.rawValue.uuidString, "hello", "--enter"]
+            ) == .sendAgent(jobID: jobID, text: "hello", pressEnter: true)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "send", jobID.rawValue.uuidString, "hello"]
+            ) == .sendAgent(jobID: jobID, text: "hello", pressEnter: false)
+        )
+    }
+
+    @Test("an unknown agent subcommand is rejected")
+    func rejectsUnknownAgentSubcommand() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["agent", "not-a-subcommand"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["agent"])
+        }
+    }
+
+    @Test("waitTimeoutSeconds surfaces agent wait timeouts too")
+    func waitTimeoutSecondsCoversAgentWait() {
+        let jobID = AgentJobID()
+        #expect(
+            ControlCommandLineParser.waitTimeoutSeconds(
+                for: .waitAgent(
+                    jobID: jobID,
+                    until: .running,
+                    timeoutSeconds: 45
+                )
+            ) == 45
+        )
+    }
 }

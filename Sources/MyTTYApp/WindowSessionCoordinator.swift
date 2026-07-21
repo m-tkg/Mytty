@@ -65,6 +65,18 @@ final class WindowSessionCoordinator {
         }
     }
 
+    /// The controller owning `paneID`, searched across every open window —
+    /// a pane ID alone doesn't say which window it belongs to. Shared by
+    /// `ControlCoordinator` and `AgentJobCoordinator`, both of which resolve
+    /// `mytty-ctl` pane/job IDs down to a controller before doing anything.
+    func controller(
+        owning paneID: TerminalSurfaceID
+    ) -> TerminalWindowController? {
+        controllers.first {
+            $0.session.tabs.contains { $0.paneIDs.contains(paneID) }
+        }
+    }
+
     func focus(
         pane paneID: TerminalSurfaceID,
         in windowID: WindowID
