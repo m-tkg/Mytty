@@ -6,9 +6,7 @@ Mytty supports five agent providers, identified in code by
 provider, the configuration file Mytty installs hooks into, which mytty
 event kinds each provider's hooks can emit, and how session resume works.
 For the wire format of the events themselves, see
-[Agent event protocol](agent-event-protocol.md). For the install/verify
-workflow, see
-[Install and verify agent integrations](../how-to/install-agent-integrations.md).
+[Agent event protocol](agent-event-protocol.md).
 
 The Antigravity provider covers two distinct binaries under one event
 category. `AgentProvider.antigravity` is a single protocol-level

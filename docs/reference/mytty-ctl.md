@@ -1,16 +1,23 @@
 # mytty-ctl reference
 
 `mytty-ctl` is the local CLI a coding agent (Claude Code, Codex, Cursor,
-...) uses to drive Mytty itself. It creates and splits panes, sends
-text and key presses, reads a pane's screen, and waits for an agent
-run to go idle or need attention. It talks to `ControlServer`
+...) uses to drive Mytty itself. Its `agent` subcommands spawn a worker
+provider in a new pane, deliver its task as one shell input, and track
+that exact spawn as a job an orchestrator can wait on, read the result
+of, and send follow-ups to. The older pane-level commands (`split`,
+`send`, `wait`, `read`, ...) still work and remain the right tool for
+driving a pane by hand; the [orchestration how-to](../how-to/orchestrate-agents-with-mytty-ctl.md)
+covers when to reach for which. It talks to `ControlServer`
 (`MyTTYApp`) over a Unix-domain socket restricted to the current user,
 one JSON request per connection, and is a separate transport from the
 iOS remote (`RemoteAccessServer`, TCP with pairing and encryption).
 Source: `Sources/MyTTYCore/ControlProtocol.swift`,
 `Sources/MyTTYCore/ControlCommandLineParser.swift`,
+`Sources/MyTTYCore/AgentJob.swift`,
+`Sources/MyTTYCore/AgentLaunchPlan.swift`,
 `Sources/MyTTYApp/ControlServer.swift`,
-`Sources/MyTTYApp/ControlCoordinator.swift`.
+`Sources/MyTTYApp/ControlCoordinator.swift`,
+`Sources/MyTTYApp/AgentJobCoordinator.swift`.
 
 ## Environment variables
 
@@ -45,8 +52,22 @@ mytty-ctl list | jq .
 
 ## Commands
 
+Prefer the `agent` commands for anything shaped like "run one or more
+workers and collect their output" -- they cover spawning a worker,
+waiting on the exact run it started, reading its result, and sending
+follow-ups, without the races the pane-level commands leave for the
+caller to avoid by hand (see [Agent job binding](#agent-job-binding)
+below). The pane-level commands remain the tool for driving a pane
+manually.
+
 | Command | Arguments | Success response |
 | --- | --- | --- |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write>] [--label <text>]` | `{"type":"agentJob","job":{...}}` |
+| `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
+| `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
+| `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
+| `agent focus` | `<job-id>` | `{"type":"ok"}` |
+| `agent close` | `<job-id>` | `{"type":"ok"}` |
 | `guide` | none | pane-team playbook as plain text on stdout, no socket needed |
 | `list` | none | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
@@ -59,7 +80,127 @@ mytty-ctl list | jq .
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 
 pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a
-`list` response, a `pane` response, or `$MYTTY_SURFACE_ID`.
+`list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are
+the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an
+`agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
+
+### agent spawn
+
+Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and
+launches the given provider in it, delivering `--task` (or the contents
+of `--task-file`, read by `mytty-ctl` itself before the request is sent)
+as one shell input together with the launch command -- there is no
+separate `send` that could race the worker's TUI starting up. `--access`
+defaults to `workspace-write`; `review` launches the provider in its
+read-only/plan mode instead. A worker contract (stay in the working
+directory, keep going instead of stopping to ask, end with a concise
+summary) is appended to every task automatically.
+
+```bash
+job=$(mytty-ctl agent spawn \
+  --provider codex --access review \
+  --task "Investigate why login times out under load." \
+  --label investigate-a | jq -r '.job.jobID.rawValue')
+```
+
+```json
+{
+  "type": "agentJob",
+  "job": {
+    "jobID": { "rawValue": "..." },
+    "paneID": { "rawValue": "..." },
+    "provider": "codex",
+    "label": "investigate-a",
+    "state": "launching",
+    "runID": null,
+    "sessionID": null,
+    "message": null
+  }
+}
+```
+
+`state` starts at `launching` and moves to `running` once the worker's
+own hook events confirm a run started. Exactly one of `--task`/
+`--task-file` is required; a task that would push the encoded request
+over the 64 KiB socket envelope is rejected by the CLI before it ever
+opens a connection. See [Agent job binding](#agent-job-binding) for what
+`jobID` actually identifies.
+
+### agent wait
+
+Blocks until the job's own bound run -- never a run that predates the
+job -- reaches the given condition, or the timeout elapses.
+
+```bash
+mytty-ctl agent wait "$job" --until completed
+```
+
+```json
+{
+  "type": "agentWaitResult",
+  "job": { "...": "same shape as agent spawn's job" },
+  "timedOut": false
+}
+```
+
+- `running` resolves once the job has bound to a run and that run is
+  running or has moved past running.
+- `attention` resolves only for `waiting-input`/`waiting-approval`.
+- `completed` resolves for `succeeded`, `failed`, `disconnected`,
+  `launch-failed`, or `lost`.
+
+`--timeout-seconds` defaults to `120`. A provider that never starts
+(missing executable, a broken hook integration) surfaces as
+`launch-failed` within 30 seconds of the spawn -- `agent wait` does not
+sit through the full timeout for that case.
+
+### agent result
+
+Returns the job's latest state together with the pane's current screen
+content, so a lead can collect what a worker produced after `agent wait
+--until completed`.
+
+```bash
+mytty-ctl agent result "$job"
+```
+
+```json
+{
+  "type": "agentResult",
+  "job": { "...": "same shape as agent spawn's job" },
+  "content": {
+    "paneID": "...",
+    "text": "...",
+    "cursorRow": 10,
+    "cursorColumn": 2
+  }
+}
+```
+
+This reads the pane's current screen, not a provider transcript, so a
+worker's launch prompt asks it to keep its final summary concise enough
+to still be legible on screen.
+
+### agent send / agent focus / agent close
+
+Resolve a job ID to its pane and reuse the pane-level `send`/`focus`/
+`close-pane` behavior, so a follow-up always reaches the exact worker it
+was meant for even if other panes were opened or closed in between.
+
+```bash
+mytty-ctl agent send "$job" "Also add a regression test." --enter
+mytty-ctl agent focus "$job"
+mytty-ctl agent close "$job"
+```
+
+```json
+{ "type": "ok" }
+```
+
+`agent close` closes the job's pane and moves a nonterminal job to
+`lost`. A pane that disappeared on its own (closed by the user, the
+shell exited, ...) is reported the same way -- `lost`, not
+`pane-not-found` -- through every `agent` command.
 
 ### guide
 
@@ -267,7 +408,15 @@ rather than printing the JSON.
 | `not-ready` | The control server has no delegate yet (app still starting) |
 | `new-tab-failed` | `new-tab` could not create a tab |
 | `split-failed` | `split` could not split the given pane |
-| `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`) |
+| `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`); `agent spawn` also returns this if `--anchor` doesn't resolve to a live pane |
+| `provider-integration-not-installed` | `agent spawn`: the requested provider's hook integration isn't enabled in Settings |
+| `provider-integration-needs-repair` | `agent spawn`: the provider's hook integration is installed but stale/broken |
+| `invalid-cwd` | `agent spawn`: `--cwd` doesn't name an existing directory |
+| `invalid-label` | `agent spawn`: `--label` contains a control character or exceeds 100 Unicode scalars |
+| `invalid-task` | `agent spawn`: the resolved task text is empty |
+| `spawn-failed` | `agent spawn`: the pane could not be created |
+| `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: the given job ID is unknown -- either it never existed, or it was issued before the last Mytty restart (job IDs are not persisted) |
+| `job-lost` | `agent send`/`agent focus`: the job's pane disappeared (see `lost` below); `agent result` and `agent close` do not use this code -- they answer with the job's `lost` state and an empty result, and closing a job whose pane is already gone still exits `0` |
 
 ## Wait semantics
 
@@ -294,6 +443,37 @@ met or the deadline passes.
   timeout regardless of condition. This is the most common cause of an
   unexpected timeout the first time a provider is used from a script.
 
+`agent wait` polls the same way, against `agent spawn`'s job instead of a
+pane. Its three conditions (`running`/`attention`/`completed`) are a
+different set from `wait`'s (`idle`/`attention`) -- see [agent
+wait](#agent-wait) above.
+
+## Agent job binding
+
+A job created by `agent spawn` identifies one specific worker run, not
+"whatever the pane is currently doing." Internally, `AgentJobTracker`
+records the set of run IDs already known for the new pane at the moment
+it's created (normally empty, since the pane is brand new) and then
+binds the job to the first later run it observes for that pane/provider
+whose ID isn't in that set. Once bound, a job never switches to a
+different run. This is what makes two jobs spawned back to back safe:
+each is anchored to its own pane and its own baseline, so neither can
+observe the other's run, and `agent wait --until completed` can never
+resolve from a run that predates the job.
+
+A job's state comes directly from mapping its bound run's
+`AgentRunState`, not from `AttentionCenter`'s "most relevant run for this
+pane" logic that the status bar uses -- the two answer different
+questions. If no run binds before 30 seconds pass, the job moves to
+`launch-failed` (covering a missing executable, a TUI that never
+launched, or hooks that never fired). If the job's pane disappears, a
+nonterminal job moves to `lost`. Neither transition is reversible.
+
+The job registry lives only in the running app's memory; it is not
+persisted. A Mytty restart makes previously issued job IDs return
+`job-not-found` -- the panes/processes those jobs pointed at are
+unaffected, they're just no longer reachable by that job ID.
+
 ## Constraints
 
 - `new-tab` cannot target a specific window; it always lands in the
@@ -309,10 +489,27 @@ met or the deadline passes.
 - The maximum request size accepted by the control socket matches the
   agent-event socket's 64 KiB envelope limit; a very large `send`
   argument should be chunked or piped through the shell instead of
-  passed as one oversized literal.
+  passed as one oversized literal. `agent spawn` checks the same limit
+  against the encoded request (task plus the appended worker contract)
+  before opening a connection, so an oversized task fails as a plain CLI
+  error instead of a socket write silently being rejected.
+- `agent spawn` never launches a worker in an existing pane -- every
+  spawn creates a new one. This is what keeps job binding correct (see
+  [Agent job binding](#agent-job-binding)); it also means closing jobs
+  you no longer need (`agent close`) matters more than it does for a
+  small number of manually managed panes.
+- job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read
+  from `job.jobID.rawValue` in any `agent` response. They are not
+  interchangeable with pane IDs.
 
 ## See also
 
+- [Orchestrate a team of agents with mytty-ctl](../how-to/orchestrate-agents-with-mytty-ctl.md)
+  walks through staged multi-worker examples built on the `agent`
+  commands.
+- [mytty-ctl architecture](../explanation/mytty-ctl-architecture.md)
+  explains why the control socket needs no setup and how job/run binding
+  works underneath `agent wait`.
 - [Agent providers](agent-providers.md) covers which providers expose
   approval/input events, relevant to `wait --until attention`.
 - [Agent event protocol](agent-event-protocol.md) documents the
