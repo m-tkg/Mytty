@@ -157,7 +157,7 @@ mytty-ctl agent close "$job"
 { "type": "ok" }
 ```
 
-`agent close` は job のペインを閉じ、非終端状態の job を `lost` に遷移させます。ユーザーがペインを閉じた、シェルが終了したなど、自然にペインが消えた場合も同じ扱いです。どの `agent` コマンドでも、`pane-not-found` ではなく `lost` として報告されます。
+`agent close` は job のペインを閉じ、まだ完了していない job を `lost` に遷移させます。ユーザーがペインを閉じた、シェルが終了したなど、自然にペインが消えた場合も同じ扱いです。どの `agent` コマンドでも、`pane-not-found` ではなく `lost` として報告されます。
 
 ### guide
 
@@ -295,7 +295,7 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 { "type": "waitResult", "state": "idle", "timedOut": false }
 ```
 
-`--timeout-seconds` のデフォルトは `120` です。`state` は wait が解決した時点で観測された `AgentRunState`(そのペインに一度もイベントが来ていなければ `null`)です。`timedOut` は、タイムアウトまでに条件を満たせなかった場合に `true` になります。詳細は下記「wait の意味論」を参照してください。
+`--timeout-seconds` のデフォルトは `120` です。`state` は wait が解決した時点で観測された `AgentRunState`(そのペインに一度もイベントが来ていなければ `null`)です。`timedOut` は、タイムアウトまでに条件を満たせなかった場合に `true` になります。詳細は下記「wait の挙動」を参照してください。
 
 ### close-pane
 
@@ -343,7 +343,7 @@ mytty-ctl focus "$paneA"
 | `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: 指定した job ID が未知(そもそも存在しない、または直前の Mytty 再起動より前に発行されたもの。job ID は永続化されない) |
 | `job-lost` | `agent send`/`agent focus`: job のペインが消えている(下記 `lost` を参照)。`agent result` と `agent close` はこのコードを使わない -- job の `lost` 状態と空の結果を返し、すでに消えているペインを閉じる操作も終了コード `0` になる |
 
-## wait の意味論
+## wait の挙動
 
 `wait` は、条件を満たすかタイムアウトするまで、一定間隔(約300 ミリ秒)でポーリングします。
 
@@ -357,7 +357,7 @@ mytty-ctl focus "$paneA"
 
 `agent spawn` が作る job は、「そのペインが今やっていること」全般ではなく、特定の1つの worker 実行を指します。内部では `AgentJobTracker` が、新しいペインが作られた瞬間に既に存在する実行 ID の集合(新規ペインなので通常は空)を記録しておきます。その後、そのペイン/provider について観測した実行のうち、ID がその集合に含まれていない最初の実行に job をバインドします。一度バインドすると、job が別の実行に切り替わることはありません。これにより、連続して spawn した2つの job が互いの実行を誤って観測することはなく、`agent wait --until completed` が job より前から存在していた実行で解決してしまうこともありません。
 
-job の状態は、バインドした実行の `AgentRunState` を直接マッピングしたものです。ステータスバーが使う `AttentionCenter` の「このペインで最も関連度の高い実行」というロジックは経由しません。両者は別の問いに答えています。30秒以内にどの実行もバインドできなければ、job は `launch-failed` になります(実行ファイルが無い、TUI が一度も起動しなかった、hook が一度も発火しなかった、のいずれもこれでカバーされます)。job のペインが消えたら、非終端状態の job は `lost` になります。どちらの遷移も後戻りしません。
+job の状態は、バインドした実行の `AgentRunState` を直接マッピングしたものです。ステータスバーが使う `AttentionCenter` の「このペインで最も関連度の高い実行」というロジックは経由しません。両者は別の問いに答えています。30秒以内にどの実行もバインドできなければ、job は `launch-failed` になります(実行ファイルが無い、TUI が一度も起動しなかった、hook が一度も発火しなかった、のいずれもこれでカバーされます)。job のペインが消えたら、まだ完了していない job は `lost` になります。どちらの遷移も後戻りしません。
 
 job のレジストリは実行中のアプリのメモリ上にしかなく、永続化されません。Mytty を再起動すると、それより前に発行された job ID は `job-not-found` になります。job が指していたペインやプロセス自体は影響を受けず、その job ID からはもう辿れなくなるだけです。
 
