@@ -52,6 +52,15 @@ do {
             ? "{}\n"
             : "{\"decision\":\"stop\"}\n"
         FileHandle.standardOutput.write(Data(output.utf8))
+    } else if provider == .cursor {
+        // beforeShellExecution can return a permission decision; mytty
+        // only observes, so say nothing rather than let an empty/garbled
+        // response get read as a denial.
+        let object = try? JSONSerialization.jsonObject(with: payload)
+            as? [String: Any]
+        if object?["hook_event_name"] as? String == "beforeShellExecution" {
+            FileHandle.standardOutput.write(Data("{}\n".utf8))
+        }
     }
 } catch {
     let message = "mytty-agent-hook: \(error)\n"

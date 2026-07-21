@@ -46,6 +46,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
     )
+    private lazy var cursorApprovalCoordinator = CursorApprovalCoordinator(
+        deliver: { [weak self] event in
+            self?.deliverSyntheticAgentEvent(event)
+        }
+    )
     private let agentSleepPrevention = AgentSleepPreventionController()
     private lazy var clamshellSleepBlocker = ClamshellSleepBlocker(
         flagURL: ApplicationPaths(
@@ -934,6 +939,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func receiveAgentEvent(_ event: AgentEvent) throws -> Bool {
         guard let attentionCenter else { return false }
+        cursorApprovalCoordinator.observe(event)
         let inserted = try attentionCenter.append(event)
         if inserted {
             updateAgentSleepPrevention()
@@ -965,6 +971,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         attentionNotifier?.notify(item)
         return inserted
+    }
+
+    /// Feeds a `CursorApprovalCoordinator`-synthesized event back through
+    /// the normal event path. Errors land the same way a real hook
+    /// delivery failure would, since there's no hook process left to
+    /// report them to.
+    private func deliverSyntheticAgentEvent(_ event: AgentEvent) {
+        do {
+            _ = try receiveAgentEvent(event)
+        } catch {
+            WindowSessionCoordinator.reportPersistenceError(
+                error,
+                operation: "agent event"
+            )
+        }
     }
 
     private func presentLaunchError(_ error: Error) {

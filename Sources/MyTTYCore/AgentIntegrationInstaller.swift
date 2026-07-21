@@ -35,6 +35,8 @@ public struct AgentIntegrationInstaller {
         "beforeSubmitPrompt",
         "postToolUse",
         "postToolUseFailure",
+        "beforeShellExecution",
+        "afterShellExecution",
         "stop",
     ]
 
@@ -366,6 +368,7 @@ public struct AgentIntegrationInstaller {
                 sourceURL: sourceURL
             )
             handlers.append([
+                "type": "command",
                 "command": codexCommand(provider: .cursor),
             ])
             hooks[event] = handlers

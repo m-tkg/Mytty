@@ -47,6 +47,11 @@ public struct AgentEvent: Codable, Equatable, Sendable {
     public let kind: AgentEventKind
     public let occurredAt: Date
     public let message: String?
+    /// The provider-specific hook that produced this event (e.g. `Stop`,
+    /// `beforeShellExecution`), or a `mytty.`-prefixed marker for events
+    /// mytty synthesizes itself. Optional and Codable-default so existing
+    /// persisted rows (recorded before this field existed) still decode.
+    public let hookName: String?
 
     public init(
         schemaVersion: Int = AgentEvent.currentSchemaVersion,
@@ -57,7 +62,8 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         provider: AgentProvider,
         kind: AgentEventKind,
         occurredAt: Date,
-        message: String? = nil
+        message: String? = nil,
+        hookName: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -68,6 +74,7 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         self.kind = kind
         self.occurredAt = occurredAt
         self.message = message
+        self.hookName = hookName
     }
 }
 

@@ -53,8 +53,13 @@ provider で新しい session を始め、次を一通り確認する。
 6. Settings で provider を無効化し、その設定ファイル内にある無関係な hook
    がそのまま動き続けることを確認する。
 
-Cursor と Antigravity の hook は lifecycle と結果の状態しか報告せず、
-承認・入力のリクエストは作らない。したがって手順 2 は該当しない。
+Antigravity の hook は lifecycle と結果の状態しか報告せず、承認・入力
+のリクエストは作らない。したがって手順 2 は該当しない。Cursor の hook も
+承認リクエストを直接は作らないが、mytty は `beforeShellExecution` と
+`afterShellExecution` の間隔からシェル承認待ちを推定する
+([Agent providers](../reference/agent-providers_ja.md) 参照)。手順 2 で
+これを確認するには、Cursor が自動承認しないコマンドを実行し、Cursor
+自体の UI では承認せずにおよそ10秒待つ。
 
 ## provider ごとの hook 参考資料
 

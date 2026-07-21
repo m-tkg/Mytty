@@ -477,6 +477,115 @@ struct AgentHookEventAdapterTests {
         )
     }
 
+    @Test("treats a Cursor stop with no status as a normal completion")
+    func cursorStopWithoutStatusSucceeds() throws {
+        let stopped = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "stop"
+            }
+            """
+        )
+
+        #expect(stopped?.kind == .succeeded)
+        #expect(stopped?.hookName == "stop")
+    }
+
+    @Test("treats a Cursor stop with an unrecognized status as a completion")
+    func cursorStopWithUnknownStatusSucceeds() throws {
+        let stopped = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "stop",
+              "status": "some-future-status"
+            }
+            """
+        )
+
+        #expect(stopped?.kind == .succeeded)
+    }
+
+    @Test("maps Cursor shell execution hooks to running with the command as message")
+    func cursorShellExecutionHooks() throws {
+        let before = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "beforeShellExecution",
+              "command": "npm install"
+            }
+            """
+        )
+        let after = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "afterShellExecution",
+              "command": "npm install"
+            }
+            """
+        )
+
+        #expect(before?.kind == .running)
+        #expect(before?.hookName == "beforeShellExecution")
+        #expect(before?.message == "npm install")
+        #expect(after?.kind == .running)
+        #expect(after?.hookName == "afterShellExecution")
+        #expect(before?.runID == after?.runID)
+    }
+
+    @Test("builds a synthetic pending-approval event that lands on the given run")
+    func pendingApprovalEventTargetsTheGivenRun() throws {
+        let before = try event(
+            provider: .cursor,
+            payload: """
+            {
+              "conversation_id": "cursor-conversation-01",
+              "generation_id": "cursor-generation-01",
+              "hook_event_name": "beforeShellExecution",
+              "command": "rm -rf build"
+            }
+            """
+        )
+        let beforeEvent = try #require(before)
+
+        let pending = AgentHookEventAdapter.pendingApprovalEvent(
+            runID: beforeEvent.runID,
+            command: "rm -rf build",
+            sessionID: beforeEvent.sessionID,
+            surfaceID: surfaceID,
+            occurredAt: occurredAt.addingTimeInterval(10)
+        )
+
+        #expect(pending.kind == .approvalRequested)
+        #expect(pending.runID == beforeEvent.runID)
+        #expect(pending.message == "rm -rf build")
+
+        // Re-detecting the same stuck command must not produce a second
+        // event, so `AttentionCenter` de-duplicates it on append.
+        let pendingAgain = AgentHookEventAdapter.pendingApprovalEvent(
+            runID: beforeEvent.runID,
+            command: "rm -rf build",
+            sessionID: beforeEvent.sessionID,
+            surfaceID: surfaceID,
+            occurredAt: occurredAt.addingTimeInterval(15)
+        )
+        #expect(pending.id == pendingAgain.id)
+
+        let runs = AgentEventReducer.reduce([beforeEvent, pending])
+        #expect(runs[beforeEvent.runID]?.state == .waitingApproval)
+    }
+
     private func event(
         provider: AgentProvider,
         payload: String

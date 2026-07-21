@@ -59,7 +59,8 @@ public enum AgentHookEventAdapter {
             provider: provider,
             kind: mapping.kind,
             occurredAt: occurredAt,
-            message: mapping.message
+            message: mapping.message,
+            hookName: mapping.hookName
         )
     }
 
@@ -96,6 +97,43 @@ public enum AgentHookEventAdapter {
         )
     }
 
+    /// Builds the synthetic `approval-requested` event for Cursor, whose
+    /// hooks never report a shell command waiting on user permission (see
+    /// `CursorApprovalPendingTracker`). `runID` is reused as-is from the
+    /// `beforeShellExecution` event that started the wait, so the
+    /// synthetic event lands on that same run; the event ID is derived
+    /// from `runID` + `command` so re-detecting the same stuck command is
+    /// a no-op.
+    public static func pendingApprovalEvent(
+        runID: AgentRunID,
+        command: String,
+        sessionID: String?,
+        surfaceID: TerminalSurfaceID,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}cursor\u{0}pending-approval\u{0}\(runID.rawValue.uuidString)\u{0}\(command)"
+                )
+            ),
+            runID: runID,
+            sessionID: sessionID,
+            surfaceID: surfaceID,
+            provider: .cursor,
+            kind: .approvalRequested,
+            occurredAt: occurredAt,
+            message: command,
+            hookName: syntheticPendingApprovalHookName
+        )
+    }
+
+    /// Marks an event as mytty-synthesized rather than a real hook
+    /// delivery, so `CursorApprovalPendingTracker` (fed every observed
+    /// event, including ones it produced) never re-registers on its own
+    /// output.
+    static let syntheticPendingApprovalHookName = "mytty.cursorApprovalPending"
+
     private static func codexMapping(
         _ object: [String: Any]
     ) -> Mapping? {
@@ -130,7 +168,8 @@ public enum AgentHookEventAdapter {
                 for: kind,
                 toolName: object.string("tool_name"),
                 directMessage: object.string("message")
-            )
+            ),
+            hookName: eventName
         )
     }
 
@@ -183,7 +222,8 @@ public enum AgentHookEventAdapter {
                 toolName: object.string("tool_name"),
                 directMessage: object.string("message")
                     ?? object.string("error_message")
-            )
+            ),
+            hookName: eventName
         )
     }
 
@@ -231,7 +271,8 @@ public enum AgentHookEventAdapter {
                 properties.string("sessionID") ?? info?.string("sessionID")
             ),
             kind: kind,
-            message: directMessage
+            message: directMessage,
+            hookName: eventType
         )
     }
 
@@ -240,6 +281,7 @@ public enum AgentHookEventAdapter {
     ) -> Mapping? {
         let kind: AgentEventKind
         var directMessage: String?
+        let hookName: String?
 
         if object["fullyIdle"] != nil {
             let error = object.string("error")
@@ -252,8 +294,12 @@ public enum AgentHookEventAdapter {
             } else {
                 kind = .succeeded
             }
+            hookName = "Stop"
         } else if object["invocationNum"] != nil {
             kind = .running
+            // PreInvocation and PostInvocation post the same shape, so the
+            // payload alone can't tell them apart.
+            hookName = nil
         } else {
             return nil
         }
@@ -262,7 +308,8 @@ public enum AgentHookEventAdapter {
             runKey: object.string("conversationId"),
             sessionID: sessionIdentifier(object.string("conversationId")),
             kind: kind,
-            message: directMessage
+            message: directMessage,
+            hookName: hookName
         )
     }
 
@@ -280,6 +327,12 @@ public enum AgentHookEventAdapter {
             kind = .started
         case "postToolUse", "postToolUseFailure":
             kind = .running
+        case "beforeShellExecution", "afterShellExecution":
+            // Cursor has no dedicated approval-prompt hook, so these two
+            // just report progress; CursorApprovalPendingTracker watches
+            // the gap between them to estimate a stuck approval.
+            kind = .running
+            directMessage = object.string("command")
         case "stop":
             switch object.string("status") {
             case "completed":
@@ -290,7 +343,11 @@ public enum AgentHookEventAdapter {
             case "aborted":
                 kind = .disconnected
             default:
-                return nil
+                // A `stop` with a missing or unrecognized `status` still
+                // means the turn ended, so treat it as a normal
+                // completion rather than dropping the event: a run that
+                // finished this way would never clear from Attention.
+                kind = .succeeded
             }
         default:
             return nil
@@ -304,7 +361,8 @@ public enum AgentHookEventAdapter {
                 ?? sessionID,
             sessionID: sessionID,
             kind: kind,
-            message: directMessage
+            message: directMessage,
+            hookName: eventName
         )
     }
 
@@ -349,6 +407,7 @@ private struct Mapping {
     let sessionID: String?
     let kind: AgentEventKind
     let message: String?
+    let hookName: String?
 }
 
 private enum StableAgentUUID {
