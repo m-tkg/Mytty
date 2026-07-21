@@ -45,7 +45,7 @@ jobs:
           build-mode: manual
 
       - name: Build Swift targets
-        run: swift build -c debug --arch arm64
+        run: swift build -c debug --arch arm64 --disable-sandbox
 
       - name: Analyze
         uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a
