@@ -34,6 +34,19 @@ struct OneLinerCompositionTests {
         )
     }
 
+    @Test("instructions teach exclusion via grep -v with examples")
+    func instructionsCarryExclusionRules() {
+        let instructions = OneLinerPrompt.instructions(language: .japanese)
+        #expect(instructions.contains("never invent character classes"))
+        #expect(instructions.contains("Otherwise never add grep -v"))
+        #expect(
+            instructions.contains("grep -r '^foo' . | grep -v 'foobar'")
+        )
+        #expect(
+            instructions.contains("grep -r 'warn' . | grep -v 'warning'")
+        )
+    }
+
     @Test("sanitize keeps a plain command unchanged")
     func sanitizePlain() {
         #expect(
