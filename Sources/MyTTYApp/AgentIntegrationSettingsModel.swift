@@ -12,6 +12,16 @@ protocol AgentIntegrationInstalling {
     ) throws -> AgentIntegrationStatus
     func installPaneTeamPointer(_ provider: AgentProvider) throws
     func removePaneTeamPointer(_ provider: AgentProvider) throws
+    /// Where a provider's pane-team pointer lives on disk, or `nil` if the
+    /// provider has none. Display-only; never used to decide whether to
+    /// write anything.
+    func paneTeamPointerURL(for provider: AgentProvider) -> URL?
+    /// The exact text `installPaneTeamPointer` would write for `provider`,
+    /// without writing it. Backs the Orchestration settings "preview"
+    /// disclosure -- must stay identical to the real write, so it's
+    /// sourced from the same private helpers as `installPaneTeamPointer`
+    /// rather than duplicated in the UI layer.
+    func paneTeamPointerPreview(for provider: AgentProvider) -> String?
 }
 
 extension AgentIntegrationInstaller: AgentIntegrationInstalling {}
@@ -106,6 +116,31 @@ final class AgentIntegrationSettingsModel: ObservableObject {
             )
         }
         refresh()
+    }
+
+    /// Current on-disk status of `provider`'s pane-team pointer (the
+    /// generated note in that provider's global config, not the hook
+    /// itself). Used by the Orchestration settings section to show
+    /// per-file status; re-reads disk on every call, which is fine at the
+    /// UI refresh cadence this backs.
+    func paneTeamPointerStatus(
+        for provider: AgentProvider
+    ) -> AgentIntegrationStatus {
+        (try? installer.paneTeamPointerStatus(for: provider))
+            ?? .notInstalled
+    }
+
+    /// Where `provider`'s pane-team pointer lives on disk, or `nil` if the
+    /// provider doesn't support one.
+    func paneTeamPointerURL(for provider: AgentProvider) -> URL? {
+        installer.paneTeamPointerURL(for: provider)
+    }
+
+    /// The exact text that would be written for `provider`'s pane-team
+    /// pointer, without writing it. Sourced from the installer so the
+    /// preview can never drift from the real write.
+    func paneTeamPointerPreview(for provider: AgentProvider) -> String? {
+        installer.paneTeamPointerPreview(for: provider)
     }
 
     func state(

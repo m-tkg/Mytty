@@ -338,6 +338,36 @@ public struct AgentIntegrationInstaller {
         }
     }
 
+    /// Where a provider's pane-team pointer lives on disk, for display
+    /// purposes (e.g. the Orchestration settings section). `nil` for
+    /// providers with no pointer location -- see `paneTeamPointerProviders`.
+    public func paneTeamPointerURL(for provider: AgentProvider) -> URL? {
+        switch provider {
+        case .claudeCode:
+            paneTeamSkillURL
+        case .codex:
+            codexAgentsMarkdownURL
+        case .openCode, .antigravity, .cursor:
+            nil
+        }
+    }
+
+    /// The exact text a settings UI can show as a preview of what
+    /// `installPaneTeamPointer` would write, without writing anything.
+    /// Returns the same content the installer itself writes -- callers
+    /// must not re-derive this text, or the preview can drift from the
+    /// real write. `nil` for providers with no pointer location.
+    public func paneTeamPointerPreview(for provider: AgentProvider) -> String? {
+        switch provider {
+        case .claudeCode:
+            String(data: paneTeamSkillData(), encoding: .utf8)
+        case .codex:
+            paneTeamBlockBody()
+        case .openCode, .antigravity, .cursor:
+            nil
+        }
+    }
+
     private var paneTeamSkillURL: URL {
         homeDirectory
             .appendingPathComponent(

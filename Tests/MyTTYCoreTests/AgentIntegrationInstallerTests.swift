@@ -602,6 +602,51 @@ struct AgentIntegrationInstallerTests {
         #expect(try Data(contentsOf: agentsURL) == malformed)
     }
 
+    @Test("previews the exact pane-team pointer content without writing it")
+    func paneTeamPointerPreviewMatchesRealWrite() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+
+        for provider: AgentProvider in [.claudeCode, .codex] {
+            let url = try #require(installer.paneTeamPointerURL(for: provider))
+            let preview = try #require(
+                installer.paneTeamPointerPreview(for: provider)
+            )
+
+            // The preview must never touch disk: nothing should exist at
+            // the pointer's URL (or, for Codex, its parent AGENTS.md) yet.
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+
+            try installer.installPaneTeamPointer(provider)
+            let written = try String(contentsOf: url, encoding: .utf8)
+
+            switch provider {
+            case .claudeCode:
+                // Claude Code's pointer file is exactly the preview.
+                #expect(written == preview)
+            case .codex:
+                // Codex's pointer is a block appended into AGENTS.md; the
+                // preview is just that block's body.
+                #expect(written.contains(preview))
+            default:
+                Issue.record("unexpected provider \(provider)")
+            }
+        }
+    }
+
+    @Test("returns nil pane-team pointer URL and preview for unsupported providers")
+    func paneTeamPointerPreviewUnsupportedProviders() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+
+        for provider: AgentProvider in [.openCode, .antigravity, .cursor] {
+            #expect(installer.paneTeamPointerURL(for: provider) == nil)
+            #expect(installer.paneTeamPointerPreview(for: provider) == nil)
+        }
+    }
+
     @Test("skips providers with no supported pane-team pointer location")
     func paneTeamPointerUnsupportedProviders() throws {
         let harness = try Harness()

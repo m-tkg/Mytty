@@ -13,6 +13,18 @@ first. The full command list and JSON output shapes are documented
 separately in [mytty-ctl command reference](../reference/mytty-ctl.md);
 this page is about the shapes of work that are worth building with it.
 
+## Preparing from Settings
+
+Installing the CLI to `PATH` and teaching agents to look for it are both
+gathered under Settings > Orchestration. That one screen shows the CLI
+(the `mytty-ctl` symlink) install status, the status of each provider's
+pointer file (Claude Code's `~/.claude/skills/mytty-panes/SKILL.md` and
+Codex's `~/.codex/AGENTS.md`), a preview of exactly what gets written
+(the button only shows it, it never writes anything), and worked examples
+that match whatever you currently have configured. Turning the pointer
+toggle on means a supported agent runs `mytty-ctl guide` on its own the
+next time it's asked to coordinate work across panes.
+
 ## Using this from another project
 
 This file and the command reference live in the mytty repo, but a lead

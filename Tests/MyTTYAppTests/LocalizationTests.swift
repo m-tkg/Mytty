@@ -226,6 +226,51 @@ struct LocalizationTests {
             english[.teachPaneTeamPointersDescription]
                 == "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
         )
+        #expect(english[.orchestration] == "Orchestration")
+        #expect(
+            english[.orchestrationOverviewDescription].contains("mytty-ctl")
+        )
+        #expect(
+            english[.orchestrationCommandLineToolDescriptionFormat]
+                == "A symlink to mytty-ctl, placed at ~/.local/bin/%@. Panes Mytty opens already have it on PATH, so this only matters for calling mytty-ctl from outside Mytty: another terminal app or a script."
+        )
+        #expect(
+            english[.orchestrationPointerTargetsHeading] == "Target files"
+        )
+        #expect(
+            english[.orchestrationPointerPreviewButton]
+                == "Show what will be written"
+        )
+        #expect(
+            english[.orchestrationExamplesHeading] == "How to ask for it"
+        )
+        #expect(
+            english[.orchestrationExampleGuidanceOnCLIInstalledLabel]
+                == "Guidance on, CLI installed"
+        )
+        #expect(
+            english[.orchestrationExampleGuidanceOnCLINotInstalledLabel]
+                == "Guidance on, CLI not installed"
+        )
+        #expect(
+            english[.orchestrationExampleGuidanceOffLabel] == "Guidance off"
+        )
+        #expect(
+            english[.orchestrationExampleCLINote]
+                == "Inside a Mytty pane, mytty-ctl is already on PATH either way, so these two read the same. Installing the CLI to PATH only matters outside Mytty."
+        )
+        #expect(
+            english[.orchestrationExampleCurrentBadge]
+                == "Matches your current setting"
+        )
+        #expect(
+            english[.orchestrationExamplePromptGuided]
+                == "Split the pane and have Claude Code review this diff in parallel."
+        )
+        #expect(
+            english[.orchestrationExamplePromptUnguided]
+                == "Run \"mytty-ctl guide\" first, then split the pane and have Claude Code review this diff in parallel."
+        )
         #expect(english.commandTitle(.nextTab) == "Next Tab")
         #expect(english.commandTitle(.previousTab) == "Previous Tab")
         #expect(english.commandTitle(.nextWindow) == "Next Window")
@@ -330,6 +375,44 @@ struct LocalizationTests {
         #expect(
             japanese[.teachPaneTeamPointersDescription]
                 == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
+        )
+        #expect(japanese[.orchestration] == "オーケストレーション")
+        #expect(
+            japanese[.orchestrationOverviewDescription].contains("mytty-ctl")
+        )
+        #expect(
+            japanese[.orchestrationCommandLineToolDescriptionFormat]
+                == "mytty-ctl へのシンボリックリンクを ~/.local/bin/%@ に作成します。Mytty が開いたペインではすでに PATH が通っているため、これが必要なのは Mytty の外(別のターミナルアプリやスクリプト)から mytty-ctl を呼びたい場合だけです。"
+        )
+        #expect(japanese[.orchestrationPointerTargetsHeading] == "対象ファイル")
+        #expect(
+            japanese[.orchestrationPointerPreviewButton]
+                == "書き込む内容を表示"
+        )
+        #expect(japanese[.orchestrationExamplesHeading] == "呼び出し方")
+        #expect(
+            japanese[.orchestrationExampleGuidanceOnCLIInstalledLabel]
+                == "案内あり・CLI インストール済み"
+        )
+        #expect(
+            japanese[.orchestrationExampleGuidanceOnCLINotInstalledLabel]
+                == "案内あり・CLI 未インストール"
+        )
+        #expect(japanese[.orchestrationExampleGuidanceOffLabel] == "案内なし")
+        #expect(
+            japanese[.orchestrationExampleCLINote]
+                == "Mytty のペイン内ではどちらの場合も mytty-ctl の PATH が通っているため、実際には同じ書き方になります。差が出るのは Mytty の外から使う場合だけです。"
+        )
+        #expect(
+            japanese[.orchestrationExampleCurrentBadge] == "現在の設定"
+        )
+        #expect(
+            japanese[.orchestrationExamplePromptGuided]
+                == "ペインを分割して、この diff を Claude Code に並行でレビューさせて。"
+        )
+        #expect(
+            japanese[.orchestrationExamplePromptUnguided]
+                == "まず「mytty-ctl guide」を実行してから、ペインを分割してこの diff を Claude Code に並行でレビューさせて。"
         )
         #expect(japanese.commandTitle(.nextTab) == "次のタブ")
         #expect(japanese.commandTitle(.previousTab) == "前のタブ")

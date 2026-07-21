@@ -236,6 +236,30 @@ struct AgentIntegrationSettingsModelTests {
         #expect(preferenceStore.paneTeamPointersEnabled == true)
     }
 
+    @Test("exposes pane-team pointer URL, preview, and status for the Orchestration section")
+    @MainActor
+    func paneTeamPointerDisplayInfo() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        installer.pointerStatuses[.codex] = .needsRepair
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
+
+        #expect(model.paneTeamPointerStatus(for: .codex) == .needsRepair)
+        #expect(model.paneTeamPointerStatus(for: .claudeCode) == .notInstalled)
+        #expect(model.paneTeamPointerURL(for: .codex) != nil)
+        #expect(model.paneTeamPointerURL(for: .cursor) == nil)
+        #expect(model.paneTeamPointerPreview(for: .claudeCode) != nil)
+        #expect(model.paneTeamPointerPreview(for: .openCode) == nil)
+    }
+
     @Test("keeps a provider error visible without changing its state")
     @MainActor
     func actionError() {
@@ -302,6 +326,20 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
     func removePaneTeamPointer(_ provider: AgentProvider) throws {
         pointerRemoved.append(provider)
         pointerStatuses[provider] = .notInstalled
+    }
+
+    func paneTeamPointerURL(for provider: AgentProvider) -> URL? {
+        guard AgentIntegrationInstaller.paneTeamPointerProviders
+            .contains(provider)
+        else { return nil }
+        return URL(fileURLWithPath: "/tmp/\(provider.rawValue)-pointer")
+    }
+
+    func paneTeamPointerPreview(for provider: AgentProvider) -> String? {
+        guard AgentIntegrationInstaller.paneTeamPointerProviders
+            .contains(provider)
+        else { return nil }
+        return "preview for \(provider.rawValue)"
     }
 }
 
