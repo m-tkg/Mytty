@@ -15,15 +15,26 @@ this page is about the shapes of work that are worth building with it.
 
 ## Preparing from Settings
 
-Installing the CLI to `PATH` and teaching agents to look for it are both
-gathered under Settings > Orchestration. That one screen shows the CLI
-(the `mytty-ctl` symlink) install status, the status of each provider's
-pointer file (Claude Code's `~/.claude/skills/mytty-panes/SKILL.md` and
-Codex's `~/.codex/AGENTS.md`), a preview of exactly what gets written
-(the button only shows it, it never writes anything), and worked examples
-that match whatever you currently have configured. Turning the pointer
-toggle on means a supported agent runs `mytty-ctl guide` on its own the
-next time it's asked to coordinate work across panes.
+Everything this feature needs is gathered under Settings > Orchestration.
+Driving panes from inside Mytty needs none of it; the screen is there for
+two things.
+
+**Calling the CLI from outside Mytty**
+"Install to PATH" symlinks the binary into `~/.local/bin`. Panes Mytty
+opens already have `mytty-ctl` available, so this only matters for another
+terminal app or a script. It never asks for an admin password.
+
+**Teaching agents to find it**
+With "Teach agents about pane teams" on, a supported agent reads
+`mytty-ctl guide` on its own the next time it's asked to work across
+panes. The note goes to `~/.claude/skills/mytty-panes/SKILL.md` for Claude
+Code and `~/.codex/AGENTS.md` for Codex, and the screen reports the
+current state of each. "Show what will be written" reveals the exact text
+that would land there; opening it writes nothing.
+
+Below that, the same screen lists example prompts for each situation. The
+wording differs depending on whether the pointer is installed, so copy
+whichever line matches your setup.
 
 ## Using this from another project
 
