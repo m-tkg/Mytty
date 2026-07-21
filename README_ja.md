@@ -32,7 +32,8 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 - **AI からの操作(`mytty-ctl`):** どのペインからも事前設定なしで使える
   ローカル CLI。agent がペインを開き、操作し、結果を読み取れるので、
   サブエージェントのチームは隠れたバックグラウンド処理ではなく普通の
-  見えるペインとして動く。
+  見えるペインとして動く。使い方一式は `mytty-ctl guide` で読める。
+  mytty 以外のプロジェクトからでも同じように使える。
 - **セッション復元、ローカル autocomplete、アプリ内ブラウザ、GIF 録画、
   iOS リモートアプリ**(Attention 項目の APNs push 通知つき)。
 

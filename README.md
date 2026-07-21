@@ -33,7 +33,8 @@ The current release requires macOS 15 or later and Apple Silicon.
 - **AI control (`mytty-ctl`):** a local CLI, usable from any pane with no
   setup, that lets an agent open panes, drive them, and read them back, so a
   team of subagents runs as ordinary, visible panes instead of a hidden
-  background process.
+  background process. Run `mytty-ctl guide` for the full playbook -- it
+  works the same from any project, not just this one.
 - **Session restoration, local autocomplete, a built-in browser, GIF
   recording, and an iOS remote app** with APNs push for Attention items.
 
