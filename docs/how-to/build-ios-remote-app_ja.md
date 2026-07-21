@@ -1,9 +1,4 @@
-# iOS リモートアプリをビルドする
-
-Mac アプリと対になる iOS アプリは `ios/MyttyRemote` にあり、Mac アプリとは
-別経路、`scripts/release.sh` ではなく Xcode Cloud で公開される。ここでは
-ローカルでのビルド方法と、自分の Apple Developer account でビルドする手順を
-扱う。
+# iOS 用の MyttyRemote をビルドする
 
 ## Simulator 向けにビルドする
 
@@ -11,60 +6,28 @@ Mac アプリと対になる iOS アプリは `ios/MyttyRemote` にあり、Mac 
 make ios
 ```
 
-XcodeGen で Xcode project を再生成し、iOS Simulator 向けに build する。
-実機向けには `make ios-device` を使うが、その前に署名の設定が要る(後述)。
-
-`ios/MyttyRemote` 配下の Swift ファイルを追加・削除したときは、必ず
-`make ios` を再実行して、再生成された `project.pbxproj` をそのファイルと
-一緒に commit すること。Xcode Cloud は checked-in の project を build する
-だけで XcodeGen 自体は実行しないため、再生成を忘れるとローカルでは build
-できてもそちらでは "Cannot find … in scope" で失敗する。
+XcodeGen で Xcode project を再生成し、iOS Simulator 向けにビルドします。
+実機向けには `make ios-device` を使いますが、その前に署名の設定が必要です(後述)。
 
 ## 必要な identifier
 
-このアプリは Attention のプッシュを iOS が表示する前に復号する notification
-service extension を同梱しているため、Apple Developer portal に App ID が
-1つではなく2つ必要になる。
+このアプリは通知のプッシュを iOS が表示する前に復号する notification service extension を同梱しているため、Apple Developer portal に App ID が1つではなく2つ必要になります。
 
 | Identifier | Capability |
 | --- | --- |
 | `$(MYTTY_BUNDLE_ID)` | Push Notifications |
 | `$(MYTTY_BUNDLE_ID).NotificationService` | なし |
 
-extension 自体には capability が要らない。通知を受け取るだけの役割で、
-pairing secret を読むための `keychain-access-groups` entitlement も、App
-Groups と違ってその entitlement だけで満たせる。
+extension 自体には capability が不要です。通知を受け取るだけの役割で、 pairing secret を読むための `keychain-access-groups` entitlement も、App Groups と違ってその entitlement だけで満たせます。
 
-Xcode Cloud は identifier を自動で作らない。署名の管理はするが、まだ存在
-しない App ID を代わりに登録してはくれないため、ローカルでは build が通り
-(automatic signing がその場で作ってくれることがある)、Xcode Cloud だけ
-失敗するということが起きる。症状としては archive 自体は成功するのに、
-`xcodebuild -exportArchive` がすべての distribution method で一斉に code
-70 を返す、という形で現れる。登録済みの identifier がないと、export の際
-に同梱の extension を署名できない。
-
-## 自分のアカウントでビルドする
+## developer team の変更
 
 署名の既定値(`DEVELOPMENT_TEAM` と `MYTTY_BUNDLE_ID`)は
-`ios/MyttyRemote/Config/Signing.xcconfig` にある。このファイルは直接編集
-せず、`Config/Local.xcconfig` を作って上書きする。
+`ios/MyttyRemote/Config/Signing.xcconfig` にあります。このファイルは直接編集せず、`Config/Local.xcconfig` を作って上書きします。
 
 ```sh
 cd ios/MyttyRemote
 cp Config/Local.xcconfig.sample Config/Local.xcconfig
 ```
 
-続けて `Config/Local.xcconfig` を編集し、`DEVELOPMENT_TEAM` と
-`MYTTY_BUNDLE_ID` を自分の値に書き換える。`Config/Local.xcconfig` は
-.gitignore 済みで XcodeGen も読まないため、追跡ファイルに差分は出ない。
-
-上書きするのは `PRODUCT_BUNDLE_IDENTIFIER` ではなく `MYTTY_BUNDLE_ID` で
-ある。notification service extension は自分の identifier を
-`MYTTY_BUNDLE_ID` から導出しているため、`PRODUCT_BUNDLE_IDENTIFIER` を直接
-設定すると app の bundle ID だけが変わり、extension は元の team に登録
-された identifier のままになって、自分の team では署名できなくなる。
-
-bundle ID は必ず team とセットで変更すること。既定の bundle ID は元の team
-に登録済みで、他のアカウントではプロビジョニングできない。無料の Personal
-Team では、特に Push Notifications のような capability をプロビジョニング
-できない場合もある。
+続けて `Config/Local.xcconfig` を編集し、`DEVELOPMENT_TEAM` と `MYTTY_BUNDLE_ID` を自分の値に書き換えます。上書きするのは `PRODUCT_BUNDLE_IDENTIFIER` ではなく `MYTTY_BUNDLE_ID` です。

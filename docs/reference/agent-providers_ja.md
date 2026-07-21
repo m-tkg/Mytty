@@ -6,10 +6,7 @@ Mytty は5つの agent provider に対応する。コード上は `AgentProvider
 provider ごとに、Mytty が hook を書き込む設定ファイル、その provider の
 hook が発行できる mytty event kind、セッション再開(resume)の仕組みを
 列挙する。イベント自体のワイヤーフォーマットは
-[エージェントイベントプロトコル](agent-event-protocol_ja.md) を、導入・
-検証の手順は
-[エージェント連携の導入と検証](../how-to/install-agent-integrations_ja.md)
-を参照。
+[エージェントイベントプロトコル](agent-event-protocol_ja.md) を参照。
 
 Antigravity provider は、1つの event カテゴリの下に2種類の実行バイナリ
 をまとめている。`AgentProvider.antigravity` は Google Antigravity IDE の

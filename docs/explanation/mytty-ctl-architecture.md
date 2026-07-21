@@ -3,9 +3,10 @@
 日本語版は [mytty-ctl-architecture_ja.md](mytty-ctl-architecture_ja.md) にあります。
 
 This page explains why `mytty-ctl` can drive Mytty's panes over a socket at
-all, and why it works with no setup step. For the command reference and
-usage patterns, see `docs/reference/mytty-ctl.md`; this page stays focused on the
-mechanism underneath it.
+all, why it works with no setup step, and how its `agent` orchestration
+commands bind a job to the exact worker run it spawned. For the command
+reference and usage patterns, see `docs/reference/mytty-ctl.md`; this
+page stays focused on the mechanism underneath it.
 
 ## Why one socket is enough
 
@@ -25,13 +26,18 @@ graph LR
     WSC["WindowSessionCoordinator<br/>resolves paneID across all windows"]
     TWC["TerminalWindowController<br/>newTab / splitPane / RemotePaneBridge"]
     AC["AttentionCenter<br/>AgentRunState (idle/running/waiting-*)"]
+    AJC["AgentJobCoordinator<br/>in-memory AgentJobTracker registry"]
 
     AI -->|"list / split / send / read / wait ..."| CLI
+    AI -->|"agent spawn / wait / result / send / focus / close"| CLI
     CLI -->|"JSON, one request per connection"| SOCK
     SOCK --> SRV
     SRV --> WSC
     WSC --> TWC
     SRV -.->|"wait: polls state"| AC
+    SRV -->|"agent *"| AJC
+    AJC --> WSC
+    AJC -.->|"reconcile: polls runs(forPane:provider:)"| AC
 ```
 
 The transport is deliberately a separate line from the iOS remote
@@ -113,9 +119,68 @@ provider's hook has not been enabled in Settings yet, since no agent
 events arrive at all in that case. See "`wait` semantics" in
 `docs/reference/mytty-ctl.md` for the full detail.
 
+## Why agent jobs need their own binding
+
+`agent wait`/`agent result`/`agent send` all resolve a job ID rather than
+a pane ID. That extra layer exists because a pane ID alone can't answer
+"is this still the run I spawned" -- a pane persists across however many
+processes run in it, but a job means one specific spawn of one specific
+worker. Without something in between, `wait --until completed` after a
+future feature reused a pane could resolve immediately from whatever run
+was already sitting in that pane, before the new work even started.
+
+`AgentJobCoordinator` (`MyTTYApp`) owns the in-memory job registry and is
+the `ControlServerAgentDelegate` `ControlServer` calls into for every
+`agent` request -- kept as its own delegate protocol rather than folded
+into `ControlServerDelegate`, since job operations resolve through
+tracked state first while pane operations resolve straight to a
+`TerminalWindowController`. It creates the worker's pane through the
+same `TerminalWindowController.splitPane` path any other split uses
+(with a transient `initialInput` carrying the launch command plus task --
+never persisted into `TerminalSurfaceState`, so a restored session never
+replays it), and on every subsequent `agent` call it re-derives that
+job's state by calling the pure `AgentJobTracker.reconcile` (`MyTTYCore`)
+against a fresh read of `AttentionCenter.runs(forPane:provider:)` -- a
+narrow query added specifically for this, returning plain `AgentRun`
+values rather than `AttentionCenter`'s whole mutable `runs` dictionary.
+
+```mermaid
+graph LR
+    Spawn["agent spawn"] -->|"captures baselineRunIDs<br/>for the new pane"| Track["AgentJobTracker<br/>(launching)"]
+    Track -->|"reconcile: run ID not in baseline"| Bind["bind to that run<br/>(never rebinds again)"]
+    Bind -->|"map AgentRunState"| State["running / waiting-* /<br/>succeeded / failed / disconnected"]
+    Track -->|"no run within 30s"| Failed["launch-failed"]
+    Track -->|"pane disappears"| Lost["lost"]
+```
+
+The binding rule itself is deliberately simple and independent of
+`AttentionCenter`'s own "most relevant run" heuristic (which is tuned
+for the status bar, not for "which run does this job own"): a job
+records the run IDs already present for its pane at creation time
+(normally none, since `agent spawn` always creates a new pane rather
+than reusing one), and binds to the first later run for that pane and
+provider whose ID isn't in that set. Once bound, it never switches runs.
+This is what keeps two jobs spawned back to back from ever cross-binding
+even though `AttentionCenter` has no notion of "which job asked" --
+each `AgentJobTracker` filters and picks independently, from its own
+baseline.
+
+The job registry itself is not persisted, unlike `TerminalSurfaceState`.
+A Mytty restart loses every job ID that was ever issued -- `agent wait`/
+`agent result`/etc. against one of them then returns `job-not-found` --
+while leaving the panes and worker processes those jobs pointed at
+running exactly as before. This mirrors the "no resident orchestrator"
+tradeoff above: state that only matters while some lead process is still
+around to use it doesn't need to survive an app restart, and not
+persisting it means there's no stale-job-registry migration to get
+wrong later.
+
 ## References
 
-- `docs/reference/mytty-ctl.md`: command reference and usage patterns
+- `docs/reference/mytty-ctl.md`: command reference and usage patterns,
+  including the `agent` failure codes and job/run binding summary
+- `docs/how-to/orchestrate-agents-with-mytty-ctl.md`: staged multi-worker
+  examples built on the `agent` commands
 - `docs/reference/agent-event-protocol.md`: the environment variables and event protocol
   agent hooks use (the same "hand out env vars on pane open" pattern as
   the control socket)

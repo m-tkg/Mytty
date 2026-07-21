@@ -50,7 +50,7 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 4つの区分に分かれています。
 
 - [チュートリアル](docs/README_ja.md#チュートリアル): 実際に使いながら覚える
-- [使い方](docs/README_ja.md#使い方): 特定の作業の手順
+- [使い方](docs/README_ja.md#もっと進んだ使い方): 特定の作業の手順
 - [リファレンス](docs/README_ja.md#リファレンス): 設定・コマンド・プロトコルの正確な仕様
 - [説明](docs/README_ja.md#説明): なぜその仕組みになっているか
 

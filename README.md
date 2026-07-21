@@ -6,39 +6,41 @@
 
 ## Overview
 
-Mytty is an Apple Silicon, macOS-native terminal for an AI-assisted workflow.
-It embeds libghostty for Metal-accelerated terminal rendering and uses AppKit,
-SwiftUI, and WebKit for its surrounding interface. The terminal remains the
-primary surface: Mytty adds tabs, panes, agent status, an Attention Inbox, and
-small workflow tools without introducing a workspace abstraction.
+Mytty is an Apple Silicon-only, macOS-native terminal built for AI-assisted
+development. It uses libghostty for Metal-accelerated terminal rendering,
+and AppKit, SwiftUI, and WebKit for the surrounding UI. The terminal stays
+the main focus: Mytty adds tabs, panes, agent status, an Attention Inbox,
+and other workflow tools without introducing a separate management concept
+like a workspace.
 
-Mytty supports Codex, Claude Code, OpenCode, Antigravity (including the
-standalone Gemini CLI), and Cursor. Provider integrations deliver structured
-events through a pane-scoped Unix socket, so Mytty can associate an agent
-request with the correct pane without parsing human-readable terminal output.
+It supports Codex, Claude Code, OpenCode, Antigravity (including the
+standalone Gemini CLI), and Cursor. Each integration sends structured
+events to a pane-scoped Unix socket, so Mytty can associate the requesting
+pane with the agent's state without parsing terminal output meant for
+humans.
 
-The current release requires macOS 15 or later and Apple Silicon.
+The current release supports macOS 15 or later on Apple Silicon.
 
 ## Features
 
-- **Ghostty terminal engine:** libghostty rendering, native IME, themes, and
-  configurable fonts, cursor, opacity, and appearance.
-- **Tabs and panes:** splits in four directions, drag-to-reorder tabs, pane
-  zoom, equalized layouts, and an all-panes switcher. In a split tab the
-  focused pane is outlined, with a configurable color and width, alongside
-  the dimming applied to the inactive ones. Tabs are numbered in the
-  sidebar and jump directly with Command-1 through Command-9.
-- **Agent-aware status and Attention Inbox:** active agent, session cost,
-  quota meters, and a persistent inbox of approval, input, success, and
-  failure events that jump straight to the pane that raised them.
-- **AI control (`mytty-ctl`):** a local CLI, usable from any pane with no
-  setup, that lets an agent open panes, drive them, and read them back, so a
-  team of subagents runs as ordinary, visible panes instead of a hidden
-  background process. Run `mytty-ctl guide` for the full playbook -- it
-  works the same from any project, not just this one. Mytty can also teach
-  Claude Code and Codex to discover it on their own (a Settings toggle,
-  on by default) by writing a short pointer into each provider's global
-  configuration.
+- **Ghostty terminal engine:** libghostty rendering, native IME, and
+  configurable themes, fonts, cursor, opacity, and appearance.
+- **Tabs and panes:** splits in four directions, drag-to-reorder, pane
+  zoom, equalized layouts, and an all-panes switcher. In a split tab, the
+  active pane is outlined (configurable color and width) in addition to
+  dimming the inactive side. Tabs are numbered in the sidebar, and
+  Command-1 through Command-9 jump straight to one.
+- **Agent status and Attention Inbox:** the active agent, session cost,
+  quota meters, and an inbox that collects approval, input, completion, and
+  failure events with a jump straight to the pane that raised them.
+- **AI control (`mytty-ctl`):** a local CLI usable from any pane with no
+  setup. Agents can open panes, operate them, and read back the results,
+  so a team of subagents runs as ordinary, visible panes instead of a
+  hidden background process. Run `mytty-ctl guide` for the full playbook
+  -- it works the same from any project, not just this one. Mytty can also
+  teach Claude Code and Codex to discover it on their own (a Settings
+  toggle, on by default) by writing a short pointer into each provider's
+  global configuration.
 - **Session restoration, local autocomplete, a built-in browser, GIF
   recording, and an iOS remote app** with APNs push for Attention items.
 
@@ -50,11 +52,11 @@ how-to guides, reference pages, and the design rationale behind each part.
 Full documentation lives under [`docs/`](docs/README.md), split into four
 sections:
 
-- [Tutorials](docs/README.md#tutorials) to learn Mytty by using it
-- [How-to guides](docs/README.md#how-to-guides) for a specific task
-- [Reference](docs/README.md#reference) for exact settings, commands, and
+- [Tutorials](docs/README.md#tutorials): learn by doing
+- [How-to guides](docs/README.md#going-further): steps for a specific task
+- [Reference](docs/README.md#reference): exact settings, commands, and
   protocols
-- [Explanation](docs/README.md#explanation) for why Mytty works this way
+- [Explanation](docs/README.md#explanation): why things work this way
 
 ## Build
 
