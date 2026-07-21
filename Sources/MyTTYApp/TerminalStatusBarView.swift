@@ -355,7 +355,7 @@ private struct AgentUsageMeterView: View {
             Text(content.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: 60)
+                .frame(maxWidth: 76)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 3)
