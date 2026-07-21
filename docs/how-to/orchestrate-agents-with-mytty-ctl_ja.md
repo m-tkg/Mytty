@@ -2,7 +2,7 @@
 
 同梱されている CLI `mytty-ctl` を使うことで、 AI エージェントが他のペインを開いて操作することができます。`Task`/`Agent` ツールが作るような見えないサブエージェントではなく、画面に見えて割り込めるペインでサブエージェントの小さなチームを動かすイメージです。
 
-Mytty ではmすべてのペインのシェル環境に `MYTTY_CONTROL_SOCKET`、`MYTTY_CTL_BIN`、`MYTTY_SURFACE_ID` が自動で入るため、エージェントは他に準備することなく `"$MYTTY_CTL_BIN" agent spawn --provider codex --task "..."` のように他の AI Agent を呼び出すことができます。
+Mytty ではすべてのペインのシェル環境に `MYTTY_CONTROL_SOCKET`、`MYTTY_CTL_BIN`、`MYTTY_SURFACE_ID` が自動で入るため、エージェントは他に準備することなく `"$MYTTY_CTL_BIN" agent spawn --provider codex --task "..."` のように他の AI Agent を呼び出すことができます。
 
 mytty-ctl で使える全コマンドの一覧と JSON 出力の形式は [mytty-ctl リファレンス](../reference/mytty-ctl_ja.md) にまとめてあります。
 
@@ -16,7 +16,7 @@ Mytty オーケストレーションの使い方は2つあります。
 
 > まず `mytty-ctl guide` を実行してから、ペインを分割してこの diff を Claude Code に並行でレビューさせて。
 
-この場合、 CLI のインストールさえできていれば仕様中の CLAUDE.md や AGENTS.md を変更する必要はありません。
+この場合、 CLI のインストールさえできていれば使用中の CLAUDE.md や AGENTS.md を変更する必要はありません。
 
 ### あらかじめ CLAUDE.md や AGENTS.md に使い方を書いておく
 
