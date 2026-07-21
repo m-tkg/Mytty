@@ -248,8 +248,20 @@ public struct AgentJobTracker: Equatable, Sendable {
             return
         }
 
+        // A single provider launch can produce more than one runID: Codex
+        // and Claude Code both fire a `SessionStart` hook as its own
+        // `idle`-kind event before the real work run's `UserPromptSubmit`/
+        // `started` event arrives, and the reducer gives that marker its
+        // own runID rather than folding it into the run that follows
+        // (confirmed against a live Codex spawn during manual testing —
+        // see AgentJobTrackerTests for the reproduction). A run stuck at
+        // `.unknown`/`.idle` never advances, so binding to it would
+        // permanently strand the job below `.launching` while the real
+        // run it should be tracking succeeds unnoticed. Only a run that
+        // has actually progressed is eligible to bind.
         let eligible = matchingRuns.filter {
             !baselineRunIDs.contains($0.id)
+                && $0.state != .unknown && $0.state != .idle
         }
         if let winner = Self.selectCandidate(eligible) {
             boundRunID = winner.id
@@ -277,12 +289,24 @@ public struct AgentJobTracker: Equatable, Sendable {
     /// Earliest `startedAt`, then earliest `updatedAt`, then the
     /// lexicographically smallest run-ID string — arbitrary but stable, so
     /// two jobs racing to bind never land on inconsistent choices from one
-    /// poll to the next.
+    /// poll to the next. A run that never reached `.running` (so has no
+    /// `startedAt` — e.g. one that disconnected while still `.unknown`)
+    /// always loses to one that did, regardless of the raw timestamp
+    /// values: `nil` must never be treated as "earliest" here, since that
+    /// would make an event that never really started outrank one that
+    /// demonstrably did.
     private static func selectCandidate(_ runs: [AgentRun]) -> AgentRun? {
         runs.min { lhs, rhs in
-            let lhsStarted = lhs.startedAt ?? .distantPast
-            let rhsStarted = rhs.startedAt ?? .distantPast
-            if lhsStarted != rhsStarted { return lhsStarted < rhsStarted }
+            switch (lhs.startedAt, rhs.startedAt) {
+            case let (lhsStarted?, rhsStarted?):
+                if lhsStarted != rhsStarted { return lhsStarted < rhsStarted }
+            case (nil, .some):
+                return false
+            case (.some, nil):
+                return true
+            case (nil, nil):
+                break
+            }
             let lhsUpdated = lhs.updatedAt ?? .distantPast
             let rhsUpdated = rhs.updatedAt ?? .distantPast
             if lhsUpdated != rhsUpdated { return lhsUpdated < rhsUpdated }

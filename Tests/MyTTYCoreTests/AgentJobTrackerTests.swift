@@ -417,6 +417,110 @@ struct AgentJobTrackerTests {
         #expect(jobB.boundRunID == runB.id)
     }
 
+    @Test("never binds to a SessionStart idle marker that has its own runID, even alone")
+    func ignoresSessionStartIdleMarkerRun() {
+        // Reproduces a real Codex spawn observed during manual testing:
+        // the `SessionStart` hook fires as its own `idle`-kind event under
+        // a runID that's never reused, before `UserPromptSubmit` starts
+        // the actual work run under a *different* runID. If the idle
+        // marker were treated as a legitimate candidate, the job would
+        // permanently bind to a run that never advances past `.idle`.
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let idleMarker = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.idle, base)]
+        )
+        tracker.reconcile(
+            runs: [idleMarker],
+            paneExists: true,
+            now: base.addingTimeInterval(1)
+        )
+        #expect(tracker.boundRunID == nil)
+        #expect(tracker.state == .launching)
+    }
+
+    @Test("binds to the real run once it appears, ignoring an earlier idle marker run")
+    func bindsToRealRunOverEarlierIdleMarker() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let idleMarker = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.idle, base)]
+        )
+        let realRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [
+                (.started, base.addingTimeInterval(1)),
+                (.running, base.addingTimeInterval(2)),
+                (.succeeded, base.addingTimeInterval(3)),
+            ]
+        )
+        // Both runs are visible by the time reconcile is called, exactly
+        // as they were in the live reproduction (the idle marker sorts
+        // "earlier" by occurredAt, which is why the naive fix of just
+        // comparing timestamps wasn't enough on its own).
+        tracker.reconcile(
+            runs: [idleMarker, realRun],
+            paneExists: true,
+            now: base.addingTimeInterval(4)
+        )
+        #expect(tracker.boundRunID == realRun.id)
+        #expect(tracker.state == .succeeded)
+    }
+
+    @Test("stays unbound while only the idle marker has arrived, then binds once the real run appears")
+    func bindsLateOnceRealRunArrivesAfterIdleMarker() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let idleMarker = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.idle, base)]
+        )
+        // Poll once while only the idle marker has been observed so far.
+        tracker.reconcile(
+            runs: [idleMarker],
+            paneExists: true,
+            now: base.addingTimeInterval(1)
+        )
+        #expect(tracker.boundRunID == nil)
+
+        let realRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.started, base.addingTimeInterval(2))]
+        )
+        tracker.reconcile(
+            runs: [idleMarker, realRun],
+            paneExists: true,
+            now: base.addingTimeInterval(3)
+        )
+        #expect(tracker.boundRunID == realRun.id)
+        #expect(tracker.state == .running)
+    }
+
     // MARK: - Helpers
 
     /// Builds an `AgentRun` the same way production code does — by
