@@ -22,6 +22,10 @@ let package = Package(
             name: "mytty-clamshell-helper",
             targets: ["MyTTYClamshellHelper"]
         ),
+        .executable(
+            name: "mytty-oneliner-eval",
+            targets: ["MyTTYOneLinerEval"]
+        ),
         .library(name: "MyTTYCore", targets: ["MyTTYCore"]),
         .library(name: "GhosttyAdapter", targets: ["GhosttyAdapter"]),
         .library(name: "MyTTYRemoteKit", targets: ["MyTTYRemoteKit"]),
@@ -80,6 +84,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MyTTYClamshellHelper",
+            dependencies: ["MyTTYCore"]
+        ),
+        .executableTarget(
+            name: "MyTTYOneLinerEval",
             dependencies: ["MyTTYCore"]
         ),
         .target(
