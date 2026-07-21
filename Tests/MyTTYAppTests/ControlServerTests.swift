@@ -85,6 +85,11 @@ struct ControlServerTests {
                 to: socketURL
             ) == .failure(code: "pane-not-found")
         )
+        // "escape" resolves fine, so the earlier assertion exercises the
+        // "pane not found" branch specifically. An unresolvable key name
+        // must not collapse into the same code (see the dedicated
+        // "sendKey reports invalid-key" test below) -- otherwise a typoed
+        // key name looks indistinguishable from a stale pane ID.
         #expect(
             try await perform(.closePane(paneID: "missing"), to: socketURL)
                 == .failure(code: "pane-not-found")
@@ -96,6 +101,37 @@ struct ControlServerTests {
         #expect(
             try await perform(.read(paneID: "missing"), to: socketURL)
                 == .failure(code: "pane-not-found")
+        )
+    }
+
+    @Test("sendKey reports invalid-key for an unresolvable key name, even against a known pane")
+    func sendKeyReportsInvalidKeyForUnresolvableName() async throws {
+        let delegate = StubControlDelegate()
+        delegate.knownPaneIDs = ["pane-1"]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        // "enter" used to fail as "pane-not-found" even for a pane that
+        // exists, because RemoteKeyMapping.namedKeys only had "return" --
+        // key-resolution failure and pane-lookup failure collapsed into
+        // the same wire error. It must report its own code instead.
+        #expect(
+            try await perform(
+                .sendKey(
+                    paneID: "pane-1",
+                    key: "not-a-real-key",
+                    modifiers: []
+                ),
+                to: socketURL
+            ) == .failure(code: "invalid-key")
+        )
+
+        // "enter" is now a documented alias for "return" and must resolve.
+        #expect(
+            try await perform(
+                .sendKey(paneID: "pane-1", key: "enter", modifiers: []),
+                to: socketURL
+            ) == .ok
         )
     }
 
@@ -427,6 +463,91 @@ struct ControlServerTests {
         #expect(missingResponse == .failure(code: "job-not-found"))
     }
 
+    /// Reproduces the real bug end to end through the wire protocol: a
+    /// job's first run finishes, `agent send` delivers a follow-up, and a
+    /// second `agent wait --until completed` must track the *new* run
+    /// rather than resolving instantly against the already-terminal one.
+    /// `StubControlAgentDelegate` above can't exercise this -- it just
+    /// echoes back whatever `Result` the test preset, so it can't tell a
+    /// stale run from a fresh one. `FakeAgentJobDelegate` instead wraps a
+    /// real `AgentJobTracker` (the same type `AgentJobCoordinator` uses in
+    /// the app) so this test actually exercises `prepareForFollowUp`.
+    @Test("agent send rebinds a finished job so a follow-up wait doesn't resolve instantly")
+    func agentSendRebindsForFollowUpWait() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = FakeAgentJobDelegate()
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let firstRun = agentDelegate.addRun(kinds: [
+            (.started, Date()),
+            (.succeeded, Date()),
+        ])
+
+        let firstWait = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        guard case let .agentWaitResult(firstJob, firstTimedOut) = firstWait
+        else {
+            Issue.record("expected agentWaitResult, got \(firstWait)")
+            return
+        }
+        #expect(firstJob.state == .succeeded)
+        #expect(firstJob.runID == firstRun.id)
+        #expect(!firstTimedOut)
+
+        let sendResponse = try await perform(
+            .sendAgent(
+                jobID: AgentJobID(),
+                text: "one more thing",
+                pressEnter: true
+            ),
+            to: socketURL
+        )
+        #expect(sendResponse == .ok)
+
+        // No new run has appeared yet -- without the rebind, this would
+        // resolve immediately with the *old* job's `.succeeded` state
+        // instead of timing out at `.launching`.
+        let staleWait = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 1),
+            to: socketURL,
+            timeoutSeconds: 1
+        )
+        guard case let .agentWaitResult(staleJob, staleTimedOut) = staleWait
+        else {
+            Issue.record("expected agentWaitResult, got \(staleWait)")
+            return
+        }
+        #expect(staleJob.state == .launching)
+        #expect(staleTimedOut)
+
+        // Once the follow-up's real run appears, wait tracks that one.
+        let secondRun = agentDelegate.addRun(kinds: [
+            (.started, Date()),
+            (.succeeded, Date()),
+        ])
+        let secondWait = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .completed, timeoutSeconds: 5),
+            to: socketURL,
+            timeoutSeconds: 5
+        )
+        guard case let .agentWaitResult(secondJob, secondTimedOut) = secondWait
+        else {
+            Issue.record("expected agentWaitResult, got \(secondWait)")
+            return
+        }
+        #expect(secondJob.state == .succeeded)
+        #expect(secondJob.runID == secondRun.id)
+        #expect(secondJob.runID != firstJob.runID)
+        #expect(!secondTimedOut)
+    }
+
     // MARK: - Helpers
 
     private static func makeJob(
@@ -469,7 +590,7 @@ struct ControlServerTests {
 
     private func makeServer(
         delegate: StubControlDelegate,
-        agentDelegate: StubControlAgentDelegate? = nil
+        agentDelegate: ControlServerAgentDelegate? = nil
     ) async throws -> (ControlServer, URL) {
         // sockaddr_un.sun_path is only 104 bytes on Darwin, so the temp
         // directory's UUID component plus the socket filename has to stay
@@ -699,5 +820,110 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         closeAgentJobID jobID: AgentJobID
     ) -> Result<Void, AgentControlFailure> {
         closeResult
+    }
+}
+
+/// Backs `ControlServerAgentDelegate` with a real `AgentJobTracker`
+/// instead of canned `Result`s, so `agentSendRebindsForFollowUpWait` can
+/// exercise `AgentJobTracker.prepareForFollowUp` through the actual wire
+/// protocol -- see that test for why `StubControlAgentDelegate` can't.
+/// Ignores `jobID` throughout (single job per instance), same
+/// simplification `StubControlAgentDelegate` makes.
+@MainActor
+private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
+    private let paneID = TerminalSurfaceID()
+    private var tracker: AgentJobTracker
+    private var runs: [AgentRun] = []
+
+    init() {
+        tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: Date()
+        )
+    }
+
+    /// Appends a synthetic run for this delegate's pane/provider, built
+    /// by replaying the given event kinds through the real reducer --
+    /// mirrors `AgentJobTrackerTests.makeRun`.
+    @discardableResult
+    func addRun(kinds: [(AgentEventKind, Date)]) -> AgentRun {
+        let runID = AgentRunID()
+        let events = kinds.map { kind, date in
+            AgentEvent(
+                runID: runID,
+                surfaceID: paneID,
+                provider: .codex,
+                kind: kind,
+                occurredAt: date
+            )
+        }
+        let reduced = AgentEventReducer.reduce(events)
+        guard let run = reduced[runID] else {
+            fatalError("reducer did not produce a run for \(runID)")
+        }
+        runs.append(run)
+        return run
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentAnchorPaneID anchorPaneID: String,
+        direction: ControlSplitDirection,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy,
+        task: String,
+        label: String?
+    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        refreshedAgentJobSnapshotForJobID jobID: AgentJobID
+    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        tracker.reconcile(runs: runs, paneExists: true, now: Date())
+        return .success(tracker.snapshot)
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        agentResultContentForJobID jobID: AgentJobID
+    ) -> Result<(AgentJobSnapshot, ControlPaneContent), AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        sendAgentText text: String,
+        pressEnter: Bool,
+        toJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        tracker.reconcile(runs: runs, paneExists: true, now: Date())
+        // Mirrors AgentJobCoordinator.controlServer(_:sendAgentText:...):
+        // rebind before delivering the follow-up, using every run
+        // currently visible as the new baseline.
+        tracker.prepareForFollowUp(
+            knownRunIDs: Set(runs.map(\.id)),
+            now: Date()
+        )
+        return .success(())
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        focusAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        closeAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
     }
 }

@@ -521,6 +521,206 @@ struct AgentJobTrackerTests {
         #expect(tracker.state == .running)
     }
 
+    @Test("prepareForFollowUp rebinds a job whose bound run already succeeded")
+    func prepareForFollowUpRebindsAfterSuccess() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let firstRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [
+                (.started, base),
+                (.succeeded, base.addingTimeInterval(1)),
+            ]
+        )
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: base.addingTimeInterval(2)
+        )
+        #expect(tracker.state == .succeeded)
+        #expect(tracker.boundRunID == firstRun.id)
+
+        // `agent send` is about to deliver a follow-up; the only run
+        // visible for this pane right now is the one that just finished.
+        let rearmed = tracker.prepareForFollowUp(
+            knownRunIDs: [firstRun.id],
+            now: base.addingTimeInterval(3)
+        )
+        #expect(rearmed)
+        #expect(tracker.boundRunID == nil)
+        #expect(tracker.state == .launching)
+
+        // A brand new run for the same pane/provider shows up after the
+        // follow-up was delivered; it should bind even though the pane
+        // already produced one run before this call.
+        let secondRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.started, base.addingTimeInterval(4))]
+        )
+        tracker.reconcile(
+            runs: [firstRun, secondRun],
+            paneExists: true,
+            now: base.addingTimeInterval(5)
+        )
+        #expect(tracker.boundRunID == secondRun.id)
+        #expect(tracker.state == .running)
+    }
+
+    @Test("after prepareForFollowUp rebinds, the stale run in the new baseline never completes the job")
+    func prepareForFollowUpBaselineExcludesStaleRun() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let firstRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [
+                (.started, base),
+                (.failed, base.addingTimeInterval(1)),
+            ]
+        )
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: base.addingTimeInterval(2)
+        )
+        #expect(tracker.state == .failed)
+
+        tracker.prepareForFollowUp(
+            knownRunIDs: [firstRun.id],
+            now: base.addingTimeInterval(3)
+        )
+        #expect(tracker.state == .launching)
+
+        // Reconciling again against nothing but the stale, already-failed
+        // run must never re-bind to it or resurrect its terminal state --
+        // it's part of the new baseline now, exactly like a run that
+        // predated the job at spawn time.
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: base.addingTimeInterval(4)
+        )
+        #expect(tracker.boundRunID == nil)
+        #expect(tracker.state == .launching)
+    }
+
+    @Test("prepareForFollowUp is a no-op while the bound run is still active")
+    func prepareForFollowUpNoOpWhileRunning() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base
+        )
+        let run = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [(.started, base)]
+        )
+        tracker.reconcile(
+            runs: [run],
+            paneExists: true,
+            now: base.addingTimeInterval(1)
+        )
+        #expect(tracker.state == .running)
+        #expect(tracker.boundRunID == run.id)
+
+        let rearmed = tracker.prepareForFollowUp(
+            knownRunIDs: [run.id],
+            now: base.addingTimeInterval(2)
+        )
+        #expect(!rearmed)
+        #expect(tracker.boundRunID == run.id)
+        #expect(tracker.state == .running)
+
+        // Still bound to the same run: further updates to it keep flowing
+        // through as normal, undisturbed by the no-op follow-up prep.
+        let succeeded = makeRun(
+            runID: run.id,
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [
+                (.started, base),
+                (.succeeded, base.addingTimeInterval(3)),
+            ]
+        )
+        tracker.reconcile(
+            runs: [succeeded],
+            paneExists: true,
+            now: base.addingTimeInterval(4)
+        )
+        #expect(tracker.state == .succeeded)
+    }
+
+    @Test("prepareForFollowUp re-arms the launch deadline, failing the job if no new run appears")
+    func prepareForFollowUpRearmsLaunchDeadline() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID,
+            provider: .codex,
+            label: nil,
+            baselineRunIDs: [],
+            createdAt: base,
+            launchWindow: 30
+        )
+        let firstRun = makeRun(
+            surfaceID: paneID,
+            provider: .codex,
+            kinds: [
+                (.started, base),
+                (.succeeded, base.addingTimeInterval(1)),
+            ]
+        )
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: base.addingTimeInterval(2)
+        )
+        #expect(tracker.state == .succeeded)
+
+        let rebindAt = base.addingTimeInterval(100)
+        tracker.prepareForFollowUp(
+            knownRunIDs: [firstRun.id],
+            now: rebindAt,
+            launchWindow: 30
+        )
+        #expect(tracker.state == .launching)
+
+        // Just before the re-armed deadline (30s after the rebind, not
+        // after the job's original createdAt), nothing has bound yet.
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: rebindAt.addingTimeInterval(29)
+        )
+        #expect(tracker.state == .launching)
+
+        // Past the re-armed deadline with no new run observed: the job
+        // fails exactly as a fresh spawn would.
+        tracker.reconcile(
+            runs: [firstRun],
+            paneExists: true,
+            now: rebindAt.addingTimeInterval(30)
+        )
+        #expect(tracker.state == .launchFailed)
+    }
+
     // MARK: - Helpers
 
     /// Builds an `AgentRun` the same way production code does — by
