@@ -229,6 +229,7 @@ struct TabSidebarView: View {
             HStack(spacing: 8) {
                 Text(localizer[.tabs])
                     .font(.headline)
+                    .lineLimit(1)
                 Spacer(minLength: 8)
                 controls
             }
