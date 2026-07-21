@@ -2,6 +2,11 @@ import Dispatch
 import GhosttyAdapter
 import MyTTYCore
 
+/// `sendText`/`sendEnter` already match `RemoteInputDeliverable` — this
+/// just tells the type system so `PaneInputDeliveryQueue` can drive a real
+/// `GhosttySurfaceView` without knowing about it directly.
+extension GhosttySurfaceView: RemoteInputDeliverable {}
+
 /// Bridges the iOS remote's per-pane read/write surface: turning a pane's
 /// live terminal state into a `RemotePaneContent` snapshot, and delivering
 /// remote-typed text/key events back into the matching `GhosttySurfaceView`.
@@ -22,6 +27,10 @@ final class RemotePaneBridge {
     /// Fired when the remote's connection state changes — the controller
     /// uses this to update the sidebar's "remote connected" indicator.
     private let onConnectedChanged: (Bool) -> Void
+    /// Per-pane serialization for `deliverInput` — see
+    /// `PaneInputDeliveryQueue` for why a naive synchronous send plus a
+    /// delayed Enter isn't enough once a pane receives back-to-back calls.
+    private let inputQueue: PaneInputDeliveryQueue<GhosttySurfaceView>
 
     init(
         surface: @escaping (TerminalSurfaceID) -> GhosttySurfaceView?,
@@ -29,6 +38,10 @@ final class RemotePaneBridge {
     ) {
         self.surface = surface
         self.onConnectedChanged = onConnectedChanged
+        self.inputQueue = PaneInputDeliveryQueue(
+            enterDelay: Self.enterDeliveryDelay,
+            target: surface
+        )
     }
 
     func setConnected(_ connected: Bool) {
@@ -79,22 +92,14 @@ final class RemotePaneBridge {
         text: String,
         pressEnter: Bool
     ) -> Bool {
-        guard let surface = surface(paneID) else { return false }
-        surface.sendText(text)
-        if pressEnter {
-            // Send Enter as a separate event on a later runloop turn (see
-            // `enterDeliveryDelay`) so it isn't coalesced with the text
-            // burst. The weak capture means a pane closed within the
-            // delay window simply drops the keystroke instead of crashing;
-            // scheduling on the main queue in call order preserves
-            // per-pane ordering across successive `deliverInput` calls.
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + Self.enterDeliveryDelay
-            ) { [weak surface] in
-                surface?.sendEnter()
-            }
-        }
-        return true
+        // `false` still means "no such pane". `true` means the pane exists
+        // and the input was accepted for delivery — it may not have been
+        // sent synchronously: `inputQueue` defers text behind a pane's
+        // still-pending Enter (see `enterDeliveryDelay`) so a fast
+        // follow-up call can't overtake it and scramble the order the PTY
+        // sees. Callers that need "already delivered" can't read that off
+        // this return value.
+        inputQueue.deliver(paneID: paneID, text: text, pressEnter: pressEnter)
     }
 
     @discardableResult
