@@ -480,6 +480,37 @@ private struct ShellSettingsView: View {
                     .monospacedDigit()
                     .frame(width: 42, alignment: .trailing)
                 }
+
+                Toggle(
+                    localizer[.activePaneBorder],
+                    isOn: applicationBinding(\.activePaneBorderEnabled)
+                )
+                .toggleStyle(.switch)
+
+                if model.application.activePaneBorderEnabled {
+                    ColorPicker(
+                        localizer[.activePaneBorderColor],
+                        selection: applicationAccentColorBinding(
+                            \.activePaneBorderColorHex
+                        ),
+                        supportsOpacity: false
+                    )
+
+                    HStack {
+                        Text(localizer[.activePaneBorderWidth])
+                        Slider(
+                            value: applicationBinding(\.activePaneBorderWidth),
+                            in: 1...6,
+                            step: 0.5
+                        )
+                        Text(
+                            model.application.activePaneBorderWidth,
+                            format: .number.precision(.fractionLength(0...1))
+                        )
+                        .monospacedDigit()
+                        .frame(width: 42, alignment: .trailing)
+                    }
+                }
             }
 
             Section(localizer[.cursor]) {
@@ -556,10 +587,33 @@ private struct ShellSettingsView: View {
         _ keyPath: WritableKeyPath<TerminalPreferences, String>
     ) -> Binding<Color> {
         Binding(
-            get: { Color(nsColor: NSColor(hex: model.terminal[keyPath: keyPath])) },
+            get: {
+                Color(nsColor: NSColor(hexRGB: model.terminal[keyPath: keyPath]))
+            },
             set: { color in
                 guard let hex = NSColor(color).hexRGB else { return }
                 model.updateTerminal { $0[keyPath: keyPath] = hex }
+            }
+        )
+    }
+
+    /// Same as `colorBinding`, for application preferences whose empty
+    /// string means "follow the system accent color".
+    private func applicationAccentColorBinding(
+        _ keyPath: WritableKeyPath<ApplicationPreferences, String>
+    ) -> Binding<Color> {
+        Binding(
+            get: {
+                let hex = model.application[keyPath: keyPath]
+                return Color(
+                    nsColor: hex.isEmpty
+                        ? .controlAccentColor
+                        : NSColor(hexRGB: hex)
+                )
+            },
+            set: { color in
+                guard let hex = NSColor(color).hexRGB else { return }
+                model.updateApplication { $0[keyPath: keyPath] = hex }
             }
         )
     }
@@ -701,24 +755,3 @@ private struct KeyBindingRecorder: NSViewRepresentable {
     }
 }
 
-private extension NSColor {
-    convenience init(hex: String) {
-        let value = UInt64(hex, radix: 16) ?? 0
-        self.init(
-            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
-            green: CGFloat((value >> 8) & 0xFF) / 255,
-            blue: CGFloat(value & 0xFF) / 255,
-            alpha: 1
-        )
-    }
-
-    var hexRGB: String? {
-        guard let color = usingColorSpace(.sRGB) else { return nil }
-        return String(
-            format: "%02X%02X%02X",
-            Int((color.redComponent * 255).rounded()),
-            Int((color.greenComponent * 255).rounded()),
-            Int((color.blueComponent * 255).rounded())
-        )
-    }
-}

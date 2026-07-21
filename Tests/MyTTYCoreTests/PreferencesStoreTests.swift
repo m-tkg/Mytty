@@ -283,6 +283,9 @@ struct PreferencesStoreTests {
         #expect(preferences.agentSleepPreventionMode == .allowSleep)
         #expect(!preferences.attentionUnreadOnly)
         #expect(preferences.inactivePaneDimming == 0.32)
+        #expect(preferences.activePaneBorderEnabled)
+        #expect(preferences.activePaneBorderWidth == 2)
+        #expect(preferences.activePaneBorderColorHex.isEmpty)
         #expect(
             !CloseConfirmation.whenProcessRunning.requiresConfirmation(
                 hasRunningProcess: false
@@ -298,6 +301,70 @@ struct PreferencesStoreTests {
                 hasRunningProcess: false
             )
         )
+    }
+
+    @Test("round trips the active pane border and rejects malformed values")
+    func activePaneBorderPreferences() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        pane.active-border = "false"
+        pane.active-border-width = "3.5"
+        pane.active-border-color = "ff8800"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(!preferences.activePaneBorderEnabled)
+        #expect(preferences.activePaneBorderWidth == 3.5)
+        // Stored lower case, normalized on the way in.
+        #expect(preferences.activePaneBorderColorHex == "FF8800")
+
+        preferences.activePaneBorderEnabled = true
+        preferences.activePaneBorderWidth = 1
+        preferences.activePaneBorderColorHex = ""
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("pane.active-border = \"true\""))
+        #expect(contents.contains("pane.active-border-width = \"1\""))
+        #expect(contents.contains("pane.active-border-color = \"\""))
+
+        // An empty color means "follow the accent color" and survives a
+        // round trip.
+        let reloaded = try store.load(from: harness.appConfiguration)
+        #expect(reloaded.activePaneBorderColorHex.isEmpty)
+        #expect(reloaded.activePaneBorderWidth == 1)
+
+        var invalid = ApplicationPreferences()
+        invalid.activePaneBorderWidth = 100
+        #expect(throws: PreferencesStoreError.self) {
+            try store.save(invalid, to: harness.appConfiguration)
+        }
+        invalid = ApplicationPreferences()
+        invalid.activePaneBorderColorHex = "12345"
+        #expect(throws: PreferencesStoreError.self) {
+            try store.save(invalid, to: harness.appConfiguration)
+        }
+
+        for bad in ["pane.active-border-color = \"zzzzzz\"",
+                    "pane.active-border-width = \"0\"",
+                    "pane.active-border = \"sometimes\""] {
+            try bad.appending("\n").write(
+                to: harness.appConfiguration,
+                atomically: true,
+                encoding: .utf8
+            )
+            #expect(throws: PreferencesStoreError.self) {
+                try store.load(from: harness.appConfiguration)
+            }
+        }
     }
 
     @Test("loads and saves managed Ghostty settings without replacing unknown keys")

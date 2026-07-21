@@ -1,5 +1,29 @@
 import AppKit
 
+/// How the focused pane is outlined. `colorHex` is `RRGGBB`, or empty to
+/// follow the system accent color.
+struct PaneActiveBorderStyle: Equatable {
+    var width: CGFloat
+    var colorHex: String
+
+    static let hidden = PaneActiveBorderStyle(width: 0, colorHex: "")
+
+    var isVisible: Bool { width > 0 }
+
+    /// A lone pane is never outlined — with nothing to compare it against
+    /// the border is noise rather than a focus cue.
+    func effective(paneCount: Int) -> PaneActiveBorderStyle {
+        paneCount > 1 ? self : .hidden
+    }
+
+    @MainActor
+    var color: NSColor {
+        colorHex.isEmpty
+            ? .controlAccentColor
+            : NSColor(hexRGB: colorHex)
+    }
+}
+
 @MainActor
 final class PaneHostView: NSView {
     private let dimmingView = PaneDimmingView()
@@ -14,6 +38,17 @@ final class PaneHostView: NSView {
     var isFocused = false {
         didSet {
             dimmingView.isHidden = isFocused
+            updateBorder()
+        }
+    }
+
+    /// Outline drawn while this pane holds focus. Defaults to hidden; the
+    /// pane layout pushes the configured style in, the same way it pushes
+    /// the inactive-dimming amount.
+    var activeBorder: PaneActiveBorderStyle = .hidden {
+        didSet {
+            guard activeBorder != oldValue else { return }
+            updateBorder()
         }
     }
 
@@ -22,7 +57,7 @@ final class PaneHostView: NSView {
     var isSwapCandidate = false {
         didSet {
             guard isSwapCandidate != oldValue else { return }
-            updateSwapBorder()
+            updateBorder()
         }
     }
 
@@ -32,11 +67,13 @@ final class PaneHostView: NSView {
     var isSwapCursor = false {
         didSet {
             guard isSwapCursor != oldValue else { return }
-            updateSwapBorder()
+            updateBorder()
         }
     }
 
-    private func updateSwapBorder() {
+    /// Single owner of `layer.borderWidth`/`borderColor`: a pending swap
+    /// pick outranks the arrow-key cursor, which outranks the focus border.
+    private func updateBorder() {
         if isSwapCandidate {
             layer?.borderColor = NSColor.controlAccentColor.cgColor
             layer?.borderWidth = 3
@@ -44,9 +81,19 @@ final class PaneHostView: NSView {
             layer?.borderColor = NSColor.controlAccentColor
                 .withAlphaComponent(0.6).cgColor
             layer?.borderWidth = 2
+        } else if isFocused, activeBorder.isVisible {
+            layer?.borderColor = activeBorder.color.cgColor
+            layer?.borderWidth = activeBorder.width
         } else {
             layer?.borderWidth = 0
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // `borderColor` is a resolved CGColor, so dynamic colors — the
+        // accent color especially — have to be re-resolved by hand.
+        updateBorder()
     }
 
     var isDimmed: Bool { !dimmingView.isHidden }
@@ -54,6 +101,9 @@ final class PaneHostView: NSView {
         dimmingView.layer?.backgroundColor?.alpha ?? 0
     }
     var focusBorderWidth: CGFloat { layer?.borderWidth ?? 0 }
+    var focusBorderColor: NSColor? {
+        layer?.borderColor.flatMap { NSColor(cgColor: $0) }
+    }
     var keyToastText: String { keyToastView.stringValue }
     var isKeyToastVisible: Bool { !keyToastView.isHidden }
     var keyToastFrame: NSRect { keyToastView.frame }

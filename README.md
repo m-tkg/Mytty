@@ -24,7 +24,9 @@ The current release requires macOS 15 or later and Apple Silicon.
 - **Ghostty terminal engine:** libghostty rendering, native IME, themes, and
   configurable fonts, cursor, opacity, and appearance.
 - **Tabs and panes:** splits in four directions, drag-to-reorder tabs, pane
-  zoom, equalized layouts, and an all-panes switcher.
+  zoom, equalized layouts, and an all-panes switcher. In a split tab the
+  focused pane is outlined, with a configurable color and width, alongside
+  the dimming applied to the inactive ones.
 - **Agent-aware status and Attention Inbox:** active agent, session cost,
   quota meters, and a persistent inbox of approval, input, success, and
   failure events that jump straight to the pane that raised them.
