@@ -1,102 +1,17 @@
 import AppKit
+import MyTTYCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
 
-/// Prompt construction and output cleanup for the on-device one-liner
-/// composer. Kept separate from the model call so the text handling is
-/// testable without Foundation Models.
-enum OneLinerPrompt {
-    /// The on-device model is small, so the instructions carry explicit
-    /// decision rules (file contents vs file names was a repeated
-    /// misclassification) and few-shot examples — measured against the
-    /// plain zero-shot prompt, these turn wrong `find -name` answers for
-    /// content searches into the expected recursive grep, and turn
-    /// mangled answers for "matches X but not Y" tasks into a
-    /// `grep | grep -v` pipe. The example count is at the model's
-    /// capacity: adding a seventh example measurably corrupted answers
-    /// that were previously correct, so extend this prompt only with an
-    /// eval run over the existing cases.
-    static func instructions(language: ResolvedAppLanguage) -> String {
-        let languageLine =
-            switch language {
-            case .english:
-                "If you reply with a sentence, write it in English."
-            case .japanese:
-                "If you reply with a sentence, write it in Japanese."
-            }
-        return """
-        You write shell one-liners for macOS (zsh). Reply with exactly \
-        one command line and nothing else — no explanation, no code \
-        fences, no leading $.
-
-        Decision rules — read the task carefully:
-        - Searching file CONTENTS (the text inside files; 中身, 内容, \
-        ファイル内, 含まれている文字列): use grep recursively. NEVER use \
-        find -name for contents.
-        - Searching file NAMES (ファイル名): use find -name.
-        - Always single-quote search patterns. Search strings from the \
-        task are literal text — copy them exactly, never invent \
-        character classes.
-        - Only when the task EXCLUDES something (〜は含まない, \
-        〜を除く, "but not"), pipe into grep -v with the excluded \
-        string, as in the examples below. Otherwise never add grep -v.
-
-        Examples:
-        Task: ファイル名に log を含むファイルを探す
-        Reply: find . -type f -name '*log*'
-        Task: ファイルの中に TODO と書かれているファイルを探す
-        Reply: find . -type f -print0 | xargs -0 grep -l 'TODO'
-        Task: 「エラー」という文字列を含むファイルを一覧
-        Reply: find . -type f -print0 | xargs -0 grep -l 'エラー'
-        Task: list files larger than 100MB
-        Reply: find . -type f -size +100M
-        Task: foo で始まるが foobar は含まない行を検索
-        Reply: grep -r '^foo' . | grep -v 'foobar'
-        Task: warn を含むが warning は含まない行を検索
-        Reply: grep -r 'warn' . | grep -v 'warning'
-
-        If the task cannot reasonably be done in a single command line, \
-        reply instead with one short sentence saying that it cannot and \
-        why. \(languageLine)
-        """
-    }
-
-    static func prompt(request: String) -> String {
-        """
-        Task: \(request.trimmingCharacters(in: .whitespacesAndNewlines))
-        Reply:
-        """
-    }
-
-    /// Reduces a model response to one usable line. Model output is
-    /// untrusted: strip code fences, wrapping backticks, shell-prompt
-    /// prefixes, and control characters.
-    static func sanitize(_ raw: String) -> String? {
-        var lines = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map(String.init)
-        if lines.first?.hasPrefix("```") == true {
-            lines.removeFirst()
+extension ResolvedAppLanguage {
+    /// MyTTYCore's `OneLinerPrompt` only receives an already-resolved
+    /// language, mirroring `paneTeamPointerLanguage`.
+    var oneLinerLanguage: OneLinerLanguage {
+        switch self {
+        case .english: .english
+        case .japanese: .japanese
         }
-        if lines.last?.trimmingCharacters(in: .whitespaces) == "```" {
-            lines.removeLast()
-        }
-        guard var line = lines.first(where: {
-            !$0.trimmingCharacters(in: .whitespaces).isEmpty
-        }) else { return nil }
-        line.removeAll { $0.isASCII && ($0.asciiValue ?? 0) < 0x20 }
-        line = line.trimmingCharacters(in: .whitespaces)
-        for prefix in ["$ ", "% "] where line.hasPrefix(prefix) {
-            line = String(line.dropFirst(prefix.count))
-        }
-        while line.count >= 2, line.hasPrefix("`"), line.hasSuffix("`") {
-            line = String(line.dropFirst().dropLast())
-                .trimmingCharacters(in: .whitespaces)
-        }
-        line = line.trimmingCharacters(in: .whitespaces)
-        return line.isEmpty ? nil : line
     }
 }
 
@@ -122,16 +37,28 @@ enum OneLinerComposer {
     ) async -> String? {
         #if canImport(FoundationModels)
         guard isAvailable else { return nil }
+        // Default guardrails false-positive on harmless Japanese tasks
+        // ("1MB より大きいファイルを探す" throws "sensitive or unsafe
+        // content"); the reply is only ever copied by the user, never
+        // executed, so the permissive transform guardrails are the
+        // right trade-off.
         let session = LanguageModelSession(
-            instructions: OneLinerPrompt.instructions(language: language)
+            model: SystemLanguageModel(
+                guardrails: .permissiveContentTransformations
+            ),
+            instructions: OneLinerPrompt.instructions(
+                language: language.oneLinerLanguage
+            )
         )
-        // Greedy sampling keeps this precision task deterministic, and the
-        // token cap stops the occasional runaway generation on quoted
-        // Japanese input.
+        // Greedy sampling keeps this precision task deterministic — the
+        // deprecated `sampling:` label was silently ignored and sampled
+        // randomly; `samplingMode:` is the one that works. The token cap
+        // stops the occasional runaway generation on quoted Japanese
+        // input.
         guard let response = try? await session.respond(
             to: OneLinerPrompt.prompt(request: request),
             options: GenerationOptions(
-                sampling: .greedy,
+                samplingMode: .greedy,
                 maximumResponseTokens: 200
             )
         ) else { return nil }

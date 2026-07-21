@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 
-@testable import MyTTYApp
+@testable import MyTTYCore
 
-@Suite("One-liner composition")
-struct OneLinerCompositionTests {
+@Suite("One-liner prompt")
+struct OneLinerPromptTests {
     @Test("instructions pin the sentence language")
     func instructionsLanguage() {
         #expect(
@@ -34,17 +34,23 @@ struct OneLinerCompositionTests {
         )
     }
 
-    @Test("instructions teach exclusion via grep -v with examples")
+    @Test("instructions teach exclusion via grep -v with an example")
     func instructionsCarryExclusionRules() {
         let instructions = OneLinerPrompt.instructions(language: .japanese)
         #expect(instructions.contains("never invent character classes"))
-        #expect(instructions.contains("Otherwise never add grep -v"))
+        #expect(instructions.contains("Otherwise never use grep -v"))
         #expect(
             instructions.contains("grep -r '^foo' . | grep -v 'foobar'")
         )
-        #expect(
-            instructions.contains("grep -r 'warn' . | grep -v 'warning'")
-        )
+    }
+
+    @Test("instructions teach named-file operations and find predicates")
+    func instructionsCarryFileScopedRules() {
+        let instructions = OneLinerPrompt.instructions(language: .japanese)
+        #expect(instructions.contains("run the command on that"))
+        #expect(instructions.contains("wc -l < data.txt"))
+        #expect(instructions.contains("find . -type f -mtime -3"))
+        #expect(instructions.contains("-empty"))
     }
 
     @Test("sanitize keeps a plain command unchanged")
@@ -69,6 +75,7 @@ struct OneLinerCompositionTests {
         #expect(OneLinerPrompt.sanitize("$ ls") == "ls")
         #expect(OneLinerPrompt.sanitize("% ls") == "ls")
         #expect(OneLinerPrompt.sanitize("`ls -la`") == "ls -la")
+        #expect(OneLinerPrompt.sanitize("Reply: ls -la") == "ls -la")
     }
 
     @Test("sanitize keeps a cannot-do sentence intact")
