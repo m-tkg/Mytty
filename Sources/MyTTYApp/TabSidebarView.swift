@@ -43,9 +43,44 @@ enum TabReorderPlan {
         placement: MyTTYTabPlacement,
         orderedIDs: [TabID]
     ) -> TabID? {
-        guard let sourceIndex = orderedIDs.firstIndex(of: sourceID) else {
-            return nil
-        }
+        guard let sourceIndex = orderedIDs.firstIndex(of: sourceID),
+              let destination = destinationIndex(
+                sourceIndex: sourceIndex,
+                translation: translation,
+                placement: placement,
+                orderedIDs: orderedIDs
+              )
+        else { return nil }
+        return orderedIDs[destination]
+    }
+
+    /// The insertion point (`model.rows` index) a live drag currently
+    /// implies: `0` is before the first row, `orderedIDs.count` is after
+    /// the last. Nil while the drag hasn't moved far enough to change
+    /// anything, matching `targetID`.
+    static func insertionIndex(
+        for sourceID: TabID,
+        translation: CGSize,
+        placement: MyTTYTabPlacement,
+        orderedIDs: [TabID]
+    ) -> Int? {
+        guard let sourceIndex = orderedIDs.firstIndex(of: sourceID),
+              let destination = destinationIndex(
+                sourceIndex: sourceIndex,
+                translation: translation,
+                placement: placement,
+                orderedIDs: orderedIDs
+              )
+        else { return nil }
+        return destination > sourceIndex ? destination + 1 : destination
+    }
+
+    private static func destinationIndex(
+        sourceIndex: Int,
+        translation: CGSize,
+        placement: MyTTYTabPlacement,
+        orderedIDs: [TabID]
+    ) -> Int? {
         let distance: CGFloat
         let itemStride: CGFloat
         switch placement {
@@ -63,7 +98,7 @@ enum TabReorderPlan {
             orderedIDs.index(before: orderedIDs.endIndex)
         )
         guard destination != sourceIndex else { return nil }
-        return orderedIDs[destination]
+        return destination
     }
 }
 
@@ -101,6 +136,11 @@ final class TabSidebarModel: ObservableObject {
     @Published var isRemoteAccessConnected = false
     @Published var isAttentionPresented = false
     @Published var isTabDropTargeted = false
+    /// The insertion point a drag (reorder or cross-window drop) currently
+    /// implies, as an index into `rows`: `0` is before the first row,
+    /// `rows.count` is after the last. Nil while nothing is being dragged
+    /// over the sidebar, which hides the drop-indicator line.
+    @Published var dropInsertionIndex: Int?
     var promotedDragTabID: TabID?
 
     func canMoveUp(_ id: TabID) -> Bool {
@@ -411,6 +451,7 @@ struct TabSidebarView: View {
                 presentation: dragPresentation
             )
         )
+        .modifier(dropIndicator(for: row))
         .onDrop(
             of: TabDragPasteboard.acceptedTypes,
             delegate: rowDropDelegate(for: row)
@@ -506,9 +547,23 @@ struct TabSidebarView: View {
                 presentation: dragPresentation
             )
         )
+        .modifier(dropIndicator(for: row))
         .onDrop(
             of: TabDragPasteboard.acceptedTypes,
             delegate: rowDropDelegate(for: row)
+        )
+    }
+
+    private func dropIndicator(
+        for row: TabSidebarRow
+    ) -> TabDropIndicatorModifier {
+        let index = model.rows.firstIndex(where: { $0.id == row.id }) ?? 0
+        return TabDropIndicatorModifier(
+            index: index,
+            isLastRow: index == model.rows.count - 1,
+            placement: placement,
+            dropInsertionIndex: model.dropInsertionIndex,
+            rowCount: model.rows.count
         )
     }
 
@@ -564,6 +619,7 @@ struct TabSidebarView: View {
                 ) {
                     model.promotedDragTabID = row.id
                     dragPresentation = nil
+                    model.dropInsertionIndex = nil
                     onDetachDrag(row.id)
                     return
                 }
@@ -571,9 +627,16 @@ struct TabSidebarView: View {
                     tabID: row.id,
                     translation: value.translation
                 )
+                model.dropInsertionIndex = TabReorderPlan.insertionIndex(
+                    for: row.id,
+                    translation: value.translation,
+                    placement: placement,
+                    orderedIDs: model.rows.map(\.id)
+                )
             }
             .onEnded { value in
                 dragPresentation = nil
+                model.dropInsertionIndex = nil
                 guard model.promotedDragTabID == nil else { return }
                 guard let targetID = TabReorderPlan.targetID(
                     for: row.id,
@@ -684,6 +747,72 @@ private struct TabDragPresentationModifier: ViewModifier {
     }
 }
 
+/// Draws the blue insertion line a drag (either an in-window reorder or a
+/// cross-window drop) implies, without disturbing row layout: the line is
+/// an overlay, never an inserted spacer, so rows never shift to make room
+/// for it.
+private struct TabDropIndicatorModifier: ViewModifier {
+    /// This row's position among `model.rows`.
+    let index: Int
+    let isLastRow: Bool
+    let placement: MyTTYTabPlacement
+    let dropInsertionIndex: Int?
+    let rowCount: Int
+
+    private static let thickness: CGFloat = 3
+    private static let cornerRadius: CGFloat = 1.5
+    /// Matches the `LazyVStack`/`LazyHStack` `spacing` the sidebar lays
+    /// tab rows out with, so the line renders centered in the gap between
+    /// two rows instead of overlapping either one.
+    private static let rowSpacing: CGFloat = 3
+    private static let edgeShift = rowSpacing / 2 + thickness / 2
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: leadingEdge) {
+                if dropInsertionIndex == index {
+                    line.offset(leadingOffset)
+                }
+            }
+            .overlay(alignment: trailingEdge) {
+                if isLastRow, dropInsertionIndex == rowCount {
+                    line.offset(trailingOffset)
+                }
+            }
+    }
+
+    private var line: some View {
+        RoundedRectangle(cornerRadius: Self.cornerRadius)
+            .fill(Color.accentColor)
+            .frame(
+                width: placement.isVertical ? nil : Self.thickness,
+                height: placement.isVertical ? Self.thickness : nil
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var leadingEdge: Alignment {
+        placement.isVertical ? .top : .leading
+    }
+
+    private var trailingEdge: Alignment {
+        placement.isVertical ? .bottom : .trailing
+    }
+
+    private var leadingOffset: CGSize {
+        placement.isVertical
+            ? CGSize(width: 0, height: -Self.edgeShift)
+            : CGSize(width: -Self.edgeShift, height: 0)
+    }
+
+    private var trailingOffset: CGSize {
+        placement.isVertical
+            ? CGSize(width: 0, height: Self.edgeShift)
+            : CGSize(width: Self.edgeShift, height: 0)
+    }
+}
+
 struct TabRowDropDelegate: DropDelegate {
     let rowIndex: Int
     let rowSize: CGSize
@@ -702,14 +831,22 @@ struct TabRowDropDelegate: DropDelegate {
 
     func dropExited(info: DropInfo) {
         model.isTabDropTargeted = false
+        model.dropInsertionIndex = nil
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        model.dropInsertionIndex = TabDropInsertionPlan.insertionIndex(
+            rowIndex: rowIndex,
+            location: info.location,
+            rowSize: rowSize,
+            placement: placement
+        )
+        return DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         model.isTabDropTargeted = false
+        model.dropInsertionIndex = nil
         onDrop(
             TabDropInsertionPlan.insertionIndex(
                 rowIndex: rowIndex,
@@ -733,18 +870,22 @@ struct TabAreaDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         model.isTabDropTargeted = true
+        model.dropInsertionIndex = model.rows.count
     }
 
     func dropExited(info: DropInfo) {
         model.isTabDropTargeted = false
+        model.dropInsertionIndex = nil
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        model.dropInsertionIndex = model.rows.count
+        return DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         model.isTabDropTargeted = false
+        model.dropInsertionIndex = nil
         onDrop(model.rows.count)
         return true
     }

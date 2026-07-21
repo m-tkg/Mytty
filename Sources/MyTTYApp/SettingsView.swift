@@ -297,6 +297,17 @@ private struct GeneralSettingsView: View {
                         .tag(MyTTYTabPlacement.bottom)
                 }
                 .pickerStyle(.segmented)
+
+                Picker(
+                    localizer[.newTabPosition],
+                    selection: applicationBinding(\.newTabPosition)
+                ) {
+                    Text(localizer[.newTabPositionEnd])
+                        .tag(NewTabPosition.end)
+                    Text(localizer[.newTabPositionAfterCurrent])
+                        .tag(NewTabPosition.afterCurrent)
+                }
+                .pickerStyle(.menu)
             }
 
             Section(localizer[.input]) {

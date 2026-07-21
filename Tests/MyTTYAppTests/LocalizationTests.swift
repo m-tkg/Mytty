@@ -70,6 +70,12 @@ struct LocalizationTests {
                 == "Show pressed keys below cursor"
         )
         #expect(english[.stopRecording] == "Stop Recording")
+        #expect(english[.newTabPosition] == "New Tab Position")
+        #expect(japanese[.newTabPosition] == "新規タブの位置")
+        #expect(english[.newTabPositionEnd] == "At the End")
+        #expect(japanese[.newTabPositionEnd] == "末尾")
+        #expect(english[.newTabPositionAfterCurrent] == "After Current Tab")
+        #expect(japanese[.newTabPositionAfterCurrent] == "現在のタブの次")
         #expect(english[.autoNameTab] == "Auto-Name")
         #expect(japanese[.autoNameTab] == "自動で命名")
         #expect(english.commandTitle(.explainPane) == "Explain Pane")

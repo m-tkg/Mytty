@@ -32,6 +32,59 @@ struct TabDragAndDropTests {
         ))
     }
 
+    @Test("derives a live reorder drag's insertion index from its translation")
+    func reorderInsertionIndex() {
+        let ids = (0..<5).map { _ in TabID() }
+
+        // Dragging tab 0 past tab 2 (down two slots) lands after tab 2's
+        // original position.
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[0],
+            translation: CGSize(width: 0, height: 53 * 2),
+            placement: .left,
+            orderedIDs: ids
+        ) == 3)
+
+        // Dragging tab 4 up two slots lands before tab 2's original
+        // position.
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[4],
+            translation: CGSize(width: 0, height: -53 * 2),
+            placement: .left,
+            orderedIDs: ids
+        ) == 2)
+
+        // A drag too small to change the order reports no insertion point.
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[2],
+            translation: CGSize(width: 0, height: 10),
+            placement: .left,
+            orderedIDs: ids
+        ) == nil)
+
+        // Overshooting past either end clamps to the first/last slot.
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[0],
+            translation: CGSize(width: 0, height: 53 * 20),
+            placement: .left,
+            orderedIDs: ids
+        ) == 5)
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[4],
+            translation: CGSize(width: 0, height: -53 * 20),
+            placement: .left,
+            orderedIDs: ids
+        ) == 0)
+
+        // Horizontal placements use the wider item stride.
+        #expect(TabReorderPlan.insertionIndex(
+            for: ids[0],
+            translation: CGSize(width: 193, height: 0),
+            placement: .top,
+            orderedIDs: ids
+        ) == 2)
+    }
+
     @Test("maps a drop on a row to an insertion index by row half")
     func dropInsertionIndex() {
         let verticalRow = CGSize(width: 208, height: 50)

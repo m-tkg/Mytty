@@ -20,6 +20,11 @@ public enum MyTTYTabPlacement: String, CaseIterable, Equatable, Sendable {
     }
 }
 
+public enum NewTabPosition: String, CaseIterable, Equatable, Sendable {
+    case end
+    case afterCurrent = "after-current"
+}
+
 public enum AppLanguage: String, CaseIterable, Equatable, Sendable {
     case systemDefault = "system-default"
     case english
@@ -61,6 +66,7 @@ public enum AgentSleepPreventionMode: String, CaseIterable, Equatable, Sendable 
 
 public struct ApplicationPreferences: Equatable, Sendable {
     public var tabPlacement: MyTTYTabPlacement
+    public var newTabPosition: NewTabPosition
     public var keyBindings: [MyTTYCommand: MyTTYKeyBinding]
     public var language: AppLanguage
     public var launchBehavior: LaunchBehavior
@@ -98,6 +104,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
 
     public init(
         tabPlacement: MyTTYTabPlacement = .left,
+        newTabPosition: NewTabPosition = .end,
         keyBindings: [MyTTYCommand: MyTTYKeyBinding]
             = MyTTYCommand.defaultKeyBindings,
         language: AppLanguage = .systemDefault,
@@ -121,6 +128,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         activePaneBorderColorHex: String = ""
     ) {
         self.tabPlacement = tabPlacement
+        self.newTabPosition = newTabPosition
         self.keyBindings = keyBindings
         self.language = language
         self.launchBehavior = launchBehavior
@@ -222,6 +230,7 @@ public struct ApplicationPreferencesStore {
     private static let managedKeys = Set(
         [
             "tab-position",
+            "new-tab-position",
             "language",
             "on-launch",
             "confirmation.close-window",
@@ -267,6 +276,12 @@ public struct ApplicationPreferencesStore {
                 )
             }
             preferences.tabPlacement = placement
+        }
+        if let value = document.lastValue(for: "new-tab-position") {
+            guard let position = NewTabPosition(rawValue: value) else {
+                throw invalid(key: "new-tab-position", value: value)
+            }
+            preferences.newTabPosition = position
         }
         if let value = document.lastValue(for: "language") {
             guard let language = AppLanguage(rawValue: value) else {
@@ -469,6 +484,7 @@ public struct ApplicationPreferencesStore {
         )
         var managed = [
             "tab-position = \(quoted(preferences.tabPlacement.rawValue))",
+            "new-tab-position = \(quoted(preferences.newTabPosition.rawValue))",
             "language = \(quoted(preferences.language.rawValue))",
             "on-launch = \(quoted(preferences.launchBehavior.rawValue))",
             "confirmation.close-window = \(quoted(preferences.closeWindowConfirmation.rawValue))",

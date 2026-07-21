@@ -12,6 +12,7 @@ struct PreferencesStoreTests {
         try """
         analytics = false
         tab-position = "right"
+        new-tab-position = "after-current"
         """.appending("\n").write(
             to: harness.appConfiguration,
             atomically: true,
@@ -21,8 +22,10 @@ struct PreferencesStoreTests {
 
         var preferences = try store.load(from: harness.appConfiguration)
         #expect(preferences.tabPlacement == .right)
+        #expect(preferences.newTabPosition == .afterCurrent)
 
         preferences.tabPlacement = .bottom
+        preferences.newTabPosition = .end
         try store.save(preferences, to: harness.appConfiguration)
         let contents = try String(
             contentsOf: harness.appConfiguration,
@@ -31,8 +34,27 @@ struct PreferencesStoreTests {
 
         #expect(contents.contains("analytics = false"))
         #expect(contents.contains("tab-position = \"bottom\""))
-        #expect(contents.components(separatedBy: "tab-position").count == 2)
+        #expect(contents.contains("new-tab-position = \"end\""))
+        #expect(contents.components(separatedBy: "tab-position").count == 3)
         #expect(try store.load(from: harness.appConfiguration) == preferences)
+    }
+
+    @Test("rejects an unrecognized new tab position")
+    func invalidNewTabPosition() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        new-tab-position = "middle"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = ApplicationPreferencesStore()
+
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
     }
 
     @Test("persists key binding overrides and explicit removal")
