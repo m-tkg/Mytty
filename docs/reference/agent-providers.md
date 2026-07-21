@@ -50,27 +50,33 @@ toggle was clicked. A hand-edited or partially removed installation
 shows **Needs Repair**.
 
 **Teach agents about Mytty orchestration** (Settings > Orchestration, on by
-default) writes
-a second, independent artifact for the two providers where a global pointer
-location is known:
+default) writes a short reference into a second, independent artifact for
+the two providers where a global pointer location is known:
 
 | Provider | File | What gets written |
 | --- | --- | --- |
-| Claude Code | `~/.claude/skills/mytty-panes/SKILL.md` | A user skill, entirely owned by Mytty |
-| Codex | `~/.codex/AGENTS.md` | A `<!-- mytty:pane-team:begin -->` / `:end` managed block; everything outside it is untouched |
+| Claude Code | `~/.claude/skills/mytty-panes/SKILL.md` | A user skill, entirely owned by Mytty; body is just a few lines of reference |
+| Codex | `~/.codex/AGENTS.md` | A `<!-- mytty:pane-team:begin -->` / `:end` managed block; everything outside it is untouched; body is just a few lines of reference |
 
-Both point the provider at `mytty-ctl guide` rather than duplicating its
-contents, so they stay accurate across Mytty updates without needing their
-own repair logic beyond rewriting the block/file to match the current
-build. Cursor, OpenCode, and Antigravity are not covered: no documented
+Neither embeds the actual usage text (the environment variables, the
+split/send/wait/read flow, per-provider launch flags). Instead, Mytty
+writes that to `~/Library/Application Support/mytty/mytty-ctl.md` on
+every launch (`ControlCommandLineParser.paneTeamGuide`, the same
+English-only text `mytty-ctl guide` prints). Both SKILL.md and the
+AGENTS.md block just point at that file's absolute path rather than
+duplicating its contents, so when a Mytty update changes the usage text
+only `mytty-ctl.md` needs rewriting -- the two reference files stay
+accurate without their own repair beyond keeping that path current.
+Cursor, OpenCode, and Antigravity are not covered: no documented
 global-instruction location has been confirmed for them.
 
-The prose that gets written follows Settings > General's language setting
-(English or Japanese). Resolving `AppLanguage.systemDefault` stays the app
-layer's job -- MyTTYCore only ever receives an already-resolved language.
-Switching the setting rewrites any already-installed pointer to match on
-the next application preference change
-(`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`).
+The reference prose itself follows Settings > General's language setting
+(English or Japanese); `mytty-ctl.md`'s body (`paneTeamGuide`) is English
+only and unaffected by that setting. Resolving `AppLanguage.systemDefault`
+stays the app layer's job -- MyTTYCore only ever receives an
+already-resolved language. Switching the setting rewrites any
+already-installed pointer to match on the next application preference
+change (`AgentIntegrationSettingsModel.repairInstalledIntegrations(language:)`).
 The managed block's `<!-- mytty:pane-team:begin -->` / `:end` markers and
 the skill's `name: mytty-panes` stay the same regardless of language.
 
