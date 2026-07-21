@@ -83,6 +83,66 @@ struct AgentIntegrationSettingsModelTests {
         #expect(model.state(for: .cursor).status == .installed)
     }
 
+    @Test("defaults the pane-team pointer toggle on before any provider is installed")
+    @MainActor
+    func paneTeamPointerDefaultsOn() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .notInstalled,
+            .claudeCode: .notInstalled,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        let model = AgentIntegrationSettingsModel(installer: installer)
+
+        #expect(model.paneTeamPointerEnabled == true)
+    }
+
+    @Test("installing a supported provider also installs its pane-team pointer by default")
+    @MainActor
+    func paneTeamPointerFollowsProviderInstall() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .notInstalled,
+            .claudeCode: .notInstalled,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        let model = AgentIntegrationSettingsModel(installer: installer)
+
+        model.setInstalled(true, for: .claudeCode)
+
+        #expect(installer.pointerInstalled == [.claudeCode])
+        #expect(model.paneTeamPointerEnabled == true)
+
+        model.setInstalled(false, for: .claudeCode)
+
+        #expect(installer.pointerRemoved == [.claudeCode])
+    }
+
+    @Test("toggling the pane-team pointer only touches installed, supported providers")
+    @MainActor
+    func paneTeamPointerToggle() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .installed,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        let model = AgentIntegrationSettingsModel(installer: installer)
+
+        model.setPaneTeamPointerEnabled(false)
+
+        #expect(Set(installer.pointerRemoved) == [.codex, .claudeCode])
+        #expect(model.paneTeamPointerEnabled == false)
+
+        model.setPaneTeamPointerEnabled(true)
+
+        #expect(Set(installer.pointerInstalled) == [.codex, .claudeCode])
+        #expect(model.paneTeamPointerEnabled == true)
+    }
+
     @Test("keeps a provider error visible without changing its state")
     @MainActor
     func actionError() {
@@ -109,6 +169,10 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
     var removed: [AgentProvider] = []
     var installError: AgentIntegrationInstallerError?
 
+    var pointerStatuses: [AgentProvider: AgentIntegrationStatus] = [:]
+    var pointerInstalled: [AgentProvider] = []
+    var pointerRemoved: [AgentProvider] = []
+
     init(statuses: [AgentProvider: AgentIntegrationStatus]) {
         self.statuses = statuses
     }
@@ -126,5 +190,21 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
     func remove(_ provider: AgentProvider) throws {
         removed.append(provider)
         statuses[provider] = .notInstalled
+    }
+
+    func paneTeamPointerStatus(
+        for provider: AgentProvider
+    ) throws -> AgentIntegrationStatus {
+        pointerStatuses[provider] ?? .notInstalled
+    }
+
+    func installPaneTeamPointer(_ provider: AgentProvider) throws {
+        pointerInstalled.append(provider)
+        pointerStatuses[provider] = .installed
+    }
+
+    func removePaneTeamPointer(_ provider: AgentProvider) throws {
+        pointerRemoved.append(provider)
+        pointerStatuses[provider] = .notInstalled
     }
 }

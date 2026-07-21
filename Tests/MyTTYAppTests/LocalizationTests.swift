@@ -198,6 +198,14 @@ struct LocalizationTests {
             english[.hookHelperUnavailable]
                 == "Hook helper is unavailable"
         )
+        #expect(
+            english[.teachPaneTeamPointers]
+                == "Teach agents about pane teams"
+        )
+        #expect(
+            english[.teachPaneTeamPointersDescription]
+                == "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
+        )
 
         #expect(japanese[.general] == "一般")
         #expect(japanese[.window] == "ウィンドウ")
@@ -274,6 +282,14 @@ struct LocalizationTests {
         #expect(
             japanese[.unableToUpdateIntegration]
                 == "Agent 連携を更新できませんでした"
+        )
+        #expect(
+            japanese[.teachPaneTeamPointers]
+                == "Agent にペインチームの使い方を教える"
+        )
+        #expect(
+            japanese[.teachPaneTeamPointersDescription]
+                == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
         )
     }
 }
