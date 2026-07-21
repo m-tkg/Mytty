@@ -194,6 +194,16 @@ struct OrchestrationSettingsView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
 
+            Text(
+                String(
+                    format: localizer[.orchestrationPointerGuideMarkdownFormat],
+                    model.guideMarkdownURL.path
+                )
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
             ForEach(
                 AgentIntegrationInstaller.paneTeamPointerProviders,
                 id: \.self
