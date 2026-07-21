@@ -54,6 +54,20 @@ struct LocalizationTests {
         #expect(english[.defaultTerminal] == "Default Terminal")
         #expect(english[.makeDefaultTerminal] == "Make Mytty Default")
         #expect(english[.defaultTerminalActive] == "Mytty is the default terminal.")
+        #expect(english[.commandLineTool] == "Command Line Tool")
+        #expect(english[.installCommandLineTool] == "Install to PATH")
+        #expect(english[.commandLineToolInstalled] == "%@ is on your PATH.")
+        #expect(
+            english[.commandLineToolConflict]
+                == "Something else already exists at ~/.local/bin/%@. Remove it, then try again."
+        )
+        #expect(
+            english[.commandLineToolInstallFailed] == "Couldn't install %@."
+        )
+        #expect(
+            english[.commandLineToolPathHint]
+                == "~/.local/bin isn't on your PATH yet. Add this to your shell profile: %@"
+        )
         #expect(english[.openOnGitHub] == "Open on GitHub")
         #expect(english[.copyLink] == "Copy link")
         #expect(english[.copy] == "Copy")
@@ -246,6 +260,20 @@ struct LocalizationTests {
         #expect(japanese[.defaultTerminal] == "デフォルトターミナル")
         #expect(japanese[.makeDefaultTerminal] == "Mytty をデフォルトにする")
         #expect(japanese[.defaultTerminalActive] == "Mytty はデフォルトターミナルです。")
+        #expect(japanese[.commandLineTool] == "コマンドラインツール")
+        #expect(japanese[.installCommandLineTool] == "PATH にインストール")
+        #expect(japanese[.commandLineToolInstalled] == "%@ が PATH に追加されています。")
+        #expect(
+            japanese[.commandLineToolConflict]
+                == "~/.local/bin/%@ に別のものが存在します。削除してからもう一度お試しください。"
+        )
+        #expect(
+            japanese[.commandLineToolInstallFailed] == "%@ をインストールできませんでした。"
+        )
+        #expect(
+            japanese[.commandLineToolPathHint]
+                == "~/.local/bin がまだ PATH に含まれていません。シェルの設定ファイルに次の行を追加してください: %@"
+        )
         #expect(japanese[.openOnGitHub] == "GitHub で開く")
         #expect(japanese[.copyLink] == "リンクをコピー")
         #expect(japanese[.copy] == "コピー")

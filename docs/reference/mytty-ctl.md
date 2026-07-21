@@ -22,24 +22,47 @@ Source: `Sources/MyTTYCore/ControlProtocol.swift`,
 ## Environment variables
 
 Every pane Mytty opens gets these three variables set automatically
-(`AgentEventServer.environment(for:)`), so no setup is required before
-calling `mytty-ctl` from inside a pane:
+(`AgentEventServer.environment(for:)`), which also adds `mytty-ctl`'s
+directory to `PATH`, so no setup is required before calling `mytty-ctl`
+by name from inside a pane:
 
 | Variable | Meaning |
 | --- | --- |
 | `MYTTY_CONTROL_SOCKET` | Absolute path of the Unix socket `mytty-ctl` connects to |
-| `MYTTY_CTL_BIN` | Absolute path of the `mytty-ctl` binary (no `PATH` entry required) |
+| `MYTTY_CTL_BIN` | Absolute path of the `mytty-ctl` binary (for when invoking it by name isn't reliable) |
 | `MYTTY_SURFACE_ID` | This pane's own pane ID, usable as the "self" pane in commands |
 
 ```bash
-"$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree
+mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree
 ```
 
-If `mytty-ctl` is on `PATH`, invoking it by name works the same way. A
-debug build (`Mytty Dev`) and a release build each expose their own
+A debug build (`Mytty Dev`) and a release build each expose their own
 socket under separate `~/.config/mytty(-dev)` directories.
 `mytty-ctl` itself is unaware of which one it is talking to; that is
 entirely determined by which pane's environment it inherited.
+
+## Using mytty-ctl outside Mytty
+
+The `PATH` entry above only covers panes Mytty itself opened. To call
+`mytty-ctl` from somewhere else — another terminal app, a script — use
+the "Install to PATH" button in Settings > General. It symlinks the
+installed binary into `~/.local/bin`, with no admin prompt. If something
+else already sits at that name (a link pointing elsewhere, or a real
+file), the button reports a failure instead of silently overwriting it.
+
+If `~/.local/bin` isn't already on your shell's `PATH`, the button shows
+a line to add after installing:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add that to your shell profile (`.zshrc` or similar) and open a new
+shell, or re-source it, and `mytty-ctl` resolves by name.
+
+A development build (Mytty Dev) installs under a different name,
+`~/.local/bin/mytty-ctl-dev`, so it never takes over the release
+build's link.
 
 ## Exit status and output
 

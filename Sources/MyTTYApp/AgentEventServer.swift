@@ -10,10 +10,13 @@ final class AgentEventServer {
         AgentHookBridge.controlSocketEnvironmentKey
     static let controlExecutableEnvironmentKey =
         AgentHookBridge.controlExecutableEnvironmentKey
+    static let searchPathEnvironmentKey =
+        AgentHookBridge.searchPathEnvironmentKey
 
     private let socketURL: URL
     private let aiControlSocketURL: URL
     private let aiControlExecutableURL: URL
+    private let inheritedSearchPath: String?
     private let onEvent: (AgentEvent) throws -> Bool
     private let onError: (Error) -> Void
 
@@ -24,12 +27,21 @@ final class AgentEventServer {
         socketURL: URL,
         aiControlSocketURL: URL,
         aiControlExecutableURL: URL,
+        // Defaulted (not hardcoded) so every pane's PATH keeps whatever
+        // this Mytty process itself inherited — same base Ghostty's own
+        // core starts from (`internal_os.getEnvMap()` in
+        // `Vendor/ghostty/src/apprt/embedded.zig`) — plus the directory
+        // holding `mytty-ctl`. Injectable so tests don't depend on the
+        // developer machine's real PATH.
+        inheritedSearchPath: String? =
+            ProcessInfo.processInfo.environment["PATH"],
         onEvent: @escaping (AgentEvent) throws -> Bool,
         onError: @escaping (Error) -> Void
     ) {
         self.socketURL = socketURL
         self.aiControlSocketURL = aiControlSocketURL
         self.aiControlExecutableURL = aiControlExecutableURL
+        self.inheritedSearchPath = inheritedSearchPath
         self.onEvent = onEvent
         self.onError = onError
     }
@@ -74,6 +86,11 @@ final class AgentEventServer {
             Self.capabilityEnvironmentKey: capability,
             Self.controlSocketEnvironmentKey: aiControlSocketURL.path,
             Self.controlExecutableEnvironmentKey: aiControlExecutableURL.path,
+            Self.searchPathEnvironmentKey: AgentHookBridge.paneSearchPath(
+                appending: aiControlExecutableURL
+                    .deletingLastPathComponent().path,
+                to: inheritedSearchPath
+            ),
         ]
     }
 

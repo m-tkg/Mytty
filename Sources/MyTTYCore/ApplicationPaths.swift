@@ -17,6 +17,16 @@ public enum ApplicationPathProfile: Sendable {
         case .development: "com.m-tkg.mytty.dev"
         }
     }
+
+    /// The name to use when symlinking `mytty-ctl` onto a user's `PATH`
+    /// (e.g. into `~/.local/bin`). Development builds get a distinct name
+    /// so installing Mytty Dev's link never steals the release build's.
+    public var commandLineToolName: String {
+        switch self {
+        case .release: "mytty-ctl"
+        case .development: "mytty-ctl-dev"
+        }
+    }
 }
 
 public struct ApplicationPaths: Sendable {

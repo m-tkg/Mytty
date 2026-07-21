@@ -61,7 +61,9 @@ public enum ControlCommandLineParser {
       MYTTY_SURFACE_ID     this pane's own pane ID, the default --anchor
       MYTTY_CONTROL_SOCKET absolute path of the control socket mytty-ctl talks to
 
-    Prefer "$MYTTY_CTL_BIN" over a bare `mytty-ctl` unless PATH is confirmed.
+    A bare `mytty-ctl` resolves inside any Mytty pane (its directory is on
+    PATH automatically); use "$MYTTY_CTL_BIN" only if you're not sure this is
+    a Mytty-managed pane.
 
     AGENT ORCHESTRATION API (preferred)
 

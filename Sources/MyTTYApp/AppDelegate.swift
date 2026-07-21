@@ -84,6 +84,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applicationURL: Bundle.main.bundleURL,
         registrar: WorkspaceDefaultTerminalRegistrar()
     )
+    private lazy var commandLineToolInstallModel = CommandLineToolInstallModel(
+        executableURL: AppDelegate.controlExecutableDestination(
+            applicationSupportDirectory: ApplicationPaths(
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+                temporaryDirectory: URL(
+                    fileURLWithPath: NSTemporaryDirectory(),
+                    isDirectory: true
+                ),
+                // Same canonical, dev-and-release-shared copy
+                // `installControlExecutable` writes to.
+                profile: .release
+            ).applicationSupportDirectory
+        ),
+        binDirectory: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true),
+        linkName: ApplicationIdentity.pathProfile.commandLineToolName
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -417,6 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 integrationsModel: agentIntegrationSettingsModel,
                 updateModel: applicationUpdateModel,
                 defaultTerminalModel: defaultTerminalModel,
+                commandLineToolInstallModel: commandLineToolInstallModel,
                 remoteAccessModel: remoteAccessCoordinator.settingsModel
             )
         }
@@ -727,14 +746,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// actually runs, without requiring `mytty-ctl` on `PATH`. Best-effort:
     /// a failure here shouldn't block launch, since AI pane control is an
     /// additive capability, not a requirement to use Mytty.
+    /// Where the shared, canonical `mytty-ctl` copy lives underneath
+    /// Application Support — used both to install it there and (by
+    /// `commandLineToolInstallModel`) as the target of the `~/.local/bin`
+    /// symlink Settings > General can create.
+    static func controlExecutableDestination(
+        applicationSupportDirectory: URL
+    ) -> URL {
+        applicationSupportDirectory
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("mytty-ctl", isDirectory: false)
+    }
+
     @discardableResult
     private func installControlExecutable(
         applicationSupportDirectory: URL
     ) -> URL {
         let source = sourceControlExecutable()
-        let destination = applicationSupportDirectory
-            .appendingPathComponent("bin", isDirectory: true)
-            .appendingPathComponent("mytty-ctl", isDirectory: false)
+        let destination = AppDelegate.controlExecutableDestination(
+            applicationSupportDirectory: applicationSupportDirectory
+        )
         guard source.standardizedFileURL != destination.standardizedFileURL
         else { return destination }
         do {

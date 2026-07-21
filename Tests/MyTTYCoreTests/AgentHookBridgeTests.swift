@@ -59,6 +59,30 @@ struct AgentHookBridgeTests {
         #expect(delivery.envelope.event.kind == .approvalRequested)
     }
 
+    @Test("appends a directory to PATH once, preserving priority order")
+    func paneSearchPath() {
+        #expect(
+            AgentHookBridge.paneSearchPath(
+                appending: "/opt/mytty/bin",
+                to: "/usr/bin:/bin"
+            ) == "/usr/bin:/bin:/opt/mytty/bin"
+        )
+        #expect(
+            AgentHookBridge.paneSearchPath(
+                appending: "/opt/mytty/bin",
+                to: "/usr/bin:/opt/mytty/bin:/bin"
+            ) == "/usr/bin:/opt/mytty/bin:/bin"
+        )
+        #expect(
+            AgentHookBridge.paneSearchPath(appending: "/opt/mytty/bin", to: nil)
+                == "/opt/mytty/bin"
+        )
+        #expect(
+            AgentHookBridge.paneSearchPath(appending: "/opt/mytty/bin", to: "")
+                == "/opt/mytty/bin"
+        )
+    }
+
     @Test("rejects missing or malformed surface credentials")
     func invalidEnvironment() {
         let payload = Data(

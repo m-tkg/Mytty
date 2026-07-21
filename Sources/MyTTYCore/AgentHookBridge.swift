@@ -33,6 +33,35 @@ public enum AgentHookBridge {
     /// pattern applied to `mytty-agent-hook`), so AI tooling in a pane can
     /// invoke it without needing it on `PATH`.
     public static let controlExecutableEnvironmentKey = "MYTTY_CTL_BIN"
+    /// The standard `PATH` variable — set here (not just `MYTTY_CTL_BIN`)
+    /// so a bare `mytty-ctl` also resolves in every Mytty pane. See
+    /// `paneSearchPath(appending:to:)`.
+    public static let searchPathEnvironmentKey = "PATH"
+
+    /// Appends `directory` to `existingPath` (colon-joined, skipped if
+    /// already present) so a pane's shell can find a binary that lives
+    /// outside whatever directories macOS or the user's dotfiles already
+    /// search. This mirrors what Ghostty's own core already does for its
+    /// own binary directory (`Vendor/ghostty/src/termio/Exec.zig`,
+    /// "appending ghostty bin to path") — append, don't prepend, so
+    /// anything the user already has earlier in `PATH` still wins.
+    public static func paneSearchPath(
+        appending directory: String,
+        to existingPath: String?
+    ) -> String {
+        guard !directory.isEmpty else { return existingPath ?? "" }
+        guard let existingPath, !existingPath.isEmpty else {
+            return directory
+        }
+        let components = existingPath.split(
+            separator: ":",
+            omittingEmptySubsequences: true
+        )
+        if components.contains(Substring(directory)) {
+            return existingPath
+        }
+        return existingPath + ":" + directory
+    }
 
     public static func makeDelivery(
         provider: AgentProvider,
