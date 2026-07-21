@@ -26,7 +26,7 @@ protocol AgentIntegrationInstalling {
 
 extension AgentIntegrationInstaller: AgentIntegrationInstalling {}
 
-/// Where the persisted "teach agents about pane teams" preference lives.
+/// Where the persisted "teach agents about Mytty orchestration" preference lives.
 /// A thin seam over `ApplicationPreferences.paneTeamPointersEnabled` so
 /// `AgentIntegrationSettingsModel` doesn't have to know about
 /// `ApplicationPreferencesStore` or the settings file's URL directly, and
@@ -88,7 +88,7 @@ struct AgentIntegrationSettingsState: Equatable, Identifiable {
 @MainActor
 final class AgentIntegrationSettingsModel: ObservableObject {
     @Published private(set) var states: [AgentIntegrationSettingsState]
-    /// Whether the "teach agents about pane teams" toggle reads as on.
+    /// Whether the "teach agents about Mytty orchestration" toggle reads as on.
     /// Backed by the persisted `paneTeamPointersEnabled` preference (see
     /// `PaneTeamPointerPreferenceStoring`), not derived from on-disk
     /// pointer status — a provider whose hook is already installed but

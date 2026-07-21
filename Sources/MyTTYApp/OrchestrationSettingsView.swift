@@ -5,7 +5,7 @@ import SwiftUI
 /// Settings > Orchestration. Gathers everything related to letting an
 /// agent running in a Mytty pane drive `mytty-ctl` to run other agents in
 /// other panes as a team: the CLI symlink (moved here from General), the
-/// "teach agents about pane teams" toggle (moved here from Agents), a
+/// "teach agents about Mytty orchestration" toggle (moved here from Agents), a
 /// preview of exactly what that toggle writes, and worked examples of how
 /// to actually ask an agent to do this.
 struct OrchestrationSettingsView: View {

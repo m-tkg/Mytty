@@ -49,7 +49,8 @@ Each provider's Settings row derives **Installed** / **Needs Repair** /
 toggle was clicked. A hand-edited or partially removed installation
 shows **Needs Repair**.
 
-**Teach agents about pane teams** (Settings > Orchestration, on by default) writes
+**Teach agents about Mytty orchestration** (Settings > Orchestration, on by
+default) writes
 a second, independent artifact for the two providers where a global pointer
 location is known:
 

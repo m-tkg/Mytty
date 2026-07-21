@@ -25,7 +25,7 @@ opens already have `mytty-ctl` available, so this only matters for another
 terminal app or a script. It never asks for an admin password.
 
 **Teaching agents to find it**
-With "Teach agents about pane teams" on, a supported agent reads
+With "Teach agents about Mytty orchestration" on, a supported agent reads
 `mytty-ctl guide` on its own the next time it's asked to work across
 panes. The note goes to `~/.claude/skills/mytty-panes/SKILL.md` for Claude
 Code and `~/.codex/AGENTS.md` for Codex, and the screen reports the

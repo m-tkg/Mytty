@@ -220,7 +220,7 @@ struct LocalizationTests {
         )
         #expect(
             english[.teachPaneTeamPointers]
-                == "Teach agents about pane teams"
+                == "Teach agents about Mytty orchestration"
         )
         #expect(
             english[.teachPaneTeamPointersDescription]
@@ -370,7 +370,7 @@ struct LocalizationTests {
         )
         #expect(
             japanese[.teachPaneTeamPointers]
-                == "Agent にペインチームの使い方を教える"
+                == "Agent に Mytty オーケストレーションの使い方を教える"
         )
         #expect(
             japanese[.teachPaneTeamPointersDescription]
