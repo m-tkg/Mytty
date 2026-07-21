@@ -23,6 +23,52 @@ struct PaneHostViewTests {
         #expect(pane.inactiveDimmingAlpha == 0.55)
     }
 
+    @Test("outlines only the focused pane while the border is configured")
+    @MainActor
+    func activePaneBorder() {
+        let pane = PaneHostView(content: NSView())
+        pane.activeBorder = PaneActiveBorderStyle(
+            width: 2,
+            colorHex: "FF0000"
+        )
+
+        #expect(pane.focusBorderWidth == 0)
+
+        pane.isFocused = true
+        #expect(pane.focusBorderWidth == 2)
+        #expect(pane.focusBorderColor?.redComponent == 1)
+
+        pane.activeBorder = .hidden
+        #expect(pane.focusBorderWidth == 0)
+    }
+
+    @Test("prefers the swap highlight over the focus border")
+    @MainActor
+    func swapHighlightOutranksActiveBorder() {
+        let pane = PaneHostView(content: NSView())
+        pane.activeBorder = PaneActiveBorderStyle(width: 1, colorHex: "")
+        pane.isFocused = true
+        #expect(pane.focusBorderWidth == 1)
+
+        pane.isSwapCursor = true
+        #expect(pane.focusBorderWidth == 2)
+
+        pane.isSwapCandidate = true
+        #expect(pane.focusBorderWidth == 3)
+
+        pane.isSwapCandidate = false
+        pane.isSwapCursor = false
+        #expect(pane.focusBorderWidth == 1)
+    }
+
+    @Test("outlines a pane only once the tab is split")
+    func activeBorderNeedsMoreThanOnePane() {
+        let style = PaneActiveBorderStyle(width: 2, colorHex: "")
+        #expect(style.effective(paneCount: 1) == .hidden)
+        #expect(style.effective(paneCount: 2) == style)
+        #expect(PaneActiveBorderStyle.hidden.effective(paneCount: 4) == .hidden)
+    }
+
     @Test("shows terminal dimensions in the center overlay")
     @MainActor
     func paneSizeIndicator() {

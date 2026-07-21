@@ -81,6 +81,12 @@ public struct ApplicationPreferences: Equatable, Sendable {
     /// access) is still the way a device gets registered.
     public var remotePushNotificationsEnabled: Bool
     public var inactivePaneDimming: Double
+    /// Whether the focused pane is outlined. Only takes effect in tabs that
+    /// are actually split — a lone pane is never outlined.
+    public var activePaneBorderEnabled: Bool
+    public var activePaneBorderWidth: Double
+    /// `RRGGBB`, or empty to follow the system accent color.
+    public var activePaneBorderColorHex: String
 
     public init(
         tabPlacement: MyTTYTabPlacement = .left,
@@ -100,7 +106,10 @@ public struct ApplicationPreferences: Equatable, Sendable {
         attentionUnreadOnly: Bool = false,
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
-        inactivePaneDimming: Double = 0.32
+        inactivePaneDimming: Double = 0.32,
+        activePaneBorderEnabled: Bool = true,
+        activePaneBorderWidth: Double = 2,
+        activePaneBorderColorHex: String = ""
     ) {
         self.tabPlacement = tabPlacement
         self.keyBindings = keyBindings
@@ -119,6 +128,27 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
         self.inactivePaneDimming = inactivePaneDimming
+        self.activePaneBorderEnabled = activePaneBorderEnabled
+        self.activePaneBorderWidth = activePaneBorderWidth
+        self.activePaneBorderColorHex = activePaneBorderColorHex
+    }
+}
+
+/// Validation shared by the preferences store's load and save paths for the
+/// active-pane border, so a value rejected on read is also rejected on write.
+public enum ActivePaneBorder {
+    public static let widthRange: ClosedRange<Double> = 0.5...8
+
+    public static func isValidWidth(_ width: Double) -> Bool {
+        width.isFinite && widthRange.contains(width)
+    }
+
+    /// Normalizes `RRGGBB` to upper case, passing an empty string through as
+    /// "follow the system accent color". Returns nil for anything else.
+    public static func normalizedColorHex(_ hex: String) -> String? {
+        if hex.isEmpty { return "" }
+        guard hex.count == 6, hex.allSatisfy(\.isHexDigit) else { return nil }
+        return hex.uppercased()
     }
 }
 
@@ -197,6 +227,9 @@ public struct ApplicationPreferencesStore {
             "attention.unread-only",
             "remote.access-enabled",
             "pane.inactive-dimming",
+            "pane.active-border",
+            "pane.active-border-width",
+            "pane.active-border-color",
             "keybinding.toggle-attention",
         ] + MyTTYCommand.allCases.map {
             keyBindingKey(for: $0)
@@ -348,6 +381,26 @@ public struct ApplicationPreferencesStore {
             }
             preferences.inactivePaneDimming = dimming
         }
+        if let value = document.lastValue(for: "pane.active-border") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "pane.active-border", value: value)
+            }
+            preferences.activePaneBorderEnabled = enabled
+        }
+        if let value = document.lastValue(for: "pane.active-border-width") {
+            guard let width = Double(value),
+                  ActivePaneBorder.isValidWidth(width)
+            else {
+                throw invalid(key: "pane.active-border-width", value: value)
+            }
+            preferences.activePaneBorderWidth = width
+        }
+        if let value = document.lastValue(for: "pane.active-border-color") {
+            guard let hex = ActivePaneBorder.normalizedColorHex(value) else {
+                throw invalid(key: "pane.active-border-color", value: value)
+            }
+            preferences.activePaneBorderColorHex = hex
+        }
 
         for command in MyTTYCommand.allCases {
             let key = Self.keyBindingKey(for: command)
@@ -378,6 +431,21 @@ public struct ApplicationPreferencesStore {
                 value: String(preferences.inactivePaneDimming)
             )
         }
+        guard ActivePaneBorder.isValidWidth(preferences.activePaneBorderWidth)
+        else {
+            throw invalid(
+                key: "pane.active-border-width",
+                value: String(preferences.activePaneBorderWidth)
+            )
+        }
+        guard let borderColorHex = ActivePaneBorder.normalizedColorHex(
+            preferences.activePaneBorderColorHex
+        ) else {
+            throw invalid(
+                key: "pane.active-border-color",
+                value: preferences.activePaneBorderColorHex
+            )
+        }
         let document = try ConfigurationDocument(
             url: url,
             fileManager: fileManager
@@ -399,6 +467,9 @@ public struct ApplicationPreferencesStore {
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",
             "pane.inactive-dimming = \(quoted(decimal(preferences.inactivePaneDimming)))",
+            "pane.active-border = \(quoted(String(preferences.activePaneBorderEnabled)))",
+            "pane.active-border-width = \(quoted(decimal(preferences.activePaneBorderWidth)))",
+            "pane.active-border-color = \(quoted(borderColorHex))",
         ]
         managed.append(contentsOf: MyTTYCommand.allCases.map { command in
             let value = preferences.keyBindings[command]?.serialized ?? "none"

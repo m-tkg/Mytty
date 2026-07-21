@@ -38,6 +38,7 @@ final class PaneLayoutController {
     private let surfaces: () -> [TerminalSurfaceID: GhosttySurfaceView]
     private let browsers: () -> [TerminalSurfaceID: BrowserPaneView]
     private let inactivePaneDimming: () -> CGFloat
+    private let activePaneBorder: () -> PaneActiveBorderStyle
     private let isLiveResizing: () -> Bool
     private let onRatioChanged: (Double, [SplitPathComponent]) -> Void
     /// Fired whenever the visible size indicators change — the controller
@@ -51,6 +52,7 @@ final class PaneLayoutController {
         surfaces: @escaping () -> [TerminalSurfaceID: GhosttySurfaceView],
         browsers: @escaping () -> [TerminalSurfaceID: BrowserPaneView],
         inactivePaneDimming: @escaping () -> CGFloat,
+        activePaneBorder: @escaping () -> PaneActiveBorderStyle,
         isLiveResizing: @escaping () -> Bool,
         onRatioChanged: @escaping (Double, [SplitPathComponent]) -> Void,
         onSizeIndicatorsChanged: @escaping () -> Void
@@ -59,6 +61,7 @@ final class PaneLayoutController {
         self.surfaces = surfaces
         self.browsers = browsers
         self.inactivePaneDimming = inactivePaneDimming
+        self.activePaneBorder = activePaneBorder
         self.isLiveResizing = isLiveResizing
         self.onRatioChanged = onRatioChanged
         self.onSizeIndicatorsChanged = onSizeIndicatorsChanged
@@ -156,23 +159,22 @@ final class PaneLayoutController {
               let pane = paneHosts[paneID]
         else { return false }
 
-        if let surface = surfaces()[paneID] {
-            return zoomPresentation.show(
-                paneID: paneID,
-                content: surface,
-                originalHost: pane,
-                in: surfaceHost
-            )
+        let content: NSView? = surfaces()[paneID] ?? browsers()[paneID]
+        guard let content else { return false }
+        let shown = zoomPresentation.show(
+            paneID: paneID,
+            content: content,
+            originalHost: pane,
+            in: surfaceHost
+        )
+        if shown {
+            // The overlay builds a fresh host, so it starts with the
+            // defaults rather than the configured appearance.
+            zoomPresentation.zoomedHost?
+                .updateInactiveDimming(inactivePaneDimming())
+            updateActiveBorder()
         }
-        if let browser = browsers()[paneID] {
-            return zoomPresentation.show(
-                paneID: paneID,
-                content: browser,
-                originalHost: pane,
-                in: surfaceHost
-            )
-        }
-        return false
+        return shown
     }
 
     // MARK: - Focus / dimming / size indicators
@@ -185,6 +187,7 @@ final class PaneLayoutController {
             pane.isFocused = surfaceID == focusedID
         }
         zoomPresentation.zoomedHost?.isFocused = true
+        updateActiveBorder()
     }
 
     /// Highlights the pane picked as the first side of a pending swap, or
@@ -230,6 +233,16 @@ final class PaneLayoutController {
         let amount = inactivePaneDimming()
         paneHosts.values.forEach { $0.updateInactiveDimming(amount) }
         zoomPresentation.zoomedHost?.updateInactiveDimming(amount)
+    }
+
+    /// Pushes the configured focus outline to every live host. Called after
+    /// the pane tree changes — the "only when split" rule depends on the
+    /// final pane count, which `makeSplitView` does not yet know — and
+    /// whenever the preference changes.
+    func updateActiveBorder() {
+        let style = activePaneBorder().effective(paneCount: paneHosts.count)
+        paneHosts.values.forEach { $0.activeBorder = style }
+        zoomPresentation.zoomedHost?.activeBorder = style
     }
 
     func updateSizeIndicators() {

@@ -135,6 +135,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         inactivePaneDimming: { [weak self] in
             CGFloat(self?.applicationPreferences.inactivePaneDimming ?? 0)
         },
+        activePaneBorder: { [weak self] in
+            self?.activePaneBorderStyle ?? .hidden
+        },
         isLiveResizing: { [weak self] in self?.isWindowLiveResizing ?? false },
         onRatioChanged: { [weak self] ratio, path in
             guard let self else { return }
@@ -880,6 +883,20 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    private var activePaneBorderStyle: PaneActiveBorderStyle {
+        Self.activePaneBorderStyle(for: applicationPreferences)
+    }
+
+    private static func activePaneBorderStyle(
+        for preferences: ApplicationPreferences
+    ) -> PaneActiveBorderStyle {
+        guard preferences.activePaneBorderEnabled else { return .hidden }
+        return PaneActiveBorderStyle(
+            width: CGFloat(preferences.activePaneBorderWidth),
+            colorHex: preferences.activePaneBorderColorHex
+        )
+    }
+
     func updateApplicationPreferences(
         _ preferences: ApplicationPreferences
     ) {
@@ -896,6 +913,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             && !preferences.showPressedKeyToast
         let inactiveDimmingChanged = applicationPreferences.inactivePaneDimming
             != preferences.inactivePaneDimming
+        let activeBorderChanged = activePaneBorderStyle
+            != Self.activePaneBorderStyle(for: preferences)
         applicationPreferences = preferences
         recording.updateShowPressedKeys(
             preferences.showPressedKeyToast
@@ -920,6 +939,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
         if inactiveDimmingChanged {
             paneLayout.updateInactiveDimming()
+        }
+        if activeBorderChanged {
+            paneLayout.updateActiveBorder()
         }
         if languageChanged || placementChanged || statusBarChanged
             || attentionUnreadOnlyChanged {

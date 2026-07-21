@@ -44,6 +44,9 @@ For the full key binding list, see
 | Appearance | Text / Background color | Color pickers, shown only when Theme is unset | Text `#FFFFFF`, Background `#282C34` |
 | Appearance | Background opacity | Slider, range 0.2-1.0 | 1.0 (opaque) |
 | Appearance | Inactive pane dimming | Slider, range 0-0.8 | 0.32 |
+| Appearance | Active pane border | Toggle; the outline only appears in a split tab | On |
+| Appearance | Border color | Color picker, shown only when the border is on | System accent color (empty string) |
+| Appearance | Border width | Slider, range 1-6, shown only when the border is on | 2 |
 | Cursor | Shape | Segmented: Block / Bar / Underline | Block |
 | Cursor | Blink | Menu: Terminal Default / On / Off | Terminal Default (system) |
 | Shell | Default login shell | Text field | empty (uses the user's login shell) |
@@ -132,7 +135,8 @@ only the event routing stays pane-scoped per build.
 
 `config.toml` stores each setting under a stable key managed by Mytty
 (for example `tab-position`, `on-launch`, `agents.prevent-system-sleep`,
-`pane.inactive-dimming`, and one `keybinding.<command>` entry per
+`pane.inactive-dimming`, `pane.active-border` with its `-width` and
+`-color` companions, and one `keybinding.<command>` entry per
 customizable command). Lines outside these managed keys are preserved
 verbatim on save. One managed key, `keybinding.toggle-attention`, is
 reserved in the schema but not currently read or written by any code
