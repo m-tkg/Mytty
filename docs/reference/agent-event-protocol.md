@@ -1,11 +1,6 @@
 # Agent event protocol reference
 
-The wire protocol coding-agent hooks use to report run state to Mytty.
-Transport, provider adapters, the `mytty-agent-hook` helper, and the
-per-provider installers are all implemented. Source:
-`Sources/MyTTYCore/AgentEvent.swift`,
-`Sources/MyTTYCore/AgentHookBridge.swift`. For which provider emits which
-event kind, see [Agent providers](agent-providers.md).
+The wire protocol coding-agent hooks use to report run state to Mytty. Transport, provider adapters, the `mytty-agent-hook` helper, and the per-provider installers are all implemented. Source: `Sources/MyTTYCore/AgentEvent.swift`, `Sources/MyTTYCore/AgentHookBridge.swift`. For which provider emits which event kind, see [Agent providers](agent-providers.md).
 
 ## Environment variables
 
@@ -17,15 +12,11 @@ MYTTY_SURFACE_ID
 MYTTY_EVENT_CAPABILITY
 ```
 
-`MYTTY_EVENT_CAPABILITY` authorizes event emission for that surface only.
-It does not authorize terminal input, screen capture, or events for
-another surface. Mytty revokes it when the surface closes.
+`MYTTY_EVENT_CAPABILITY` authorizes event emission for that surface only. It does not authorize terminal input, screen capture, or events for another surface. Mytty revokes it when the surface closes.
 
 ## Transport
 
-Connect to `MYTTY_EVENT_SOCKET`, a user-only Unix stream socket with mode
-`0600`. Send one UTF-8 JSON envelope, terminated by a newline, per
-connection. Maximum request size is 64 KiB. Dates are ISO 8601.
+Connect to `MYTTY_EVENT_SOCKET`, a user-only Unix stream socket with mode `0600`. Send one UTF-8 JSON envelope, terminated by a newline, per connection. Maximum request size is 64 KiB. Dates are ISO 8601.
 
 ```json
 {
@@ -51,10 +42,7 @@ The server returns one JSON response and closes the connection:
 { "ok": true, "inserted": true }
 ```
 
-An idempotent retry returns `inserted: false`. Invalid JSON,
-authorization failure, oversized input, and internal storage failure
-return `ok: false` with a stable error code. Authorization responses
-never echo the capability back.
+An idempotent retry returns `inserted: false`. Invalid JSON, authorization failure, oversized input, and internal storage failure return `ok: false` with a stable error code. Authorization responses never echo the capability back.
 
 ## Envelope fields
 
@@ -86,16 +74,11 @@ never echo the capability back.
 | `failed` | The run ended with an error |
 | `disconnected` | The run ended because the provider process disconnected |
 
-The reducer also derives an internal `idle` `AgentRunState` (not a wire
-event kind) once a run has gone quiet after `succeeded`/`failed`/etc; see
-`AgentRunState` in `Sources/MyTTYCore/AgentEvent.swift`.
+The reducer also derives an internal `idle` `AgentRunState` (not a wire event kind) once a run has gone quiet after `succeeded`/`failed`/etc; see `AgentRunState` in `Sources/MyTTYCore/AgentEvent.swift`.
 
 ## Lifecycle rules
 
-Hooks should emit `started` before any waiting or terminal event. Emit
-`running` when work begins again after an input or approval request.
-Human-readable terminal output must never be parsed to synthesize these
-events. Only structured hook payloads count.
+Hooks should emit `started` before any waiting or terminal event. Emit `running` when work begins again after an input or approval request. Human-readable terminal output must never be parsed to synthesize these events. Only structured hook payloads count.
 
 ## Attention item creation
 
@@ -107,13 +90,11 @@ Mytty creates Attention drawer items only for:
 - disconnects
 - successful work that ran for at least five minutes
 
-Acknowledged or otherwise resolved items remain visible in the drawer for
-24 hours after resolution.
+Acknowledged or otherwise resolved items remain visible in the drawer for 24 hours after resolution.
 
 ## Response codes
 
-`AgentEventServerResponse` has three fields: `ok`, `inserted` (only set
-on success), `error` (only set on failure, a stable code string).
+`AgentEventServerResponse` has three fields: `ok`, `inserted` (only set on success), `error` (only set on failure, a stable code string).
 
 | Response | Meaning |
 | --- | --- |
@@ -126,8 +107,5 @@ on success), `error` (only set on failure, a stable code string).
 
 ## See also
 
-- [Agent providers](agent-providers.md) covers file locations,
-  per-provider hook-to-event mapping, and status bar/session-inspector
-  sources.
-- [mytty-ctl reference](mytty-ctl.md) documents the `list`/`wait`
-  surface that reads the `AgentRunState` this protocol produces.
+- [Agent providers](agent-providers.md) covers file locations, per-provider hook-to-event mapping, and status bar/session-inspector sources.
+- [mytty-ctl reference](mytty-ctl.md) documents the `list`/`wait` surface that reads the `AgentRunState` this protocol produces.
