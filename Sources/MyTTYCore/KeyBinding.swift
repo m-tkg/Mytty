@@ -126,7 +126,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             ),
             .openHTML: .init(key: "o", modifiers: [.command]),
             .newTab: .init(key: "t", modifiers: [.command]),
-            .renameTab: .init(key: "r", modifiers: [.command]),
+            .renameTab: .init(key: "r", modifiers: [.command, .shift]),
             .closeTab: .init(key: "w", modifiers: [.command]),
             .reopenClosed: .init(key: "t", modifiers: [.command, .shift]),
             .nextTab: .init(key: "tab", modifiers: [.control]),
@@ -140,14 +140,25 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             .selectTab7: .init(key: "7", modifiers: [.command]),
             .selectTab8: .init(key: "8", modifiers: [.command]),
             .selectTab9: .init(key: "9", modifiers: [.command]),
-            .splitRight: .init(key: "d", modifiers: [.command]),
-            .splitDown: .init(key: "d", modifiers: [.command, .shift]),
-            .focusLeft: .init(key: "left", modifiers: [.command, .option]),
-            .focusRight: .init(key: "right", modifiers: [.command, .option]),
-            .focusUp: .init(key: "up", modifiers: [.command, .option]),
-            .focusDown: .init(key: "down", modifiers: [.command, .option]),
+            .splitLeft: .init(
+                key: "backslash",
+                modifiers: [.control, .shift, .command]
+            ),
+            .splitRight: .init(
+                key: "backslash",
+                modifiers: [.control, .command]
+            ),
+            .splitUp: .init(
+                key: "minus",
+                modifiers: [.control, .shift, .command]
+            ),
+            .splitDown: .init(key: "minus", modifiers: [.control, .command]),
+            .focusLeft: .init(key: "left", modifiers: [.control, .command]),
+            .focusRight: .init(key: "right", modifiers: [.control, .command]),
+            .focusUp: .init(key: "up", modifiers: [.control, .command]),
+            .focusDown: .init(key: "down", modifiers: [.control, .command]),
             .equalizePanes: .init(
-                key: "equal",
+                key: "e",
                 modifiers: [.control, .command]
             ),
             .togglePaneZoom: .init(
@@ -160,10 +171,10 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             ),
             .findInPane: .init(key: "f", modifiers: [.control]),
             .showPaneList: .init(
-                key: "p",
+                key: "a",
                 modifiers: [.control, .command]
             ),
-            .closePane: .init(key: "w", modifiers: [.command, .shift]),
+            .closePane: .init(key: "w", modifiers: [.control, .command]),
             .toggleTabPanel: .init(key: "b", modifiers: [.command]),
             .toggleRecording: .init(
                 key: "g",
