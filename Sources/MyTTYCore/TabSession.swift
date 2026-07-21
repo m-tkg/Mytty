@@ -14,6 +14,11 @@ public struct TerminalSurfaceID: Codable, Equatable, Hashable, Sendable {
     public init(rawValue: UUID = UUID()) {
         self.rawValue = rawValue
     }
+
+    public init?(uuidString: String) {
+        guard let uuid = UUID(uuidString: uuidString) else { return nil }
+        self.init(rawValue: uuid)
+    }
 }
 
 public enum AgentResumeKind: String, Codable, Equatable, Sendable {

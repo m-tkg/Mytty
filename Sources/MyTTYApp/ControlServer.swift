@@ -58,6 +58,71 @@ protocol ControlServerDelegate: AnyObject {
     ) -> Bool
 }
 
+/// A `mytty-ctl agent` request that couldn't be completed, carrying the
+/// same failure `code` string `ControlResponse.failure` sends over the
+/// wire — see `docs/reference/mytty-ctl.md` for the documented codes
+/// (`job-not-found`, `provider-integration-not-installed`, etc).
+struct AgentControlFailure: Error, Equatable, Sendable {
+    let code: String
+
+    init(_ code: String) {
+        self.code = code
+    }
+}
+
+/// Delegate for the `mytty-ctl agent` high-level orchestration API,
+/// implemented by `AgentJobCoordinator` (via `ControlCoordinator`). Split
+/// out from `ControlServerDelegate` rather than folded into it: the two
+/// protocols are resolved by different owners in practice (pane operations
+/// resolve straight to a `TerminalWindowController`; agent operations go
+/// through job-tracking state first), and keeping them separate keeps each
+/// protocol's test stub small — see
+/// `docs/explanation/mytty-ctl-architecture.md`.
+@MainActor
+protocol ControlServerAgentDelegate: AnyObject {
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentAnchorPaneID anchorPaneID: String,
+        direction: ControlSplitDirection,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy,
+        task: String,
+        label: String?
+    ) -> Result<AgentJobSnapshot, AgentControlFailure>
+
+    /// Re-reads the job's tracked state against a fresh `AttentionCenter`
+    /// snapshot and returns the result — used both to answer `agent
+    /// result` and to poll during `agent wait`, so every reply reflects
+    /// the job's *current* state rather than whatever it was at spawn.
+    func controlServer(
+        _ server: ControlServer,
+        refreshedAgentJobSnapshotForJobID jobID: AgentJobID
+    ) -> Result<AgentJobSnapshot, AgentControlFailure>
+
+    func controlServer(
+        _ server: ControlServer,
+        agentResultContentForJobID jobID: AgentJobID
+    ) -> Result<(AgentJobSnapshot, ControlPaneContent), AgentControlFailure>
+
+    func controlServer(
+        _ server: ControlServer,
+        sendAgentText text: String,
+        pressEnter: Bool,
+        toJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure>
+
+    func controlServer(
+        _ server: ControlServer,
+        focusAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure>
+
+    func controlServer(
+        _ server: ControlServer,
+        closeAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure>
+}
+
 /// Local control server for `mytty-ctl`: the AI-facing counterpart to
 /// `RemoteAccessServer`. One JSON request per connection over a
 /// user-only Unix socket (`ApplicationPaths.aiControlSocket`) — no
@@ -69,6 +134,7 @@ final class ControlServer {
     private static let pollInterval: UInt64 = 300_000_000 // 300ms
 
     weak var delegate: ControlServerDelegate?
+    weak var agentDelegate: ControlServerAgentDelegate?
 
     private let socketURL: URL
     private let onError: (Error) -> Void
@@ -114,6 +180,14 @@ final class ControlServer {
         else {
             return .failure(code: "invalid-request")
         }
+
+        if isAgentRequest(request) {
+            guard let agentDelegate else {
+                return .failure(code: "not-ready")
+            }
+            return await processAgent(request, delegate: agentDelegate)
+        }
+
         guard let delegate else {
             return .failure(code: "not-ready")
         }
@@ -192,6 +266,123 @@ final class ControlServer {
                 return .failure(code: "pane-not-found")
             }
             return .ok
+
+        case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
+             .closeAgent:
+            // Routed to `processAgent` before this switch is reached — see
+            // `isAgentRequest`. Kept here only so the switch stays
+            // exhaustive against future `ControlRequest` cases.
+            return .failure(code: "invalid-request")
+        }
+    }
+
+    private func isAgentRequest(_ request: ControlRequest) -> Bool {
+        switch request {
+        case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
+             .closeAgent:
+            true
+        default:
+            false
+        }
+    }
+
+    private func processAgent(
+        _ request: ControlRequest,
+        delegate: ControlServerAgentDelegate
+    ) async -> ControlResponse {
+        switch request {
+        case let .spawnAgent(
+            anchorPaneID, direction, provider, cwd, access, task, label
+        ):
+            return Self.encodeAgentResult(
+                delegate.controlServer(
+                    self,
+                    spawnAgentAnchorPaneID: anchorPaneID,
+                    direction: direction,
+                    provider: provider,
+                    cwd: cwd,
+                    access: access,
+                    task: task,
+                    label: label
+                )
+            ) { .agentJob($0) }
+
+        case let .waitAgent(jobID, until, timeoutSeconds):
+            return await waitAgent(
+                jobID: jobID,
+                until: until,
+                timeoutSeconds: timeoutSeconds,
+                delegate: delegate
+            )
+
+        case let .agentResult(jobID):
+            return Self.encodeAgentResult(
+                delegate.controlServer(
+                    self,
+                    agentResultContentForJobID: jobID
+                )
+            ) { .agentResult(job: $0.0, content: $0.1) }
+
+        case let .sendAgent(jobID, text, pressEnter):
+            return Self.encodeAgentResult(
+                delegate.controlServer(
+                    self,
+                    sendAgentText: text,
+                    pressEnter: pressEnter,
+                    toJobID: jobID
+                )
+            ) { _ in .ok }
+
+        case let .focusAgent(jobID):
+            return Self.encodeAgentResult(
+                delegate.controlServer(self, focusAgentJobID: jobID)
+            ) { _ in .ok }
+
+        case let .closeAgent(jobID):
+            return Self.encodeAgentResult(
+                delegate.controlServer(self, closeAgentJobID: jobID)
+            ) { _ in .ok }
+
+        default:
+            return .failure(code: "invalid-request")
+        }
+    }
+
+    private static func encodeAgentResult<Success>(
+        _ result: Result<Success, AgentControlFailure>,
+        _ transform: (Success) -> ControlResponse
+    ) -> ControlResponse {
+        switch result {
+        case let .success(value):
+            transform(value)
+        case let .failure(failure):
+            .failure(code: failure.code)
+        }
+    }
+
+    private func waitAgent(
+        jobID: AgentJobID,
+        until condition: AgentWaitCondition,
+        timeoutSeconds: Double,
+        delegate: ControlServerAgentDelegate
+    ) async -> ControlResponse {
+        let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
+        while true {
+            switch delegate.controlServer(
+                self,
+                refreshedAgentJobSnapshotForJobID: jobID
+            ) {
+            case let .success(job):
+                if job.state.satisfies(condition) {
+                    return .agentWaitResult(job: job, timedOut: false)
+                }
+                if Date() >= deadline {
+                    return .agentWaitResult(job: job, timedOut: true)
+                }
+                try? await Task.sleep(nanoseconds: Self.pollInterval)
+            case let .failure(failure):
+                return .failure(code: failure.code)
+            }
         }
     }
 

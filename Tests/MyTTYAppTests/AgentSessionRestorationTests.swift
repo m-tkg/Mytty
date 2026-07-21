@@ -108,3 +108,39 @@ struct AgentSessionRestorationTests {
         #expect(clearedSurface.agentResume == nil)
     }
 }
+
+@Suite("Terminal surface launch input")
+struct TerminalSurfaceLaunchInputTests {
+    @Test("an ordinary new pane with no resume and no spawn input resolves to nil")
+    func ordinaryPaneResolvesToNil() {
+        let resolved = TerminalSurfaceLaunchInput.resolve(
+            spawnInitialInput: nil,
+            agentResume: nil
+        )
+        #expect(resolved == nil)
+    }
+
+    @Test("an agent spawn's initial input passes through untouched")
+    func spawnInputPassesThrough() {
+        let resolved = TerminalSurfaceLaunchInput.resolve(
+            spawnInitialInput: "command codex -s workspace-write -a never -- 'task'\n",
+            agentResume: nil
+        )
+        #expect(
+            resolved
+                == "command codex -s workspace-write -a never -- 'task'\n"
+        )
+    }
+
+    @Test("a restored resume descriptor still resolves when there is no spawn input")
+    func resumeDescriptorResolvesWithoutSpawnInput() {
+        let resolved = TerminalSurfaceLaunchInput.resolve(
+            spawnInitialInput: nil,
+            agentResume: AgentResumeDescriptor(
+                kind: .codex,
+                sessionID: "session-1"
+            )
+        )
+        #expect(resolved == "command codex resume -- 'session-1'\n")
+    }
+}

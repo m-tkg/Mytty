@@ -439,13 +439,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @discardableResult
-    func newTab(workingDirectory: URL? = nil) -> TerminalSurfaceID? {
+    func newTab(
+        workingDirectory: URL? = nil,
+        initialInput: String? = nil
+    ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory
         )
         do {
             let tab = TabSession(initialSurface: state)
-            let surface = try makeSurface(for: state)
+            let surface = try makeSurface(for: state, initialInput: initialInput)
             try session.add(tab: tab, select: true)
             surfaces[state.id] = surface
             sessionDidChange()
@@ -529,7 +532,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     @discardableResult
     func splitFocusedPane(
         _ direction: SplitDirection,
-        workingDirectory: URL? = nil
+        workingDirectory: URL? = nil,
+        initialInput: String? = nil
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory
@@ -546,7 +550,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         do {
             let surface = try makeSurface(
                 for: state,
-                initialSize: initialSize
+                initialSize: initialSize,
+                initialInput: initialInput
             )
             do {
                 try session.splitFocusedSurface(
@@ -577,10 +582,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func splitPane(
         _ paneID: TerminalSurfaceID,
         direction: SplitDirection,
-        workingDirectory: URL? = nil
+        workingDirectory: URL? = nil,
+        initialInput: String? = nil
     ) -> TerminalSurfaceID? {
         guard focus(pane: paneID) else { return nil }
-        return splitFocusedPane(direction, workingDirectory: workingDirectory)
+        return splitFocusedPane(
+            direction,
+            workingDirectory: workingDirectory,
+            initialInput: initialInput
+        )
     }
 
     func closeFocusedPane() {
@@ -1693,7 +1703,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private func makeSurface(
         for state: TerminalSurfaceState,
-        initialSize: NSSize? = nil
+        initialSize: NSSize? = nil,
+        initialInput: String? = nil
     ) throws -> GhosttySurfaceView {
         let environment = try agentEventServer.environment(for: state.id)
         let surface: GhosttySurfaceView
@@ -1701,8 +1712,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             surface = try GhosttySurfaceView(
                 runtime: runtime,
                 workingDirectory: state.workingDirectory,
-                initialInput: AgentResumeLaunchPlan.initialInput(
-                    for: state.agentResume
+                initialInput: TerminalSurfaceLaunchInput.resolve(
+                    spawnInitialInput: initialInput,
+                    agentResume: state.agentResume
                 ),
                 restoredTerminalHistory: state.terminalHistory,
                 environmentVariables: environment,

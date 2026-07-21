@@ -103,6 +103,31 @@ public enum ControlRequest: Equatable, Sendable {
     )
     case closePane(paneID: String)
     case focus(paneID: String)
+
+    /// Creates a new worker pane split off `anchorPaneID`, launches
+    /// `provider` in it with `access` and `task` as one shell input, and
+    /// returns an `AgentJobID` an orchestrator can `waitAgent`/`sendAgent`/
+    /// etc. on for that exact spawn — see `AgentJobTracker` for how a job
+    /// binds to the run it observes. The high-level counterpart to
+    /// `split` + `send`.
+    case spawnAgent(
+        anchorPaneID: String,
+        direction: ControlSplitDirection,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy,
+        task: String,
+        label: String?
+    )
+    case waitAgent(
+        jobID: AgentJobID,
+        until: AgentWaitCondition,
+        timeoutSeconds: Double
+    )
+    case agentResult(jobID: AgentJobID)
+    case sendAgent(jobID: AgentJobID, text: String, pressEnter: Bool)
+    case focusAgent(jobID: AgentJobID)
+    case closeAgent(jobID: AgentJobID)
 }
 
 public enum ControlResponse: Equatable, Sendable {
@@ -113,6 +138,10 @@ public enum ControlResponse: Equatable, Sendable {
     case content(ControlPaneContent)
     case waitResult(state: String?, timedOut: Bool)
     case failure(code: String)
+
+    case agentJob(AgentJobSnapshot)
+    case agentWaitResult(job: AgentJobSnapshot, timedOut: Bool)
+    case agentResult(job: AgentJobSnapshot, content: ControlPaneContent)
 }
 
 extension ControlRequest: Codable {
@@ -126,6 +155,12 @@ extension ControlRequest: Codable {
         case wait
         case closePane
         case focus
+        case spawnAgent
+        case waitAgent
+        case agentResult
+        case sendAgent
+        case focusAgent
+        case closeAgent
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -139,6 +174,13 @@ extension ControlRequest: Codable {
         case modifiers
         case until
         case timeoutSeconds
+        case anchorPaneID
+        case provider
+        case cwd
+        case access
+        case task
+        case label
+        case jobID
     }
 
     public init(from decoder: Decoder) throws {
@@ -208,6 +250,67 @@ extension ControlRequest: Codable {
             self = .focus(
                 paneID: try container.decode(String.self, forKey: .paneID)
             )
+        case .spawnAgent:
+            self = .spawnAgent(
+                anchorPaneID: try container.decode(
+                    String.self,
+                    forKey: .anchorPaneID
+                ),
+                direction: try container.decode(
+                    ControlSplitDirection.self,
+                    forKey: .direction
+                ),
+                provider: try container.decode(
+                    AgentWorkerProvider.self,
+                    forKey: .provider
+                ),
+                cwd: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .cwd
+                ),
+                access: try container.decode(
+                    AgentAccessPolicy.self,
+                    forKey: .access
+                ),
+                task: try container.decode(String.self, forKey: .task),
+                label: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .label
+                )
+            )
+        case .waitAgent:
+            self = .waitAgent(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID),
+                until: try container.decode(
+                    AgentWaitCondition.self,
+                    forKey: .until
+                ),
+                timeoutSeconds: try container.decode(
+                    Double.self,
+                    forKey: .timeoutSeconds
+                )
+            )
+        case .agentResult:
+            self = .agentResult(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID)
+            )
+        case .sendAgent:
+            self = .sendAgent(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID),
+                text: try container.decode(String.self, forKey: .text),
+                pressEnter: try container.decode(
+                    Bool.self,
+                    forKey: .pressEnter
+                )
+            )
+        case .focusAgent:
+            self = .focusAgent(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID)
+            )
+        case .closeAgent:
+            self = .closeAgent(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID)
+            )
         }
     }
 
@@ -254,6 +357,36 @@ extension ControlRequest: Codable {
         case let .focus(paneID):
             try container.encode(RequestType.focus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
+        case let .spawnAgent(
+            anchorPaneID, direction, provider, cwd, access, task, label
+        ):
+            try container.encode(RequestType.spawnAgent, forKey: .type)
+            try container.encode(anchorPaneID, forKey: .anchorPaneID)
+            try container.encode(direction, forKey: .direction)
+            try container.encode(provider, forKey: .provider)
+            try container.encodeIfPresent(cwd, forKey: .cwd)
+            try container.encode(access, forKey: .access)
+            try container.encode(task, forKey: .task)
+            try container.encodeIfPresent(label, forKey: .label)
+        case let .waitAgent(jobID, until, timeoutSeconds):
+            try container.encode(RequestType.waitAgent, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
+            try container.encode(until, forKey: .until)
+            try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
+        case let .agentResult(jobID):
+            try container.encode(RequestType.agentResult, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
+        case let .sendAgent(jobID, text, pressEnter):
+            try container.encode(RequestType.sendAgent, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
+            try container.encode(text, forKey: .text)
+            try container.encode(pressEnter, forKey: .pressEnter)
+        case let .focusAgent(jobID):
+            try container.encode(RequestType.focusAgent, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
+        case let .closeAgent(jobID):
+            try container.encode(RequestType.closeAgent, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
         }
     }
 }
@@ -266,6 +399,9 @@ extension ControlResponse: Codable {
         case content
         case waitResult
         case failure
+        case agentJob
+        case agentWaitResult
+        case agentResult
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -276,6 +412,7 @@ extension ControlResponse: Codable {
         case state
         case timedOut
         case code
+        case job
     }
 
     public init(from decoder: Decoder) throws {
@@ -311,6 +448,29 @@ extension ControlResponse: Codable {
             self = .failure(
                 code: try container.decode(String.self, forKey: .code)
             )
+        case .agentJob:
+            self = .agentJob(
+                try container.decode(AgentJobSnapshot.self, forKey: .job)
+            )
+        case .agentWaitResult:
+            self = .agentWaitResult(
+                job: try container.decode(
+                    AgentJobSnapshot.self,
+                    forKey: .job
+                ),
+                timedOut: try container.decode(Bool.self, forKey: .timedOut)
+            )
+        case .agentResult:
+            self = .agentResult(
+                job: try container.decode(
+                    AgentJobSnapshot.self,
+                    forKey: .job
+                ),
+                content: try container.decode(
+                    ControlPaneContent.self,
+                    forKey: .content
+                )
+            )
         }
     }
 
@@ -335,6 +495,17 @@ extension ControlResponse: Codable {
         case let .failure(code):
             try container.encode(ResponseType.failure, forKey: .type)
             try container.encode(code, forKey: .code)
+        case let .agentJob(job):
+            try container.encode(ResponseType.agentJob, forKey: .type)
+            try container.encode(job, forKey: .job)
+        case let .agentWaitResult(job, timedOut):
+            try container.encode(ResponseType.agentWaitResult, forKey: .type)
+            try container.encode(job, forKey: .job)
+            try container.encode(timedOut, forKey: .timedOut)
+        case let .agentResult(job, content):
+            try container.encode(ResponseType.agentResult, forKey: .type)
+            try container.encode(job, forKey: .job)
+            try container.encode(content, forKey: .content)
         }
     }
 }
