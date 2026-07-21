@@ -9,6 +9,30 @@ public enum AgentEventSocketClientError: Error, Equatable, Sendable {
     case invalidResponse
 }
 
+extension AgentEventSocketClientError: CustomStringConvertible {
+    /// Mirrors `ControlSocketClientError.description` -- see that type for
+    /// the full rationale. `mytty-agent-hook` is invoked by a provider's
+    /// own hook mechanism rather than a user shell, but the same EPERM
+    /// symptom can still happen if that invocation itself runs inside a
+    /// sandboxed process.
+    public var description: String {
+        switch self {
+        case .socketPathTooLong:
+            return "socketPathTooLong"
+        case let .socketOperation(code):
+            return ControlSocketErrorFormatting.hookSocketOperationDescription(
+                code
+            )
+        case .emptyResponse:
+            return "emptyResponse"
+        case .responseTooLarge:
+            return "responseTooLarge"
+        case .invalidResponse:
+            return "invalidResponse"
+        }
+    }
+}
+
 public struct AgentEventServerResponse: Codable, Equatable, Sendable {
     public let ok: Bool
     public let inserted: Bool?
