@@ -61,6 +61,7 @@ For the full key binding list, see
 | --- | --- | --- | --- |
 | Unread items only | Attention drawer filter | Toggle | Off |
 | Prevent sleep while an agent runs | Sleep prevention mode | Menu: Allow sleep / Prevent while processing / Prevent while launched | Allow sleep |
+| Teach agents about pane teams | Pane-team pointer for Claude Code and Codex | Toggle | On |
 | Codex | Install hook integration | Toggle + status (Not Installed / Installed / Needs Repair) | Not Installed |
 | Claude Code | Install hook integration | Toggle + status | Not Installed |
 | OpenCode | Install hook integration | Toggle + status | Not Installed |
@@ -75,6 +76,21 @@ shows a repair button that rewrites only mytty's own handlers. See
 [Agent providers](agent-providers.md) for the file each toggle writes to
 and [Install and verify agent integrations](../how-to/install-agent-integrations.md)
 for the activation steps.
+
+**Teach agents about pane teams** writes a short pointer into a provider's
+global configuration -- a `~/.claude/skills/mytty-panes/SKILL.md` skill for
+Claude Code, a managed block in `~/.codex/AGENTS.md` for Codex -- telling it
+to run `mytty-ctl guide` when asked to coordinate work across panes or run
+sub-agents. It only applies to providers whose hook integration above is
+already installed, and follows that toggle automatically as providers are
+installed or removed. The toggle itself is a persisted setting
+(`agents.pane-team-pointers` in `config.toml`), not derived from whether a
+pointer currently exists on disk: leaving it on backfills the pointer for a
+provider that was already installed before this preference existed (for
+example right after updating Mytty), and turning it off keeps it off across
+future launches instead of reappearing on the next update. Cursor,
+OpenCode, and Antigravity have no documented place for a global pointer
+like this yet, so they're not covered.
 
 ## Key Bindings
 
@@ -135,9 +151,10 @@ only the event routing stays pane-scoped per build.
 
 `config.toml` stores each setting under a stable key managed by Mytty
 (for example `tab-position`, `on-launch`, `agents.prevent-system-sleep`,
-`pane.inactive-dimming`, `pane.active-border` with its `-width` and
-`-color` companions, and one `keybinding.<command>` entry per
-customizable command). Lines outside these managed keys are preserved
+`agents.pane-team-pointers`, `pane.inactive-dimming`,
+`pane.active-border` with its `-width` and `-color` companions, and one
+`keybinding.<command>` entry per customizable command). Lines outside
+these managed keys are preserved
 verbatim on save. One managed key, `keybinding.toggle-attention`, is
 reserved in the schema but not currently read or written by any code
 path. The **Toggle Attention** menu command has no key equivalent wired

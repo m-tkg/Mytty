@@ -39,6 +39,32 @@ public struct AgentIntegrationInstaller {
         "stop",
     ]
 
+    /// Providers that get a "pane-team pointer" — a short, generated note
+    /// in that provider's global config telling it to run `mytty-ctl guide`
+    /// when asked to coordinate work across panes or sub-agents. This is
+    /// the discovery mechanism; `mytty-ctl guide` itself is the one source
+    /// of truth for the actual recipe, so the pointer stays intentionally
+    /// thin and safe to regenerate whenever the app updates.
+    ///
+    /// Only providers with a known, documented place for global
+    /// instructions are covered:
+    ///   - Claude Code: a user skill under `~/.claude/skills`.
+    ///   - Codex: `~/.codex/AGENTS.md`, its global instructions file.
+    /// Cursor is deliberately excluded: `cursor-agent` has no documented
+    /// location for user-level skills (`~/.cursor/skills` and
+    /// `~/.cursor/rules` don't exist, and `cursor-agent --help` doesn't
+    /// mention either), so there is nowhere to put a discoverable pointer.
+    /// OpenCode and Antigravity are excluded for the same reason this PR
+    /// otherwise stays v1-scoped: no equivalent global-instructions
+    /// mechanism has been confirmed for them yet.
+    public static let paneTeamPointerProviders: [AgentProvider] = [
+        .claudeCode,
+        .codex,
+    ]
+
+    private static let paneTeamBlockBegin = "<!-- mytty:pane-team:begin -->"
+    private static let paneTeamBlockEnd = "<!-- mytty:pane-team:end -->"
+
     private let homeDirectory: URL
     private let sourceHookExecutable: URL
     private let fileManager: FileManager
@@ -231,6 +257,214 @@ public struct AgentIntegrationInstaller {
         case .antigravity:
             preconditionFailure("Antigravity is handled before this switch")
         }
+    }
+
+    public func paneTeamPointerStatus(
+        for provider: AgentProvider
+    ) throws -> AgentIntegrationStatus {
+        switch provider {
+        case .claudeCode:
+            guard fileManager.fileExists(atPath: paneTeamSkillURL.path)
+            else { return .notInstalled }
+            guard let data = try? Data(contentsOf: paneTeamSkillURL) else {
+                return .needsRepair
+            }
+            return data == paneTeamSkillData() ? .installed : .needsRepair
+
+        case .codex:
+            guard let text = try readText(at: codexAgentsMarkdownURL) else {
+                return .notInstalled
+            }
+            guard let blockRange = paneTeamBlockRange(in: text) else {
+                return .notInstalled
+            }
+            return text[blockRange] == paneTeamBlockBody()
+                ? .installed
+                : .needsRepair
+
+        case .openCode, .antigravity, .cursor:
+            return .notInstalled
+        }
+    }
+
+    public func installPaneTeamPointer(_ provider: AgentProvider) throws {
+        switch provider {
+        case .claudeCode:
+            try writeAtomically(
+                paneTeamSkillData(),
+                to: paneTeamSkillURL,
+                defaultMode: 0o600
+            )
+
+        case .codex:
+            let url = codexAgentsMarkdownURL
+            let existing = try readText(at: url) ?? ""
+            let updated = textByInstallingPaneTeamBlock(into: existing)
+            guard let data = updated.data(using: .utf8) else {
+                throw AgentIntegrationInstallerError.invalidConfiguration(
+                    url.path
+                )
+            }
+            try writeAtomically(data, to: url, defaultMode: 0o644)
+
+        case .openCode, .antigravity, .cursor:
+            break
+        }
+    }
+
+    public func removePaneTeamPointer(_ provider: AgentProvider) throws {
+        switch provider {
+        case .claudeCode:
+            let directory = paneTeamSkillURL.deletingLastPathComponent()
+            guard fileManager.fileExists(atPath: directory.path) else {
+                return
+            }
+            try fileManager.removeItem(at: directory)
+
+        case .codex:
+            let url = codexAgentsMarkdownURL
+            guard let existing = try readText(at: url) else { return }
+            let updated = textByRemovingPaneTeamBlock(from: existing)
+            guard updated != existing else { return }
+            guard let data = updated.data(using: .utf8) else {
+                throw AgentIntegrationInstallerError.invalidConfiguration(
+                    url.path
+                )
+            }
+            try writeAtomically(data, to: url, defaultMode: 0o644)
+
+        case .openCode, .antigravity, .cursor:
+            break
+        }
+    }
+
+    private var paneTeamSkillURL: URL {
+        homeDirectory
+            .appendingPathComponent(
+                ".claude/skills/mytty-panes",
+                isDirectory: true
+            )
+            .appendingPathComponent("SKILL.md", isDirectory: false)
+    }
+
+    private var codexAgentsMarkdownURL: URL {
+        homeDirectory
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md", isDirectory: false)
+    }
+
+    private func paneTeamSkillData() -> Data {
+        Data(
+            """
+            ---
+            name: mytty-panes
+            description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude Code, Codex, Cursor, etc.) in other panes as a team. Use for requests like "split the pane and work in parallel," "run this across multiple panes," or "have another AI review this."
+            ---
+
+            # mytty-panes
+
+            This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI
+            for splitting panes, launching other AI agents in them, and
+            coordinating with them as a team.
+
+            Run this first, then do what it says:
+
+                "$MYTTY_CTL_BIN" guide
+
+            That command is the source of truth for the environment
+            variables, the split/send/wait/read flow, and per-provider
+            launch flags. Don't guess at the workflow from memory or
+            duplicate it here -- it can change between Mytty versions.
+
+            Generated by Mytty. Safe to delete; recreated if the pane-team
+            pointer setting is re-enabled in Mytty's settings.
+            """.utf8
+        )
+    }
+
+    /// The managed block written into `~/.codex/AGENTS.md`, bounded by
+    /// `paneTeamBlockBegin`/`paneTeamBlockEnd` so it can be found, replaced
+    /// on repair, and removed without touching anything else in that file.
+    private func paneTeamBlockBody() -> String {
+        """
+        \(Self.paneTeamBlockBegin)
+        ## Mytty pane team
+
+        This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI for
+        splitting panes, launching other AI agents in them, and coordinating
+        with them as a team. When asked to coordinate work across multiple
+        panes or run other AI agents (Claude Code, Cursor, etc.) as
+        sub-agents, run:
+
+            "$MYTTY_CTL_BIN" guide
+
+        and follow what it prints. That command is the source of truth for
+        the environment variables, the split/send/wait/read flow, and
+        per-provider launch flags -- don't guess at the workflow from
+        memory.
+
+        Generated by Mytty; safe to remove, this block is recreated if the
+        pane-team pointer setting is re-enabled in Mytty's settings.
+        \(Self.paneTeamBlockEnd)
+        """
+    }
+
+    private func paneTeamBlockRange(
+        in text: String
+    ) -> Range<String.Index>? {
+        guard let beginRange = text.range(of: Self.paneTeamBlockBegin),
+              let endRange = text.range(
+                  of: Self.paneTeamBlockEnd,
+                  range: beginRange.upperBound..<text.endIndex
+              )
+        else { return nil }
+        return beginRange.lowerBound..<endRange.upperBound
+    }
+
+    private func textByInstallingPaneTeamBlock(into text: String) -> String {
+        let block = paneTeamBlockBody()
+        if let blockRange = paneTeamBlockRange(in: text) {
+            var updated = text
+            updated.replaceSubrange(blockRange, with: block)
+            return updated
+        }
+        guard !text.isEmpty else { return block + "\n" }
+        let trimmed = text.hasSuffix("\n") ? text : text + "\n"
+        return trimmed + "\n" + block + "\n"
+    }
+
+    private func textByRemovingPaneTeamBlock(from text: String) -> String {
+        guard let blockRange = paneTeamBlockRange(in: text) else {
+            return text
+        }
+        // Installing surrounds the block with a leading blank-line
+        // separator and a trailing newline (see
+        // `textByInstallingPaneTeamBlock`); strip one newline on each
+        // side here so removal reverses that exactly, without touching
+        // any other blank lines the surrounding document already had.
+        var start = blockRange.lowerBound
+        var end = blockRange.upperBound
+        if start > text.startIndex, text[text.index(before: start)] == "\n" {
+            start = text.index(before: start)
+        }
+        if end < text.endIndex, text[end] == "\n" {
+            end = text.index(after: end)
+        }
+        var updated = text
+        updated.removeSubrange(start..<end)
+        return updated
+    }
+
+    private func readText(at url: URL) throws -> String? {
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8)
+        else {
+            throw AgentIntegrationInstallerError.invalidConfiguration(
+                url.path
+            )
+        }
+        return text
     }
 
     private func configurationURL(for provider: AgentProvider) -> URL {

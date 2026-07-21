@@ -74,6 +74,14 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
     public var attentionUnreadOnly: Bool
+    /// Whether Mytty writes a "pane-team pointer" (a short note telling the
+    /// agent to run `mytty-ctl guide`) into a supported provider's global
+    /// configuration whenever that provider's hook integration is
+    /// installed. Persisted rather than derived from on-disk pointer
+    /// status, so an app update can backfill pointers for providers that
+    /// were already installed before this preference existed, while an
+    /// explicit off stays off across updates.
+    public var paneTeamPointersEnabled: Bool
     public var remoteAccessEnabled: Bool
     /// Whether Attention items are pushed to paired iOS devices through
     /// APNs. Independent of `remoteAccessEnabled` only in the sense that
@@ -104,6 +112,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         attentionUnreadOnly: Bool = false,
+        paneTeamPointersEnabled: Bool = true,
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
         inactivePaneDimming: Double = 0.32,
@@ -125,6 +134,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.attentionUnreadOnly = attentionUnreadOnly
+        self.paneTeamPointersEnabled = paneTeamPointersEnabled
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
         self.inactivePaneDimming = inactivePaneDimming
@@ -225,6 +235,7 @@ public struct ApplicationPreferencesStore {
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
             "attention.unread-only",
+            "agents.pane-team-pointers",
             "remote.access-enabled",
             "pane.inactive-dimming",
             "pane.active-border",
@@ -360,6 +371,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.attentionUnreadOnly = enabled
         }
+        if let value = document.lastValue(for: "agents.pane-team-pointers") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "agents.pane-team-pointers", value: value)
+            }
+            preferences.paneTeamPointersEnabled = enabled
+        }
         if let value = document.lastValue(for: "remote.access-enabled") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "remote.access-enabled", value: value)
@@ -464,6 +481,7 @@ public struct ApplicationPreferencesStore {
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
+            "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",
             "pane.inactive-dimming = \(quoted(decimal(preferences.inactivePaneDimming)))",

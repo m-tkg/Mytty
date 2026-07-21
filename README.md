@@ -34,7 +34,10 @@ The current release requires macOS 15 or later and Apple Silicon.
   setup, that lets an agent open panes, drive them, and read them back, so a
   team of subagents runs as ordinary, visible panes instead of a hidden
   background process. Run `mytty-ctl guide` for the full playbook -- it
-  works the same from any project, not just this one.
+  works the same from any project, not just this one. Mytty can also teach
+  Claude Code and Codex to discover it on their own (a Settings toggle,
+  on by default) by writing a short pointer into each provider's global
+  configuration.
 - **Session restoration, local autocomplete, a built-in browser, GIF
   recording, and an iOS remote app** with APNs push for Attention items.
 

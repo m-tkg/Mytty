@@ -51,6 +51,21 @@ Each provider's Settings row derives **Installed** / **Needs Repair** /
 toggle was clicked. A hand-edited or partially removed installation
 shows **Needs Repair**.
 
+**Teach agents about pane teams** (Settings > Agents, on by default) writes
+a second, independent artifact for the two providers where a global pointer
+location is known:
+
+| Provider | File | What gets written |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills/mytty-panes/SKILL.md` | A user skill, entirely owned by Mytty |
+| Codex | `~/.codex/AGENTS.md` | A `<!-- mytty:pane-team:begin -->` / `:end` managed block; everything outside it is untouched |
+
+Both point the provider at `mytty-ctl guide` rather than duplicating its
+contents, so they stay accurate across Mytty updates without needing their
+own repair logic beyond rewriting the block/file to match the current
+build. Cursor, OpenCode, and Antigravity are not covered: no documented
+global-instruction location has been confirmed for them.
+
 ## Lifecycle mapping
 
 One mytty agent run represents one prompt or turn, not an entire

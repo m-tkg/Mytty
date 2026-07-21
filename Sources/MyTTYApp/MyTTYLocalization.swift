@@ -128,6 +128,8 @@ enum MyTTYText: String {
     case preventSleepWhileAgentRunningDescription = "Choose when Mytty keeps this Mac awake for agents."
     case attentionUnreadOnly = "Show unread only"
     case attentionUnreadOnlyDescription = "Hide resolved and acknowledged items from the Attention list."
+    case teachPaneTeamPointers = "Teach agents about pane teams"
+    case teachPaneTeamPointersDescription = "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
     case sleepClamshellArmedStatus =
         "sleep is disabled even with the lid closed"
     case sleepClamshellApprovalStatus =
@@ -522,6 +524,8 @@ struct MyTTYLocalizer: Equatable {
         case .preventSleepWhileAgentRunningDescription: "Agent 実行時、Mac のスリープを防ぐか選択します。"
         case .attentionUnreadOnly: "未読のみ表示"
         case .attentionUnreadOnlyDescription: "解決済み・既読の項目を Attention 一覧から非表示にします。"
+        case .teachPaneTeamPointers: "Agent にペインチームの使い方を教える"
+        case .teachPaneTeamPointersDescription: "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
         case .sleepClamshellArmedStatus: "モニタを閉じてもスリープしません"
         case .sleepClamshellApprovalStatus:
             "システム設定で Mytty のバックグラウンド項目を許可するとモニタを閉じてもスリープしなくなります"

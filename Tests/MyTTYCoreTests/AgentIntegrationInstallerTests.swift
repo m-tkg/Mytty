@@ -434,6 +434,194 @@ struct AgentIntegrationInstallerTests {
         #expect(try installer.status(for: .codex) == .needsRepair)
     }
 
+    @Test("writes a Claude Code pane-team skill Mytty owns outright")
+    func paneTeamPointerClaudeCode() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let skillURL = harness.home
+            .appendingPathComponent(".claude/skills/mytty-panes", isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        let unrelatedSkillURL = harness.home
+            .appendingPathComponent(".claude/skills/other-skill", isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        try FileManager.default.createDirectory(
+            at: unrelatedSkillURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "other skill\n".write(
+            to: unrelatedSkillURL,
+            atomically: true,
+            encoding: .utf8
+        )
+        let installer = harness.installer
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .claudeCode)
+                == .notInstalled
+        )
+        try installer.installPaneTeamPointer(.claudeCode)
+        let installedOnce = try String(contentsOf: skillURL, encoding: .utf8)
+        try installer.installPaneTeamPointer(.claudeCode)
+        let installedTwice = try String(contentsOf: skillURL, encoding: .utf8)
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .claudeCode)
+                == .installed
+        )
+        #expect(installedOnce == installedTwice)
+        #expect(installedOnce.contains("name: mytty-panes"))
+        #expect(installedOnce.contains("$MYTTY_CTL_BIN\" guide"))
+
+        try installer.removePaneTeamPointer(.claudeCode)
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .claudeCode)
+                == .notInstalled
+        )
+        #expect(!FileManager.default.fileExists(atPath: skillURL.path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: skillURL.deletingLastPathComponent().path
+            )
+        )
+        #expect(FileManager.default.fileExists(atPath: unrelatedSkillURL.path))
+    }
+
+    @Test("reports a changed Claude Code pane-team skill as needing repair")
+    func paneTeamPointerClaudeCodeRepair() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let skillURL = harness.home
+            .appendingPathComponent(".claude/skills/mytty-panes", isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        let installer = harness.installer
+        try installer.installPaneTeamPointer(.claudeCode)
+        try "stale content\n".write(
+            to: skillURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .claudeCode)
+                == .needsRepair
+        )
+
+        try installer.installPaneTeamPointer(.claudeCode)
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .claudeCode)
+                == .installed
+        )
+    }
+
+    @Test("appends a managed Codex AGENTS.md block without touching the rest")
+    func paneTeamPointerCodexAppendsToExistingFile() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let agentsURL = harness.home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md")
+        try FileManager.default.createDirectory(
+            at: agentsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let existingBody = "# My project instructions\n\nKeep it terse.\n"
+        try existingBody.write(to: agentsURL, atomically: true, encoding: .utf8)
+        let installer = harness.installer
+
+        #expect(
+            try installer.paneTeamPointerStatus(for: .codex) == .notInstalled
+        )
+        try installer.installPaneTeamPointer(.codex)
+        let installedOnce = try String(contentsOf: agentsURL, encoding: .utf8)
+        try installer.installPaneTeamPointer(.codex)
+        let installedTwice = try String(contentsOf: agentsURL, encoding: .utf8)
+
+        #expect(try installer.paneTeamPointerStatus(for: .codex) == .installed)
+        #expect(installedOnce == installedTwice)
+        #expect(installedOnce.hasPrefix(existingBody))
+        #expect(installedOnce.contains("<!-- mytty:pane-team:begin -->"))
+        #expect(installedOnce.contains("<!-- mytty:pane-team:end -->"))
+        #expect(installedOnce.contains("$MYTTY_CTL_BIN\" guide"))
+        #expect(
+            installedOnce.components(
+                separatedBy: "<!-- mytty:pane-team:begin -->"
+            ).count == 2
+        )
+
+        try installer.removePaneTeamPointer(.codex)
+        let removed = try String(contentsOf: agentsURL, encoding: .utf8)
+
+        #expect(try installer.paneTeamPointerStatus(for: .codex) == .notInstalled)
+        #expect(removed == existingBody)
+    }
+
+    @Test("creates AGENTS.md from scratch when Codex has none")
+    func paneTeamPointerCodexCreatesFile() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let agentsURL = harness.home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md")
+        let installer = harness.installer
+
+        #expect(!FileManager.default.fileExists(atPath: agentsURL.path))
+        try installer.installPaneTeamPointer(.codex)
+
+        #expect(try installer.paneTeamPointerStatus(for: .codex) == .installed)
+        let installed = try String(contentsOf: agentsURL, encoding: .utf8)
+        #expect(installed.contains("<!-- mytty:pane-team:begin -->"))
+
+        try installer.removePaneTeamPointer(.codex)
+        let removed = try String(contentsOf: agentsURL, encoding: .utf8)
+
+        #expect(try installer.paneTeamPointerStatus(for: .codex) == .notInstalled)
+        #expect(removed.isEmpty)
+    }
+
+    @Test("does not overwrite a Codex AGENTS.md that isn't valid text")
+    func paneTeamPointerCodexMalformed() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let agentsURL = harness.home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("AGENTS.md")
+        try FileManager.default.createDirectory(
+            at: agentsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let malformed = Data([0xFF, 0xFE, 0x00, 0xD8, 0x00])
+        try malformed.write(to: agentsURL)
+
+        #expect(throws: AgentIntegrationInstallerError.invalidConfiguration(
+            agentsURL.path
+        )) {
+            try harness.installer.installPaneTeamPointer(.codex)
+        }
+        #expect(try Data(contentsOf: agentsURL) == malformed)
+    }
+
+    @Test("skips providers with no supported pane-team pointer location")
+    func paneTeamPointerUnsupportedProviders() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let installer = harness.installer
+
+        for provider: AgentProvider in [.openCode, .antigravity, .cursor] {
+            #expect(
+                try installer.paneTeamPointerStatus(for: provider)
+                    == .notInstalled
+            )
+            try installer.installPaneTeamPointer(provider)
+            #expect(
+                try installer.paneTeamPointerStatus(for: provider)
+                    == .notInstalled
+            )
+            try installer.removePaneTeamPointer(provider)
+        }
+    }
+
     @Test("repairs an installed hook helper after the app updates")
     func outdatedHookHelper() throws {
         let harness = try Harness()

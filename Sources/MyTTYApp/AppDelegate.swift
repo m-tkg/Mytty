@@ -444,6 +444,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 applicationSupportDirectory:
                     sharedIntegrationPaths.applicationSupportDirectory,
                 sourceHookExecutable: sourceHookExecutable()
+            ),
+            preferenceStore: ApplicationPreferencesPaneTeamPointerStore(
+                store: ApplicationPreferencesStore(),
+                configurationURL: paths.appConfiguration
             )
         )
         // A single canonical copy shared by dev and release builds, same

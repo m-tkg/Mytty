@@ -223,5 +223,6 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("MYTTY_CTL_BIN"))
         #expect(guide.contains("MYTTY_SURFACE_ID"))
         #expect(guide.contains("MYTTY_CONTROL_SOCKET"))
+        #expect(guide.contains("still be initializing and drops"))
     }
 }
