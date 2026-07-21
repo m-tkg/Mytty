@@ -2,8 +2,7 @@
 
 # About Mytty
 
-Mytty is a terminal emulator packed with features that make working with
-AI agents easier.
+Mytty is a terminal emulator packed with features that make working with AI agents easier.
 
 It's pronounced "mighty".
 
@@ -17,8 +16,7 @@ It's pronounced "mighty".
 - Record your operations as a GIF
 - Toast display of input keys (handy for recordings)
 - Restores AI agent sessions across restarts
-- Restores from history not just on restart, but also when you close a
-  pane or tab
+- Restores from history not just on restart, but also when you close a pane or tab
 
 ## Tutorials
 
@@ -48,7 +46,5 @@ It's pronounced "mighty".
 - [Build the macOS app from source](how-to/build-macos-app.md)
 - [Release a version](how-to/release-a-version.md)
 - [Build the iOS remote app](how-to/build-ios-remote-app.md)
-- [`cloudflare/push-relay/README.md`](../cloudflare/push-relay/README.md)
-  covers self-hosting the push notification relay.
-- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md)
-  has ready-made task recipes for driving Mytty with `mytty-ctl`.
+- [`cloudflare/push-relay/README.md`](../cloudflare/push-relay/README.md) covers self-hosting the push notification relay.
+- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md) has ready-made task recipes for driving Mytty with `mytty-ctl`.

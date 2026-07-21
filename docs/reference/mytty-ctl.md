@@ -1,30 +1,10 @@
 # mytty-ctl reference
 
-`mytty-ctl` is the local CLI a coding agent (Claude Code, Codex, Cursor,
-...) uses to drive Mytty itself. Its `agent` subcommands spawn a worker
-provider in a new pane, deliver its task as one shell input, and track
-that exact spawn as a job an orchestrator can wait on, read the result
-of, and send follow-ups to. The older pane-level commands (`split`,
-`send`, `wait`, `read`, ...) still work and remain the right tool for
-driving a pane by hand; the [orchestration how-to](../how-to/orchestrate-agents-with-mytty-ctl.md)
-covers when to reach for which. It talks to `ControlServer`
-(`MyTTYApp`) over a Unix-domain socket restricted to the current user,
-one JSON request per connection, and is a separate transport from the
-iOS remote (`RemoteAccessServer`, TCP with pairing and encryption).
-Source: `Sources/MyTTYCore/ControlProtocol.swift`,
-`Sources/MyTTYCore/ControlCommandLineParser.swift`,
-`Sources/MyTTYCore/AgentJob.swift`,
-`Sources/MyTTYCore/AgentLaunchPlan.swift`,
-`Sources/MyTTYApp/ControlServer.swift`,
-`Sources/MyTTYApp/ControlCoordinator.swift`,
-`Sources/MyTTYApp/AgentJobCoordinator.swift`.
+`mytty-ctl` is the local CLI a coding agent (Claude Code, Codex, Cursor, ...) uses to drive Mytty itself. Its `agent` subcommands spawn a worker provider in a new pane, deliver its task as one shell input, and track that exact spawn as a job an orchestrator can wait on, read the result of, and send follow-ups to. The older pane-level commands (`split`, `send`, `wait`, `read`, ...) still work and remain the right tool for driving a pane by hand; the [orchestration how-to](../how-to/orchestrate-agents-with-mytty-ctl.md) covers when to reach for which. It talks to `ControlServer` (`MyTTYApp`) over a Unix-domain socket restricted to the current user, one JSON request per connection, and is a separate transport from the iOS remote (`RemoteAccessServer`, TCP with pairing and encryption). Source: `Sources/MyTTYCore/ControlProtocol.swift`, `Sources/MyTTYCore/ControlCommandLineParser.swift`, `Sources/MyTTYCore/AgentJob.swift`, `Sources/MyTTYCore/AgentLaunchPlan.swift`, `Sources/MyTTYApp/ControlServer.swift`, `Sources/MyTTYApp/ControlCoordinator.swift`, `Sources/MyTTYApp/AgentJobCoordinator.swift`.
 
 ## Environment variables
 
-Every pane Mytty opens gets these three variables set automatically
-(`AgentEventServer.environment(for:)`), which also adds `mytty-ctl`'s
-directory to `PATH`, so no setup is required before calling `mytty-ctl`
-by name from inside a pane:
+Every pane Mytty opens gets these three variables set automatically (`AgentEventServer.environment(for:)`), which also adds `mytty-ctl`'s directory to `PATH`, so no setup is required before calling `mytty-ctl` by name from inside a pane:
 
 | Variable | Meaning |
 | --- | --- |
@@ -36,38 +16,25 @@ by name from inside a pane:
 mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree
 ```
 
-A debug build (`Mytty Dev`) and a release build each expose their own
-socket under separate `~/.config/mytty(-dev)` directories.
-`mytty-ctl` itself is unaware of which one it is talking to; that is
-entirely determined by which pane's environment it inherited.
+A debug build (`Mytty Dev`) and a release build each expose their own socket under separate `~/.config/mytty(-dev)` directories. `mytty-ctl` itself is unaware of which one it is talking to; that is entirely determined by which pane's environment it inherited.
 
 ## Using mytty-ctl outside Mytty
 
-The `PATH` entry above only covers panes Mytty itself opened. To call
-`mytty-ctl` from somewhere else — another terminal app, a script — use
-the "Install CLI" button in Settings > Orchestration. It symlinks the
-installed binary into `~/.local/bin`, with no admin prompt. If something
-else already sits at that name (a link pointing elsewhere, or a real
-file), the button reports a failure instead of silently overwriting it.
+The `PATH` entry above only covers panes Mytty itself opened. To call `mytty-ctl` from somewhere else — another terminal app, a script — use the "Install CLI" button in Settings > Orchestration. It symlinks the installed binary into `~/.local/bin`, with no admin prompt. If something else already sits at that name (a link pointing elsewhere, or a real file), the button reports a failure instead of silently overwriting it.
 
-If `~/.local/bin` isn't already on your shell's `PATH`, the button shows
-a line to add after installing:
+If `~/.local/bin` isn't already on your shell's `PATH`, the button shows a line to add after installing:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Add that to your shell profile (`.zshrc` or similar) and open a new
-shell, or re-source it, and `mytty-ctl` resolves by name.
+Add that to your shell profile (`.zshrc` or similar) and open a new shell, or re-source it, and `mytty-ctl` resolves by name.
 
-A development build (Mytty Dev) installs under a different name,
-`~/.local/bin/mytty-ctl-dev`, so it never takes over the release
-build's link.
+A development build (Mytty Dev) installs under a different name, `~/.local/bin/mytty-ctl-dev`, so it never takes over the release build's link.
 
 ## Exit status and output
 
-Every command prints exactly one line of JSON to stdout and exits `0` on
-success. On failure it prints a message to stderr and exits `1`.
+Every command prints exactly one line of JSON to stdout and exits `0` on success. On failure it prints a message to stderr and exits `1`.
 
 ```bash
 mytty-ctl list | jq .
@@ -75,13 +42,7 @@ mytty-ctl list | jq .
 
 ## Commands
 
-Prefer the `agent` commands for anything shaped like "run one or more
-workers and collect their output" -- they cover spawning a worker,
-waiting on the exact run it started, reading its result, and sending
-follow-ups, without the races the pane-level commands leave for the
-caller to avoid by hand (see [Agent job binding](#agent-job-binding)
-below). The pane-level commands remain the tool for driving a pane
-manually.
+Prefer the `agent` commands for anything shaped like "run one or more workers and collect their output" -- they cover spawning a worker, waiting on the exact run it started, reading its result, and sending follow-ups, without the races the pane-level commands leave for the caller to avoid by hand (see [Agent job binding](#agent-job-binding) below). The pane-level commands remain the tool for driving a pane manually.
 
 | Command | Arguments | Success response |
 | --- | --- | --- |
@@ -102,22 +63,11 @@ manually.
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 
-pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a
-`list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are
-the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an
-`agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
+pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a `list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an `agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
 
 ### agent spawn
 
-Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and
-launches the given provider in it, delivering `--task` (or the contents
-of `--task-file`, read by `mytty-ctl` itself before the request is sent)
-as one shell input together with the launch command -- there is no
-separate `send` that could race the worker's TUI starting up. `--access`
-defaults to `workspace-write`; `review` launches the provider in its
-read-only/plan mode instead. A worker contract (stay in the working
-directory, keep going instead of stopping to ask, end with a concise
-summary) is appended to every task automatically.
+Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and launches the given provider in it, delivering `--task` (or the contents of `--task-file`, read by `mytty-ctl` itself before the request is sent) as one shell input together with the launch command -- there is no separate `send` that could race the worker's TUI starting up. `--access` defaults to `workspace-write`; `review` launches the provider in its read-only/plan mode instead. A worker contract (stay in the working directory, keep going instead of stopping to ask, end with a concise summary) is appended to every task automatically.
 
 ```bash
 job=$(mytty-ctl agent spawn \
@@ -142,17 +92,11 @@ job=$(mytty-ctl agent spawn \
 }
 ```
 
-`state` starts at `launching` and moves to `running` once the worker's
-own hook events confirm a run started. Exactly one of `--task`/
-`--task-file` is required; a task that would push the encoded request
-over the 64 KiB socket envelope is rejected by the CLI before it ever
-opens a connection. See [Agent job binding](#agent-job-binding) for what
-`jobID` actually identifies.
+`state` starts at `launching` and moves to `running` once the worker's own hook events confirm a run started. Exactly one of `--task`/ `--task-file` is required; a task that would push the encoded request over the 64 KiB socket envelope is rejected by the CLI before it ever opens a connection. See [Agent job binding](#agent-job-binding) for what `jobID` actually identifies.
 
 ### agent wait
 
-Blocks until the job's own bound run -- never a run that predates the
-job -- reaches the given condition, or the timeout elapses.
+Blocks until the job's own bound run -- never a run that predates the job -- reaches the given condition, or the timeout elapses.
 
 ```bash
 mytty-ctl agent wait "$job" --until completed
@@ -166,22 +110,15 @@ mytty-ctl agent wait "$job" --until completed
 }
 ```
 
-- `running` resolves once the job has bound to a run and that run is
-  running or has moved past running.
+- `running` resolves once the job has bound to a run and that run is running or has moved past running.
 - `attention` resolves only for `waiting-input`/`waiting-approval`.
-- `completed` resolves for `succeeded`, `failed`, `disconnected`,
-  `launch-failed`, or `lost`.
+- `completed` resolves for `succeeded`, `failed`, `disconnected`, `launch-failed`, or `lost`.
 
-`--timeout-seconds` defaults to `120`. A provider that never starts
-(missing executable, a broken hook integration) surfaces as
-`launch-failed` within 30 seconds of the spawn -- `agent wait` does not
-sit through the full timeout for that case.
+`--timeout-seconds` defaults to `120`. A provider that never starts (missing executable, a broken hook integration) surfaces as `launch-failed` within 30 seconds of the spawn -- `agent wait` does not sit through the full timeout for that case.
 
 ### agent result
 
-Returns the job's latest state together with the pane's current screen
-content, so a lead can collect what a worker produced after `agent wait
---until completed`.
+Returns the job's latest state together with the pane's current screen content, so a lead can collect what a worker produced after `agent wait --until completed`.
 
 ```bash
 mytty-ctl agent result "$job"
@@ -200,15 +137,11 @@ mytty-ctl agent result "$job"
 }
 ```
 
-This reads the pane's current screen, not a provider transcript, so a
-worker's launch prompt asks it to keep its final summary concise enough
-to still be legible on screen.
+This reads the pane's current screen, not a provider transcript, so a worker's launch prompt asks it to keep its final summary concise enough to still be legible on screen.
 
 ### agent send / agent focus / agent close
 
-Resolve a job ID to its pane and reuse the pane-level `send`/`focus`/
-`close-pane` behavior, so a follow-up always reaches the exact worker it
-was meant for even if other panes were opened or closed in between.
+Resolve a job ID to its pane and reuse the pane-level `send`/`focus`/ `close-pane` behavior, so a follow-up always reaches the exact worker it was meant for even if other panes were opened or closed in between.
 
 ```bash
 mytty-ctl agent send "$job" "Also add a regression test." --enter
@@ -220,20 +153,11 @@ mytty-ctl agent close "$job"
 { "type": "ok" }
 ```
 
-`agent close` closes the job's pane and moves a nonterminal job to
-`lost`. A pane that disappeared on its own (closed by the user, the
-shell exited, ...) is reported the same way -- `lost`, not
-`pane-not-found` -- through every `agent` command.
+`agent close` closes the job's pane and moves a nonterminal job to `lost`. A pane that disappeared on its own (closed by the user, the shell exited, ...) is reported the same way -- `lost`, not `pane-not-found` -- through every `agent` command.
 
 ### guide
 
-Prints the pane-team playbook -- environment variables, the
-split/send/wait/read flow, and per-provider launch commands -- as plain
-text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running
-Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl
-guide` is the primary source for the recipes themselves, so run it
-directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`,
-or no arguments) prints the shorter command list above instead.
+Prints the pane-team playbook -- environment variables, the split/send/wait/read flow, and per-provider launch commands -- as plain text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl guide` is the primary source for the recipes themselves, so run it directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`, or no arguments) prints the shorter command list above instead.
 
 ```bash
 mytty-ctl guide
@@ -268,18 +192,11 @@ mytty-ctl list
 }
 ```
 
-`provider` is an `AgentProvider.rawValue` (see
-[Agent event protocol](agent-event-protocol.md)) and `agentState` an
-`AgentRunState.rawValue`. Both keys are omitted from the JSON entirely
-until at least one agent event has been recorded for that pane (verified
-against a live `mytty-ctl list | jq .` run on a pane with no agent
-history: no `provider` or `agentState` key appears at all).
+`provider` is an `AgentProvider.rawValue` (see [Agent event protocol](agent-event-protocol.md)) and `agentState` an `AgentRunState.rawValue`. Both keys are omitted from the JSON entirely until at least one agent event has been recorded for that pane (verified against a live `mytty-ctl list | jq .` run on a pane with no agent history: no `provider` or `agentState` key appears at all).
 
 ### new-tab
 
-Creates a new tab in the active window (or the first window found, if
-none is active). There is no way to target a specific window; split an
-existing pane in that window instead.
+Creates a new tab in the active window (or the first window found, if none is active). There is no way to target a specific window; split an existing pane in that window instead.
 
 ```bash
 mytty-ctl new-tab --cwd /path/to/project
@@ -289,13 +206,11 @@ mytty-ctl new-tab --cwd /path/to/project
 { "type": "pane", "paneID": "..." }
 ```
 
-`--cwd` defaults to the active window's current working directory when
-omitted.
+`--cwd` defaults to the active window's current working directory when omitted.
 
 ### split
 
-Splits an existing pane in the given direction, focusing the target pane
-first.
+Splits an existing pane in the given direction, focusing the target pane first.
 
 ```bash
 mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
@@ -320,8 +235,7 @@ mytty-ctl send "$paneA" "investigate issue #42" --enter
 
 ### send-key
 
-Sends a single synthesized key event, for interactive prompts that don't
-respond to plain text (arrow-key menus, `Esc` to cancel, ...).
+Sends a single synthesized key event, for interactive prompts that don't respond to plain text (arrow-key menus, `Esc` to cancel, ...).
 
 ```bash
 mytty-ctl send-key "$paneA" escape
@@ -336,12 +250,7 @@ Recognized `<key>` values (`RemoteKeyMapping.swift`):
 | Named keys | `escape`, `tab`, `return`, `delete`, `space`, `up`, `down`, `left`, `right`, `f1`-`f12` |
 | Single characters | any one of `a`-`z`, `0`-`9`, `` ` ``, `-`, `=`, `[`, `]`, `\`, `;`, `'`, `,`, `.`, `/` |
 
-`--modifiers` takes a comma-separated list drawn from `shift`,
-`control`, `option`, `command` (e.g. `--modifiers shift,command`). An
-unrecognized `<key>` value fails with the `pane-not-found` error code
-even when the pane itself exists. `ControlCoordinator` treats "no key
-mapping" and "no such pane" the same way, so the code name is misleading
-in this one case. No key event is sent when this happens.
+`--modifiers` takes a comma-separated list drawn from `shift`, `control`, `option`, `command` (e.g. `--modifiers shift,command`). An unrecognized `<key>` value fails with the `pane-not-found` error code even when the pane itself exists. `ControlCoordinator` treats "no key mapping" and "no such pane" the same way, so the code name is misleading in this one case. No key event is sent when this happens.
 
 ```json
 { "type": "ok" }
@@ -367,13 +276,11 @@ mytty-ctl read "$paneA"
 }
 ```
 
-`cursorRow` and `cursorColumn` are `null` when the pane has no cursor
-position to report.
+`cursorRow` and `cursorColumn` are `null` when the pane has no cursor position to report.
 
 ### wait
 
-Blocks until the pane's most relevant agent run satisfies a condition, or
-until the timeout elapses.
+Blocks until the pane's most relevant agent run satisfies a condition, or until the timeout elapses.
 
 ```bash
 mytty-ctl wait "$paneA" --until idle
@@ -384,16 +291,11 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 { "type": "waitResult", "state": "idle", "timedOut": false }
 ```
 
-`--timeout-seconds` defaults to `120`. `state` is the `AgentRunState`
-observed when the wait resolved (or `null` if no event has ever arrived
-for that pane); `timedOut` is `true` if the deadline was reached without
-the condition being satisfied. See [wait semantics](#wait-semantics)
-below.
+`--timeout-seconds` defaults to `120`. `state` is the `AgentRunState` observed when the wait resolved (or `null` if no event has ever arrived for that pane); `timedOut` is `true` if the deadline was reached without the condition being satisfied. See [wait semantics](#wait-semantics) below.
 
 ### close-pane
 
-Closes a pane immediately, with no confirmation dialog. The caller is
-assumed to be an automated agent, not a human clicking Close.
+Closes a pane immediately, with no confirmation dialog. The caller is assumed to be an automated agent, not a human clicking Close.
 
 ```bash
 mytty-ctl close-pane "$paneA"
@@ -403,9 +305,7 @@ mytty-ctl close-pane "$paneA"
 { "type": "ok" }
 ```
 
-Closing the last pane of the last tab in a window still triggers that
-window's own close-confirmation dialog, if the user has one configured;
-this case does not normally arise for panes created to run subagents.
+Closing the last pane of the last tab in a window still triggers that window's own close-confirmation dialog, if the user has one configured; this case does not normally arise for panes created to run subagents.
 
 ### focus
 
@@ -421,9 +321,7 @@ mytty-ctl focus "$paneA"
 
 ## Failure responses
 
-A failed request returns `{"type":"failure","code":"..."}` from the
-server; the CLI surfaces this as a non-zero exit with a stderr message
-rather than printing the JSON.
+A failed request returns `{"type":"failure","code":"..."}` from the server; the CLI surfaces this as a non-zero exit with a stderr message rather than printing the JSON.
 
 | Code | Meaning |
 | --- | --- |
@@ -443,99 +341,35 @@ rather than printing the JSON.
 
 ## Wait semantics
 
-`wait` polls at a fixed interval (roughly 300 ms) until the condition is
-met or the deadline passes.
+`wait` polls at a fixed interval (roughly 300 ms) until the condition is met or the deadline passes.
 
-- `--until idle` resolves once the pane's most recent agent run reaches
-  `idle`, `succeeded`, `failed`, or `disconnected`. A pane that has never
-  received an agent event blocks until timeout; there is no "already
-  idle" default.
-- `--until attention` resolves once the run reaches `waiting-input` or
-  `waiting-approval`. Antigravity's installed hooks never emit approval-
-  or input-requested events (see [Agent providers](agent-providers.md)),
-  so `wait --until attention` always times out for panes running that
-  provider; use `--until idle` for it instead. Cursor never emits
-  input-requested either, but it can reach `waiting-approval`: mytty
-  estimates a stuck tool call from a delay between Cursor's `preToolUse`
-  hook and the matching `postToolUse` / `postToolUseFailure`, so `wait
-  --until attention` resolves for a Cursor pane once that estimate fires
-  (roughly 10 seconds after the tool call starts, if nothing resolves it
-  sooner).
-- If the target provider's hook integration has not been enabled yet in
-  Settings, no agent events reach Mytty at all and `wait` blocks until
-  timeout regardless of condition. This is the most common cause of an
-  unexpected timeout the first time a provider is used from a script.
+- `--until idle` resolves once the pane's most recent agent run reaches `idle`, `succeeded`, `failed`, or `disconnected`. A pane that has never received an agent event blocks until timeout; there is no "already idle" default.
+- `--until attention` resolves once the run reaches `waiting-input` or `waiting-approval`. Antigravity's installed hooks never emit approval- or input-requested events (see [Agent providers](agent-providers.md)), so `wait --until attention` always times out for panes running that provider; use `--until idle` for it instead. Cursor never emits input-requested either, but it can reach `waiting-approval`: mytty estimates a stuck tool call from a delay between Cursor's `preToolUse` hook and the matching `postToolUse` / `postToolUseFailure`, so `wait --until attention` resolves for a Cursor pane once that estimate fires (roughly 10 seconds after the tool call starts, if nothing resolves it sooner).
+- If the target provider's hook integration has not been enabled yet in Settings, no agent events reach Mytty at all and `wait` blocks until timeout regardless of condition. This is the most common cause of an unexpected timeout the first time a provider is used from a script.
 
-`agent wait` polls the same way, against `agent spawn`'s job instead of a
-pane. Its three conditions (`running`/`attention`/`completed`) are a
-different set from `wait`'s (`idle`/`attention`) -- see [agent
-wait](#agent-wait) above.
+`agent wait` polls the same way, against `agent spawn`'s job instead of a pane. Its three conditions (`running`/`attention`/`completed`) are a different set from `wait`'s (`idle`/`attention`) -- see [agent wait](#agent-wait) above.
 
 ## Agent job binding
 
-A job created by `agent spawn` identifies one specific worker run, not
-"whatever the pane is currently doing." Internally, `AgentJobTracker`
-records the set of run IDs already known for the new pane at the moment
-it's created (normally empty, since the pane is brand new) and then
-binds the job to the first later run it observes for that pane/provider
-whose ID isn't in that set. Once bound, a job never switches to a
-different run. This is what makes two jobs spawned back to back safe:
-each is anchored to its own pane and its own baseline, so neither can
-observe the other's run, and `agent wait --until completed` can never
-resolve from a run that predates the job.
+A job created by `agent spawn` identifies one specific worker run, not "whatever the pane is currently doing." Internally, `AgentJobTracker` records the set of run IDs already known for the new pane at the moment it's created (normally empty, since the pane is brand new) and then binds the job to the first later run it observes for that pane/provider whose ID isn't in that set. Once bound, a job never switches to a different run. This is what makes two jobs spawned back to back safe: each is anchored to its own pane and its own baseline, so neither can observe the other's run, and `agent wait --until completed` can never resolve from a run that predates the job.
 
-A job's state comes directly from mapping its bound run's
-`AgentRunState`, not from `AttentionCenter`'s "most relevant run for this
-pane" logic that the status bar uses -- the two answer different
-questions. If no run binds before 30 seconds pass, the job moves to
-`launch-failed` (covering a missing executable, a TUI that never
-launched, or hooks that never fired). If the job's pane disappears, a
-nonterminal job moves to `lost`. Neither transition is reversible.
+A job's state comes directly from mapping its bound run's `AgentRunState`, not from `AttentionCenter`'s "most relevant run for this pane" logic that the status bar uses -- the two answer different questions. If no run binds before 30 seconds pass, the job moves to `launch-failed` (covering a missing executable, a TUI that never launched, or hooks that never fired). If the job's pane disappears, a nonterminal job moves to `lost`. Neither transition is reversible.
 
-The job registry lives only in the running app's memory; it is not
-persisted. A Mytty restart makes previously issued job IDs return
-`job-not-found` -- the panes/processes those jobs pointed at are
-unaffected, they're just no longer reachable by that job ID.
+The job registry lives only in the running app's memory; it is not persisted. A Mytty restart makes previously issued job IDs return `job-not-found` -- the panes/processes those jobs pointed at are unaffected, they're just no longer reachable by that job ID.
 
 ## Constraints
 
-- `new-tab` cannot target a specific window; it always lands in the
-  active window, or the first window found if none is active. To open a
-  pane in a specific window, `split` one of that window's existing panes
-  instead.
-- `close-pane` never shows a confirmation dialog. The one exception,
-  closing the last pane of the last tab, still triggers the window's own
-  close confirmation; this does not normally apply to panes created for
-  subagent teams.
-- pane IDs are `TerminalSurfaceID` UUID strings, obtained from `list`, a
-  `pane` response, or `$MYTTY_SURFACE_ID`.
-- The maximum request size accepted by the control socket matches the
-  agent-event socket's 64 KiB envelope limit; a very large `send`
-  argument should be chunked or piped through the shell instead of
-  passed as one oversized literal. `agent spawn` checks the same limit
-  against the encoded request (task plus the appended worker contract)
-  before opening a connection, so an oversized task fails as a plain CLI
-  error instead of a socket write silently being rejected.
-- `agent spawn` never launches a worker in an existing pane -- every
-  spawn creates a new one. This is what keeps job binding correct (see
-  [Agent job binding](#agent-job-binding)); it also means closing jobs
-  you no longer need (`agent close`) matters more than it does for a
-  small number of manually managed panes.
-- job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read
-  from `job.jobID.rawValue` in any `agent` response. They are not
-  interchangeable with pane IDs.
+- `new-tab` cannot target a specific window; it always lands in the active window, or the first window found if none is active. To open a pane in a specific window, `split` one of that window's existing panes instead.
+- `close-pane` never shows a confirmation dialog. The one exception, closing the last pane of the last tab, still triggers the window's own close confirmation; this does not normally apply to panes created for subagent teams.
+- pane IDs are `TerminalSurfaceID` UUID strings, obtained from `list`, a `pane` response, or `$MYTTY_SURFACE_ID`.
+- The maximum request size accepted by the control socket matches the agent-event socket's 64 KiB envelope limit; a very large `send` argument should be chunked or piped through the shell instead of passed as one oversized literal. `agent spawn` checks the same limit against the encoded request (task plus the appended worker contract) before opening a connection, so an oversized task fails as a plain CLI error instead of a socket write silently being rejected.
+- `agent spawn` never launches a worker in an existing pane -- every spawn creates a new one. This is what keeps job binding correct (see [Agent job binding](#agent-job-binding)); it also means closing jobs you no longer need (`agent close`) matters more than it does for a small number of manually managed panes.
+- job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from `job.jobID.rawValue` in any `agent` response. They are not interchangeable with pane IDs.
 
 ## See also
 
-- [Orchestrate a team of agents with mytty-ctl](../how-to/orchestrate-agents-with-mytty-ctl.md)
-  walks through staged multi-worker examples built on the `agent`
-  commands.
-- [mytty-ctl architecture](../explanation/mytty-ctl-architecture.md)
-  explains why the control socket needs no setup and how job/run binding
-  works underneath `agent wait`.
-- [Agent providers](agent-providers.md) covers which providers expose
-  approval/input events, relevant to `wait --until attention`.
-- [Agent event protocol](agent-event-protocol.md) documents the
-  `AgentProvider` and `AgentRunState` values surfaced in `list` and `wait`.
-- `.claude/skills/mytty-panes/SKILL.md` has task recipes built on these
-  commands.
+- [Orchestrate a team of agents with mytty-ctl](../how-to/orchestrate-agents-with-mytty-ctl.md) walks through staged multi-worker examples built on the `agent` commands.
+- [mytty-ctl architecture](../explanation/mytty-ctl-architecture.md) explains why the control socket needs no setup and how job/run binding works underneath `agent wait`.
+- [Agent providers](agent-providers.md) covers which providers expose approval/input events, relevant to `wait --until attention`.
+- [Agent event protocol](agent-event-protocol.md) documents the `AgentProvider` and `AgentRunState` values surfaced in `list` and `wait`.
+- `.claude/skills/mytty-panes/SKILL.md` has task recipes built on these commands.
