@@ -7,12 +7,15 @@ on:
       - "**/*.md"
       - "docs/**"
       - "LICENSE"
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "LICENSE"
+      - "Tests/**"
+      - "ios/**"
+      - "cloudflare/**"
+      - ".claude/**"
+      - "Resources/**"
+      - "Makefile"
+      - ".gitignore"
+      - ".gitmodules"
+      - "scripts/**"
   schedule:
     - cron: "17 3 * * 1"
 
@@ -28,7 +31,7 @@ jobs:
   analyze:
     name: Analyze Swift
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -37,6 +40,14 @@ jobs:
 
       - name: Prepare libghostty
         uses: ./.github/actions/prepare-ghostty
+
+      # Compile the Package.swift manifest before the CodeQL tracer is
+      # installed so the traced build reuses the cached evaluation instead
+      # of paying for it under extraction. Only the manifest is warmed —
+      # target builds must still run under the tracer, or their sources
+      # would be missing from the CodeQL database.
+      - name: Warm SwiftPM manifest cache
+        run: swift package resolve
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a
