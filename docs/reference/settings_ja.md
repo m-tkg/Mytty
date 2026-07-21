@@ -83,7 +83,12 @@ toggle がどのファイルを書き換えるかは
 `~/.codex/AGENTS.md` 内の管理ブロックとして、複数ペインでの作業やサブ
 エージェントの起動を頼まれたら `mytty-ctl guide` を実行するよう指示する。
 上の hook 連携がすでに導入済みの provider にだけ効き、provider の導入・
-削除にもこのトグルの設定が自動で追従する。Cursor・OpenCode・
+削除にもこのトグルの設定が自動で追従する。このトグル自体は永続化された
+設定であり(`config.toml` の `agents.pane-team-pointers`)、ポインタが
+ディスク上に存在するかどうかから導出されているわけではない。オンのまま
+にしておけば、この設定が入る前から導入済みだった provider(たとえば
+Mytty を更新した直後)にもポインタが後から書き込まれる。オフにすれば、
+次にアプリを更新してもオフのまま維持される。Cursor・OpenCode・
 Antigravity にはグローバルなポインタの置き場がまだ確認できていないため
 対象外。
 
@@ -146,10 +151,10 @@ global なため共有される。event の送信先だけはビルドごとに 
 
 `config.toml` は各設定値を Mytty が管理する固定キーの下に保存する
 (例: `tab-position`、`on-launch`、`agents.prevent-system-sleep`、
-`pane.inactive-dimming`、`pane.active-border` とその
-`-width` / `-color`、customize 可能なコマンドごとの
-`keybinding.<command>`)。これらの管理対象キー以外の行は保存時にそのまま
-保持される。管理対象キーのうち `keybinding.toggle-attention` の1つは
+`agents.pane-team-pointers`、`pane.inactive-dimming`、
+`pane.active-border` とその `-width` / `-color`、customize 可能な
+コマンドごとの `keybinding.<command>`)。これらの管理対象キー以外の行は
+保存時にそのまま保持される。管理対象キーのうち `keybinding.toggle-attention` の1つは
 スキーマ上予約されているだけで、実際に読み書きするコードは存在しない。
 View メニューに **Toggle Attention(通知パネルを切り替え)** 項目は
 あるものの、現在のアプリではキーボードショートカットが割り当てられて

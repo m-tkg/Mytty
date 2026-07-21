@@ -108,6 +108,7 @@ struct PreferencesStoreTests {
         autocomplete.enabled = "false"
         agents.prevent-system-sleep = "prevent-while-launched"
         attention.unread-only = "true"
+        agents.pane-team-pointers = "false"
         remote.access-enabled = "true"
         pane.inactive-dimming = "0.45"
         """.appending("\n").write(
@@ -132,6 +133,7 @@ struct PreferencesStoreTests {
             preferences.agentSleepPreventionMode == .preventWhileLaunched
         )
         #expect(preferences.attentionUnreadOnly)
+        #expect(!preferences.paneTeamPointersEnabled)
         #expect(preferences.remoteAccessEnabled)
         #expect(preferences.inactivePaneDimming == 0.45)
 
@@ -147,6 +149,7 @@ struct PreferencesStoreTests {
         preferences.autocompleteEnabled = true
         preferences.agentSleepPreventionMode = .allowSleep
         preferences.attentionUnreadOnly = false
+        preferences.paneTeamPointersEnabled = true
         preferences.remoteAccessEnabled = false
         preferences.inactivePaneDimming = 0.6
         try store.save(preferences, to: harness.appConfiguration)
@@ -178,6 +181,7 @@ struct PreferencesStoreTests {
             )
         )
         #expect(contents.contains("attention.unread-only = \"false\""))
+        #expect(contents.contains("agents.pane-team-pointers = \"true\""))
         #expect(contents.contains("remote.access-enabled = \"false\""))
         #expect(contents.contains("pane.inactive-dimming = \"0.6\""))
         #expect(try store.load(from: harness.appConfiguration) == preferences)
@@ -282,6 +286,7 @@ struct PreferencesStoreTests {
         #expect(preferences.autocompleteEnabled)
         #expect(preferences.agentSleepPreventionMode == .allowSleep)
         #expect(!preferences.attentionUnreadOnly)
+        #expect(preferences.paneTeamPointersEnabled)
         #expect(preferences.inactivePaneDimming == 0.32)
         #expect(preferences.activePaneBorderEnabled)
         #expect(preferences.activePaneBorderWidth == 2)

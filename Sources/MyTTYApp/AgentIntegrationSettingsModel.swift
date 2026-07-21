@@ -16,6 +16,40 @@ protocol AgentIntegrationInstalling {
 
 extension AgentIntegrationInstaller: AgentIntegrationInstalling {}
 
+/// Where the persisted "teach agents about pane teams" preference lives.
+/// A thin seam over `ApplicationPreferences.paneTeamPointersEnabled` so
+/// `AgentIntegrationSettingsModel` doesn't have to know about
+/// `ApplicationPreferencesStore` or the settings file's URL directly, and
+/// tests can substitute an in-memory fake instead of touching disk.
+@MainActor
+protocol PaneTeamPointerPreferenceStoring {
+    var paneTeamPointersEnabled: Bool { get set }
+}
+
+/// Production-backing for `PaneTeamPointerPreferenceStoring`: reads and
+/// writes the shared application preferences file directly, independent of
+/// whatever `SettingsModel` instance the Settings window happens to be
+/// showing. Both re-read the file on every access, so the two stay
+/// consistent without needing to share an object.
+struct ApplicationPreferencesPaneTeamPointerStore:
+    PaneTeamPointerPreferenceStoring {
+    let store: ApplicationPreferencesStore
+    let configurationURL: URL
+
+    var paneTeamPointersEnabled: Bool {
+        get {
+            (try? store.load(from: configurationURL))?
+                .paneTeamPointersEnabled ?? true
+        }
+        nonmutating set {
+            guard var preferences = try? store.load(from: configurationURL)
+            else { return }
+            preferences.paneTeamPointersEnabled = newValue
+            try? store.save(preferences, to: configurationURL)
+        }
+    }
+}
+
 struct AgentIntegrationSettingsState: Equatable, Identifiable {
     let provider: AgentProvider
     var status: AgentIntegrationStatus
@@ -45,18 +79,25 @@ struct AgentIntegrationSettingsState: Equatable, Identifiable {
 final class AgentIntegrationSettingsModel: ObservableObject {
     @Published private(set) var states: [AgentIntegrationSettingsState]
     /// Whether the "teach agents about pane teams" toggle reads as on.
-    /// Derived from the pane-team pointer's on-disk status for whichever
-    /// supported providers currently have their hook installed, rather
-    /// than a separate persisted preference — the same source-of-truth
-    /// approach the per-provider rows already use. Defaults to true when
-    /// no supported provider is installed yet, so a fresh install starts
-    /// with the toggle on.
-    @Published private(set) var paneTeamPointerEnabled = true
+    /// Backed by the persisted `paneTeamPointersEnabled` preference (see
+    /// `PaneTeamPointerPreferenceStoring`), not derived from on-disk
+    /// pointer status — a provider whose hook is already installed but
+    /// whose pointer hasn't been written yet (e.g. an existing user after
+    /// an app update) must still show the toggle on, and `refresh` /
+    /// `repairInstalledIntegrations` are what backfill the pointer to
+    /// match.
+    @Published private(set) var paneTeamPointerEnabled: Bool
 
     private let installer: any AgentIntegrationInstalling
+    private var preferenceStore: any PaneTeamPointerPreferenceStoring
 
-    init(installer: any AgentIntegrationInstalling) {
+    init(
+        installer: any AgentIntegrationInstalling,
+        preferenceStore: any PaneTeamPointerPreferenceStoring
+    ) {
         self.installer = installer
+        self.preferenceStore = preferenceStore
+        paneTeamPointerEnabled = preferenceStore.paneTeamPointersEnabled
         states = Self.providers.map {
             AgentIntegrationSettingsState(
                 provider: $0,
@@ -82,7 +123,7 @@ final class AgentIntegrationSettingsModel: ObservableObject {
         for provider in Self.providers {
             refresh(provider)
         }
-        refreshPaneTeamPointerEnabled()
+        paneTeamPointerEnabled = preferenceStore.paneTeamPointersEnabled
     }
 
     func repairInstalledIntegrations() {
@@ -98,14 +139,22 @@ final class AgentIntegrationSettingsModel: ObservableObject {
         // The pointer's own content can go stale the same way the hook
         // helper does (e.g. the app updated and reworded the guide), so
         // repair it alongside the hooks rather than leaving an outdated
-        // pointer until the user happens to retoggle it.
+        // pointer until the user happens to retoggle it. This also covers
+        // providers whose pointer was simply never written -- notably an
+        // existing user's already-installed Codex/Claude Code integration
+        // from before this preference existed -- so the pointer reaches
+        // them on the next launch instead of requiring a manual retoggle.
         guard paneTeamPointerEnabled else { return }
         for provider in AgentIntegrationInstaller.paneTeamPointerProviders
-        where (try? installer.paneTeamPointerStatus(for: provider))
-            == .needsRepair {
+        where state(for: provider).status != .notInstalled {
+            let pointerStatus = try? installer.paneTeamPointerStatus(
+                for: provider
+            )
+            guard pointerStatus == .needsRepair
+                || pointerStatus == .notInstalled
+            else { continue }
             try? installer.installPaneTeamPointer(provider)
         }
-        refreshPaneTeamPointerEnabled()
     }
 
     func setInstalled(_ installed: Bool, for provider: AgentProvider) {
@@ -128,18 +177,21 @@ final class AgentIntegrationSettingsModel: ObservableObject {
         } catch {
             setError(text(for: error), for: provider)
         }
-        refreshPaneTeamPointerEnabled()
     }
 
     func repair(_ provider: AgentProvider) {
         setInstalled(true, for: provider)
     }
 
-    /// Turns the pane-team pointer on or off for every supported provider
-    /// that currently has its hook installed. Providers not yet installed
-    /// aren't touched here — `setInstalled` picks up the current
-    /// preference automatically once they are.
+    /// Persists the pane-team pointer preference and applies it to every
+    /// supported provider that currently has its hook installed. Providers
+    /// not yet installed aren't touched here — `setInstalled` picks up the
+    /// persisted preference automatically once they are, and
+    /// `repairInstalledIntegrations` backfills any that were installed
+    /// while the preference was already on.
     func setPaneTeamPointerEnabled(_ enabled: Bool) {
+        preferenceStore.paneTeamPointersEnabled = enabled
+        paneTeamPointerEnabled = enabled
         for provider in AgentIntegrationInstaller.paneTeamPointerProviders
         where state(for: provider).status != .notInstalled {
             do {
@@ -151,20 +203,6 @@ final class AgentIntegrationSettingsModel: ObservableObject {
             } catch {
                 setError(text(for: error), for: provider)
             }
-        }
-        refreshPaneTeamPointerEnabled()
-    }
-
-    private func refreshPaneTeamPointerEnabled() {
-        let installedCandidates = AgentIntegrationInstaller
-            .paneTeamPointerProviders
-            .filter { state(for: $0).status != .notInstalled }
-        guard !installedCandidates.isEmpty else {
-            paneTeamPointerEnabled = true
-            return
-        }
-        paneTeamPointerEnabled = installedCandidates.allSatisfy {
-            (try? installer.paneTeamPointerStatus(for: $0)) == .installed
         }
     }
 

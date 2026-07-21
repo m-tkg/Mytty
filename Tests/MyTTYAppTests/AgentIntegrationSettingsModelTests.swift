@@ -41,7 +41,10 @@ struct AgentIntegrationSettingsModelTests {
             .antigravity: .notInstalled,
             .cursor: .installed,
         ])
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
 
         #expect(model.state(for: .codex).status == .installed)
         #expect(model.state(for: .claudeCode).status == .notInstalled)
@@ -71,7 +74,10 @@ struct AgentIntegrationSettingsModelTests {
             .antigravity: .notInstalled,
             .cursor: .needsRepair,
         ])
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
 
         model.repairInstalledIntegrations()
 
@@ -81,6 +87,81 @@ struct AgentIntegrationSettingsModelTests {
         #expect(model.state(for: .openCode).status == .installed)
         #expect(model.state(for: .antigravity).status == .notInstalled)
         #expect(model.state(for: .cursor).status == .installed)
+        // Codex went from needsRepair to installed above, and its pointer
+        // was never written (the default pointerStatuses entry), so repair
+        // backfills it. claudeCode stays untouched because its hook is
+        // still notInstalled.
+        #expect(installer.pointerInstalled == [.codex])
+    }
+
+    @Test("backfills the pane-team pointer for providers installed before the preference existed")
+    @MainActor
+    func repairBackfillsPointerForAlreadyInstalledProviders() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        // No pointerStatuses entries for either provider: both supported
+        // hooks are already installed, but no pointer has ever been
+        // written -- the state an existing user is in right after
+        // updating to a build with this feature.
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
+
+        model.repairInstalledIntegrations()
+
+        #expect(Set(installer.pointerInstalled) == [.codex, .claudeCode])
+    }
+
+    @Test("leaves the pane-team pointer untouched during repair when the preference is off")
+    @MainActor
+    func repairSkipsPointerWhenPreferenceDisabled() {
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore(
+                paneTeamPointersEnabled: false
+            )
+        )
+
+        model.repairInstalledIntegrations()
+
+        #expect(installer.pointerInstalled.isEmpty)
+        #expect(model.paneTeamPointerEnabled == false)
+    }
+
+    @Test("shows the pane-team pointer toggle on even when the pointer hasn't reached disk yet")
+    @MainActor
+    func paneTeamPointerToggleReflectsPreferenceNotDiskState() {
+        // Reproduces the real-world regression: both supported providers'
+        // hooks are Installed, but neither pointer has been written (no
+        // pointerStatuses entries). The toggle must still read on because
+        // it's backed by the persisted preference, not derived from the
+        // pointer files' absence.
+        let installer = FakeAgentIntegrationInstaller(statuses: [
+            .codex: .installed,
+            .claudeCode: .installed,
+            .openCode: .notInstalled,
+            .antigravity: .notInstalled,
+            .cursor: .notInstalled,
+        ])
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
+
+        #expect(model.paneTeamPointerEnabled == true)
     }
 
     @Test("defaults the pane-team pointer toggle on before any provider is installed")
@@ -93,7 +174,10 @@ struct AgentIntegrationSettingsModelTests {
             .antigravity: .notInstalled,
             .cursor: .notInstalled,
         ])
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
 
         #expect(model.paneTeamPointerEnabled == true)
     }
@@ -108,7 +192,10 @@ struct AgentIntegrationSettingsModelTests {
             .antigravity: .notInstalled,
             .cursor: .notInstalled,
         ])
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
 
         model.setInstalled(true, for: .claudeCode)
 
@@ -130,17 +217,23 @@ struct AgentIntegrationSettingsModelTests {
             .antigravity: .notInstalled,
             .cursor: .notInstalled,
         ])
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let preferenceStore = FakePaneTeamPointerPreferenceStore()
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: preferenceStore
+        )
 
         model.setPaneTeamPointerEnabled(false)
 
         #expect(Set(installer.pointerRemoved) == [.codex, .claudeCode])
         #expect(model.paneTeamPointerEnabled == false)
+        #expect(preferenceStore.paneTeamPointersEnabled == false)
 
         model.setPaneTeamPointerEnabled(true)
 
         #expect(Set(installer.pointerInstalled) == [.codex, .claudeCode])
         #expect(model.paneTeamPointerEnabled == true)
+        #expect(preferenceStore.paneTeamPointersEnabled == true)
     }
 
     @Test("keeps a provider error visible without changing its state")
@@ -152,7 +245,10 @@ struct AgentIntegrationSettingsModelTests {
             .openCode: .notInstalled,
         ])
         installer.installError = .missingHookExecutable("/missing/helper")
-        let model = AgentIntegrationSettingsModel(installer: installer)
+        let model = AgentIntegrationSettingsModel(
+            installer: installer,
+            preferenceStore: FakePaneTeamPointerPreferenceStore()
+        )
 
         model.setInstalled(true, for: .codex)
 
@@ -206,5 +302,15 @@ private final class FakeAgentIntegrationInstaller: AgentIntegrationInstalling {
     func removePaneTeamPointer(_ provider: AgentProvider) throws {
         pointerRemoved.append(provider)
         pointerStatuses[provider] = .notInstalled
+    }
+}
+
+@MainActor
+private final class FakePaneTeamPointerPreferenceStore:
+    PaneTeamPointerPreferenceStoring {
+    var paneTeamPointersEnabled: Bool
+
+    init(paneTeamPointersEnabled: Bool = true) {
+        self.paneTeamPointersEnabled = paneTeamPointersEnabled
     }
 }

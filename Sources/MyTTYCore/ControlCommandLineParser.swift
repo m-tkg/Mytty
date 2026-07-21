@@ -98,6 +98,11 @@ public enum ControlCommandLineParser {
       - Cursor never emits an input-requested event. A shell approval instead
         surfaces as `waiting-approval` roughly 10 seconds after the command
         starts, once Mytty's delay-based estimate fires.
+      - Sending the task (step 3) right after the launch command (step 2)
+        can lose it: the agent's TUI may still be initializing and drops
+        input sent before its prompt is drawn. Don't bridge the two with a
+        fixed sleep -- read the pane, and if the prompt isn't on screen
+        yet, wait briefly and read again before sending.
 
     INSTRUCTIONS TO GIVE A SUB-AGENT
 
