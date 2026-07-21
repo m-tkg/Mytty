@@ -26,7 +26,8 @@ The current release requires macOS 15 or later and Apple Silicon.
 - **Tabs and panes:** splits in four directions, drag-to-reorder tabs, pane
   zoom, equalized layouts, and an all-panes switcher. In a split tab the
   focused pane is outlined, with a configurable color and width, alongside
-  the dimming applied to the inactive ones.
+  the dimming applied to the inactive ones. Tabs are numbered in the
+  sidebar and jump directly with Command-1 through Command-9.
 - **Agent-aware status and Attention Inbox:** active agent, session cost,
   quota meters, and a persistent inbox of approval, input, success, and
   failure events that jump straight to the pane that raised them.

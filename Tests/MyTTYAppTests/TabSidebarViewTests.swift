@@ -29,6 +29,19 @@ struct TabSidebarViewTests {
         #expect(!model.canMoveDown(ids[2]))
     }
 
+    @Test("defaults to no number, hiding the digit under the drag handle")
+    func numberDefault() {
+        let row = TabSidebarRow(
+            id: TabID(),
+            title: "Tab",
+            paneCount: 1,
+            attentionCount: 0,
+            hasRunningAgent: false
+        )
+
+        #expect(row.number == 0)
+    }
+
     @Test("shows pane counts for every tab")
     func paneCountVisibility() {
         let singlePane = TabSidebarRow(

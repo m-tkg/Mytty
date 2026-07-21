@@ -16,6 +16,8 @@ framework.
 | Settings | Command-, |
 | Quit Mytty | Command-Q |
 | New Window | Command-N |
+| Next Window | Command-` |
+| Previous Window | Command-Shift-` |
 | Open HTML File | Command-O |
 | Command Palette | Command-Shift-P |
 | Compose One-Liner (macOS 26+) | Control-Command-K |
@@ -29,6 +31,14 @@ framework.
 | Close Tab | Command-W |
 | Reopen Closed Item | Command-Shift-T |
 | Toggle Tab Panels | Command-B |
+| Next Tab | Control-Tab |
+| Previous Tab | Control-Shift-Tab |
+| Go to Tab 1-9 | Command-1 ... Command-9 |
+
+Tab positions are renumbered top to bottom whenever a tab opens, closes, or
+gets dragged to a new spot, and the sidebar shows the current number under
+each tab's drag handle. Command-9 jumps to the 9th tab specifically -- with
+fewer than 9 tabs open, it does nothing rather than jump to the last one.
 
 ## Panes
 

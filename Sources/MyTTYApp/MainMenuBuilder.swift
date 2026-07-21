@@ -115,6 +115,22 @@ enum MainMenuBuilder {
             keyBindings: keyBindings,
             target: target
         )
+        addCommandItem(
+            to: windowMenu,
+            title: localizer.commandTitle(.nextWindow),
+            action: #selector(AppDelegate.nextWindow(_:)),
+            command: .nextWindow,
+            keyBindings: keyBindings,
+            target: target
+        )
+        addCommandItem(
+            to: windowMenu,
+            title: localizer.commandTitle(.previousWindow),
+            action: #selector(AppDelegate.previousWindow(_:)),
+            command: .previousWindow,
+            keyBindings: keyBindings,
+            target: target
+        )
         windowMenu.addItem(.separator())
         addCommandItem(
             to: windowMenu,
@@ -165,6 +181,35 @@ enum MainMenuBuilder {
             keyBindings: keyBindings,
             target: target
         )
+        tabsMenu.addItem(.separator())
+        addCommandItem(
+            to: tabsMenu,
+            title: localizer.commandTitle(.nextTab),
+            action: #selector(AppDelegate.nextTab(_:)),
+            command: .nextTab,
+            keyBindings: keyBindings,
+            target: target
+        )
+        addCommandItem(
+            to: tabsMenu,
+            title: localizer.commandTitle(.previousTab),
+            action: #selector(AppDelegate.previousTab(_:)),
+            command: .previousTab,
+            keyBindings: keyBindings,
+            target: target
+        )
+        tabsMenu.addItem(.separator())
+        for (index, command) in MyTTYCommand.numberedTabCommands.enumerated() {
+            let item = addCommandItem(
+                to: tabsMenu,
+                title: localizer.commandTitle(command),
+                action: #selector(AppDelegate.selectNumberedTab(_:)),
+                command: command,
+                keyBindings: keyBindings,
+                target: target
+            )
+            item.tag = index + 1
+        }
         tabsItem.submenu = tabsMenu
         windowMenu.addItem(tabsItem)
 
