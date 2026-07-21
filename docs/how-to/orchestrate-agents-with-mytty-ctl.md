@@ -20,7 +20,7 @@ Driving panes from inside Mytty needs none of it; the screen is there for
 two things.
 
 **Calling the CLI from outside Mytty**
-"Install to PATH" symlinks the binary into `~/.local/bin`. Panes Mytty
+"Install CLI" symlinks the binary into `~/.local/bin`. Panes Mytty
 opens already have `mytty-ctl` available, so this only matters for another
 terminal app or a script. It never asks for an admin password.
 

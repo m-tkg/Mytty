@@ -45,7 +45,7 @@ entirely determined by which pane's environment it inherited.
 
 The `PATH` entry above only covers panes Mytty itself opened. To call
 `mytty-ctl` from somewhere else — another terminal app, a script — use
-the "Install to PATH" button in Settings > Orchestration. It symlinks the
+the "Install CLI" button in Settings > Orchestration. It symlinks the
 installed binary into `~/.local/bin`, with no admin prompt. If something
 else already sits at that name (a link pointing elsewhere, or a real
 file), the button reports a failure instead of silently overwriting it.

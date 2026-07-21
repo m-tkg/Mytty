@@ -55,7 +55,7 @@ struct LocalizationTests {
         #expect(english[.makeDefaultTerminal] == "Make Mytty Default")
         #expect(english[.defaultTerminalActive] == "Mytty is the default terminal.")
         #expect(english[.commandLineTool] == "Command Line Tool")
-        #expect(english[.installCommandLineTool] == "Install to PATH")
+        #expect(english[.installCommandLineTool] == "Install CLI")
         #expect(english[.commandLineToolInstalled] == "%@ is on your PATH.")
         #expect(
             english[.commandLineToolConflict]
@@ -306,7 +306,7 @@ struct LocalizationTests {
         #expect(japanese[.makeDefaultTerminal] == "Mytty をデフォルトにする")
         #expect(japanese[.defaultTerminalActive] == "Mytty はデフォルトターミナルです。")
         #expect(japanese[.commandLineTool] == "コマンドラインツール")
-        #expect(japanese[.installCommandLineTool] == "PATH にインストール")
+        #expect(japanese[.installCommandLineTool] == "CLI をインストール")
         #expect(japanese[.commandLineToolInstalled] == "%@ が PATH に追加されています。")
         #expect(
             japanese[.commandLineToolConflict]
