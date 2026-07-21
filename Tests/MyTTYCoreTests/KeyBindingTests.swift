@@ -40,14 +40,18 @@ struct KeyBindingTests {
         let bindings = MyTTYCommand.defaultKeyBindings
 
         #expect(bindings[.settings]?.serialized == "command+comma")
-        #expect(bindings[.splitRight]?.serialized == "command+d")
-        #expect(bindings[.splitDown]?.serialized == "shift+command+d")
-        #expect(bindings[.renameTab]?.serialized == "command+r")
+        #expect(
+            bindings[.splitRight]?.serialized == "control+command+backslash"
+        )
+        #expect(
+            bindings[.splitDown]?.serialized == "control+command+minus"
+        )
+        #expect(bindings[.renameTab]?.serialized == "shift+command+r")
         #expect(bindings[.openHTML]?.serialized == "command+o")
         #expect(bindings[.findInPane]?.serialized == "control+f")
         #expect(
             bindings[.showPaneList]?.serialized
-                == "control+command+p"
+                == "control+command+a"
         )
         #expect(bindings[.toggleTabPanel]?.serialized == "command+b")
         #expect(
@@ -55,7 +59,7 @@ struct KeyBindingTests {
         )
         #expect(
             bindings[.equalizePanes]?.serialized
-                == "control+command+equal"
+                == "control+command+e"
         )
         #expect(
             bindings[.togglePaneZoom]?.serialized
@@ -63,10 +67,17 @@ struct KeyBindingTests {
         )
         #expect(
             bindings[.focusLeft]?.serialized
-                == "option+command+left"
+                == "control+command+left"
         )
-        #expect(bindings[.splitLeft] == nil)
-        #expect(bindings[.splitUp] == nil)
+        #expect(
+            bindings[.splitLeft]?.serialized
+                == "control+shift+command+backslash"
+        )
+        #expect(
+            bindings[.splitUp]?.serialized
+                == "control+shift+command+minus"
+        )
+        #expect(bindings[.closePane]?.serialized == "control+command+w")
         #expect(bindings[.selectTab1]?.serialized == "command+1")
         #expect(bindings[.selectTab9]?.serialized == "command+9")
         #expect(bindings[.nextTab]?.serialized == "control+tab")

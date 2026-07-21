@@ -63,7 +63,7 @@ struct KeyBindingIntegrationTests {
         )
         #expect(settings.keyEquivalent.isEmpty)
         #expect(settings.keyEquivalentModifierMask.isEmpty)
-        #expect(equalizePanes.keyEquivalent == "=")
+        #expect(equalizePanes.keyEquivalent == "e")
         #expect(
             equalizePanes.keyEquivalentModifierMask
                 == [.control, .command]
@@ -75,7 +75,7 @@ struct KeyBindingIntegrationTests {
         )
         #expect(findInPane.keyEquivalent == "f")
         #expect(findInPane.keyEquivalentModifierMask == .control)
-        #expect(showPaneList.keyEquivalent == "p")
+        #expect(showPaneList.keyEquivalent == "a")
         #expect(
             showPaneList.keyEquivalentModifierMask == [.control, .command]
         )

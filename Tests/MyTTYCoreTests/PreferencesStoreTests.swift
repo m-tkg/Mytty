@@ -81,7 +81,7 @@ struct PreferencesStoreTests {
         #expect(preferences.keyBindings[.splitRight] == nil)
         #expect(
             preferences.keyBindings[.splitDown]?.serialized
-                == "shift+command+d"
+                == "control+command+minus"
         )
 
         preferences.keyBindings[.toggleRecording] = MyTTYKeyBinding(
