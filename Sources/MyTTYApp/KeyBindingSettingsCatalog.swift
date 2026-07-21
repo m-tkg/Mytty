@@ -24,7 +24,8 @@ enum KeyBindingSettingsCatalog {
             .closePane,
         ]
         var applicationCommands: [MyTTYCommand] = [
-            .settings, .quit, .newWindow, .openHTML, .commandPalette,
+            .settings, .quit, .newWindow, .nextWindow, .previousWindow,
+            .openHTML, .commandPalette,
         ]
         // The on-device model commands only exist as UI on macOS 26+
         // (Foundation Models), so their binding rows are hidden below
@@ -47,7 +48,9 @@ enum KeyBindingSettingsCatalog {
                     .closeTab,
                     .reopenClosed,
                     .toggleTabPanel,
-                ]
+                    .nextTab,
+                    .previousTab,
+                ] + MyTTYCommand.numberedTabCommands
             ),
             KeyBindingCommandGroup(
                 title: .panes,

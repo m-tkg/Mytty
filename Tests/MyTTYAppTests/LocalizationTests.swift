@@ -206,6 +206,12 @@ struct LocalizationTests {
             english[.teachPaneTeamPointersDescription]
                 == "For Claude Code and Codex, add a short note pointing them at \"mytty-ctl guide\" when asked to run sub-agents across panes."
         )
+        #expect(english.commandTitle(.nextTab) == "Next Tab")
+        #expect(english.commandTitle(.previousTab) == "Previous Tab")
+        #expect(english.commandTitle(.nextWindow) == "Next Window")
+        #expect(english.commandTitle(.previousWindow) == "Previous Window")
+        #expect(english.commandTitle(.selectTab3) == "Go to Tab 3")
+        #expect(english.commandTitle(.selectTab9) == "Go to Tab 9")
 
         #expect(japanese[.general] == "一般")
         #expect(japanese[.window] == "ウィンドウ")
@@ -291,5 +297,11 @@ struct LocalizationTests {
             japanese[.teachPaneTeamPointersDescription]
                 == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は「mytty-ctl guide」に従うよう短いメモを追加します。"
         )
+        #expect(japanese.commandTitle(.nextTab) == "次のタブ")
+        #expect(japanese.commandTitle(.previousTab) == "前のタブ")
+        #expect(japanese.commandTitle(.nextWindow) == "次のウィンドウ")
+        #expect(japanese.commandTitle(.previousWindow) == "前のウィンドウ")
+        #expect(japanese.commandTitle(.selectTab3) == "タブ 3 に移動")
+        #expect(japanese.commandTitle(.selectTab9) == "タブ 9 に移動")
     }
 }

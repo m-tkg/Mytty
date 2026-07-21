@@ -181,6 +181,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windowSessionCoordinator.activeController?.newTab()
     }
 
+    @objc func selectNumberedTab(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem else { return }
+        windowSessionCoordinator.activeController?.selectTab(number: item.tag)
+    }
+
+    @objc func nextTab(_ sender: Any?) {
+        windowSessionCoordinator.activeController?.selectAdjacentTab(offset: 1)
+    }
+
+    @objc func previousTab(_ sender: Any?) {
+        windowSessionCoordinator.activeController?
+            .selectAdjacentTab(offset: -1)
+    }
+
+    @objc func nextWindow(_ sender: Any?) {
+        windowSessionCoordinator.focusAdjacentWindow(offset: 1)
+    }
+
+    @objc func previousWindow(_ sender: Any?) {
+        windowSessionCoordinator.focusAdjacentWindow(offset: -1)
+    }
+
     @objc func openHTML(_ sender: Any?) {
         windowSessionCoordinator.activeController?.openHTMLFile()
     }

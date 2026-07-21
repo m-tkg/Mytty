@@ -16,6 +16,8 @@ framework 上で動くため、macOS 26 以降でのみメニューと Key Bindi
 | Settings | Command-, |
 | Quit Mytty | Command-Q |
 | New Window | Command-N |
+| Next Window | Command-` |
+| Previous Window | Command-Shift-` |
 | Open HTML File | Command-O |
 | Command Palette | Command-Shift-P |
 | Compose One-Liner (macOS 26+) | Control-Command-K |
@@ -29,6 +31,14 @@ framework 上で動くため、macOS 26 以降でのみメニューと Key Bindi
 | Close Tab | Command-W |
 | Reopen Closed Item | Command-Shift-T |
 | Toggle Tab Panels | Command-B |
+| Next Tab | Control-Tab |
+| Previous Tab | Control-Shift-Tab |
+| Go to Tab 1-9 | Command-1 ... Command-9 |
+
+タブの番号はタブが開閉したりドラッグで並び替わったりするたびに上から
+1, 2, 3... と振り直され、サイドバーの各タブではドラッグハンドルの下に
+現在の番号が表示される。Command-9 は「9 番目のタブ」へのジャンプで、
+タブが 9 個未満のときは何も起きない(最後のタブへ飛ぶわけではない)。
 
 ## Panes
 
