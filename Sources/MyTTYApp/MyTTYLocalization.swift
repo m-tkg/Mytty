@@ -157,6 +157,10 @@ enum MyTTYText: String {
     case search = "Search"
     case noMatchingSettings = "No matching settings"
     case quitMyTTY = "Quit Mytty"
+    case nextTab = "Next Tab"
+    case previousTab = "Previous Tab"
+    case nextWindow = "Next Window"
+    case previousWindow = "Previous Window"
     case newTab = "New Tab"
     case openHTMLFile = "Open HTML File"
     case renameTab = "Rename Tab"
@@ -331,7 +335,18 @@ struct MyTTYLocalizer: Equatable {
     }
 
     func commandTitle(_ command: MyTTYCommand) -> String {
-        self[command.textKey]
+        if let tabNumber = command.tabNumber {
+            return goToTab(tabNumber)
+        }
+        guard let textKey = command.textKey else { return "" }
+        return self[textKey]
+    }
+
+    func goToTab(_ number: Int) -> String {
+        switch language {
+        case .english: "Go to Tab \(number)"
+        case .japanese: "タブ \(number) に移動"
+        }
     }
 
     func paneCount(_ count: Int) -> String {
@@ -552,6 +567,10 @@ struct MyTTYLocalizer: Equatable {
         case .search: "検索"
         case .noMatchingSettings: "一致する設定がありません"
         case .quitMyTTY: "Mytty を終了"
+        case .nextTab: "次のタブ"
+        case .previousTab: "前のタブ"
+        case .nextWindow: "次のウィンドウ"
+        case .previousWindow: "前のウィンドウ"
         case .newTab: "新規タブ"
         case .openHTMLFile: "HTML ファイルを開く"
         case .renameTab: "タブ名を変更"
@@ -706,16 +725,26 @@ struct MyTTYLocalizer: Equatable {
 }
 
 private extension MyTTYCommand {
-    var textKey: MyTTYText {
+    /// `nil` for `selectTab1`...`selectTab9`: those don't have a fixed
+    /// `MyTTYText`, since their title embeds the tab number. `commandTitle`
+    /// handles them via `tabNumber` before this is ever consulted.
+    var textKey: MyTTYText? {
         switch self {
         case .settings: .settings
         case .quit: .quitMyTTY
         case .newWindow: .newWindow
+        case .nextWindow: .nextWindow
+        case .previousWindow: .previousWindow
         case .openHTML: .openHTMLFile
         case .newTab: .newTab
         case .renameTab: .renameTab
         case .closeTab: .closeTab
         case .reopenClosed: .reopenClosedItem
+        case .nextTab: .nextTab
+        case .previousTab: .previousTab
+        case .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5,
+             .selectTab6, .selectTab7, .selectTab8, .selectTab9:
+            nil
         case .splitLeft: .splitLeft
         case .splitRight: .splitRight
         case .splitUp: .splitUp

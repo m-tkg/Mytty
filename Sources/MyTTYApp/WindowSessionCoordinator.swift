@@ -65,6 +65,24 @@ final class WindowSessionCoordinator {
         }
     }
 
+    /// Brings the window `offset` positions from the active one to the
+    /// front, wrapping around at either end. A no-op with one window or
+    /// none, since there's nothing to cycle to.
+    func focusAdjacentWindow(offset: Int) {
+        guard controllers.count > 1,
+              let activeController,
+              let currentIndex = controllers.firstIndex(where: {
+                  $0 === activeController
+              }),
+              let targetIndex = CyclicSelection.index(
+                  current: currentIndex,
+                  offset: offset,
+                  count: controllers.count
+              )
+        else { return }
+        controllers[targetIndex].window?.makeKeyAndOrderFront(nil)
+    }
+
     /// The controller owning `paneID`, searched across every open window —
     /// a pane ID alone doesn't say which window it belongs to. Shared by
     /// `ControlCoordinator` and `AgentJobCoordinator`, both of which resolve

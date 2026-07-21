@@ -521,6 +521,28 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Jumps to the `number`-th tab (1-based), matching sidebar row
+    /// numbering top to bottom. Out-of-range numbers (fewer tabs than
+    /// `number`) are ignored rather than clamped to the last tab.
+    func selectTab(number: Int) {
+        let index = number - 1
+        guard session.tabs.indices.contains(index) else { return }
+        select(tab: session.tabs[index].id)
+    }
+
+    /// Cycles to the tab `offset` positions from the selected one,
+    /// wrapping around at either end.
+    func selectAdjacentTab(offset: Int) {
+        guard let currentIndex = session.tabs.firstIndex(where: {
+            $0.id == session.selectedTabID
+        }), let targetIndex = CyclicSelection.index(
+            current: currentIndex,
+            offset: offset,
+            count: session.tabs.count
+        ) else { return }
+        select(tab: session.tabs[targetIndex].id)
+    }
+
     func closeSelectedTab() {
         close(tab: session.selectedTabID)
     }
@@ -2006,7 +2028,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private func refreshSidebarRows() {
         let lifecycleBySurface = agentLifecycleBySurface
-        sidebarModel.rows = session.tabs.map { tab in
+        sidebarModel.rows = session.tabs.enumerated().map { offset, tab in
             let state = tab.root.surfaceState(with: tab.focusedSurfaceID)
             let browser = tab.root.browserState(with: tab.focusedSurfaceID)
             let title = displayTitle(for: tab)
@@ -2024,7 +2046,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 ),
                 isRecording: recording.isRecording(tabID: tab.id),
                 hasCollapsedPanes: paneLayout.zoomTarget(for: tab) != nil,
-                resourceURL: state?.workingDirectory ?? browser?.url
+                resourceURL: state?.workingDirectory ?? browser?.url,
+                number: offset + 1
             )
         }
         sidebarModel.selectedTabID = session.selectedTabID

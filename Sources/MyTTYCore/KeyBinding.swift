@@ -4,11 +4,24 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case settings
     case quit
     case newWindow = "new-window"
+    case nextWindow = "next-window"
+    case previousWindow = "previous-window"
     case openHTML = "open-html"
     case newTab = "new-tab"
     case renameTab = "rename-tab"
     case closeTab = "close-tab"
     case reopenClosed = "reopen-closed"
+    case nextTab = "next-tab"
+    case previousTab = "previous-tab"
+    case selectTab1 = "select-tab-1"
+    case selectTab2 = "select-tab-2"
+    case selectTab3 = "select-tab-3"
+    case selectTab4 = "select-tab-4"
+    case selectTab5 = "select-tab-5"
+    case selectTab6 = "select-tab-6"
+    case selectTab7 = "select-tab-7"
+    case selectTab8 = "select-tab-8"
+    case selectTab9 = "select-tab-9"
     case splitLeft = "split-left"
     case splitRight = "split-right"
     case splitUp = "split-up"
@@ -35,16 +48,49 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     /// with the on-device model.
     case summarizeLastCommand = "summarize-last-command"
 
+    /// The tab number a `selectTabN` command jumps to, `nil` for every
+    /// other command. Shared by `title`, the app's localizer, and the menu
+    /// item `tag` so the number lives in one place.
+    public var tabNumber: Int? {
+        switch self {
+        case .selectTab1: 1
+        case .selectTab2: 2
+        case .selectTab3: 3
+        case .selectTab4: 4
+        case .selectTab5: 5
+        case .selectTab6: 6
+        case .selectTab7: 7
+        case .selectTab8: 8
+        case .selectTab9: 9
+        default: nil
+        }
+    }
+
+    /// `selectTab1`...`selectTab9`, in order, for building the numbered
+    /// "Go to Tab" menu items and key binding rows without repeating the
+    /// nine cases at each call site.
+    public static let numberedTabCommands: [MyTTYCommand] = [
+        .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5,
+        .selectTab6, .selectTab7, .selectTab8, .selectTab9,
+    ]
+
     public var title: String {
         switch self {
         case .settings: "Settings"
         case .quit: "Quit Mytty"
         case .newWindow: "New Window"
+        case .nextWindow: "Next Window"
+        case .previousWindow: "Previous Window"
         case .openHTML: "Open HTML File"
         case .newTab: "New Tab"
         case .renameTab: "Rename Tab"
         case .closeTab: "Close Tab"
         case .reopenClosed: "Reopen Closed Item"
+        case .nextTab: "Next Tab"
+        case .previousTab: "Previous Tab"
+        case .selectTab1, .selectTab2, .selectTab3, .selectTab4, .selectTab5,
+             .selectTab6, .selectTab7, .selectTab8, .selectTab9:
+            "Go to Tab \(tabNumber ?? 0)"
         case .splitLeft: "Split Left"
         case .splitRight: "Split Right"
         case .splitUp: "Split Up"
@@ -73,11 +119,27 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             .settings: .init(key: "comma", modifiers: [.command]),
             .quit: .init(key: "q", modifiers: [.command]),
             .newWindow: .init(key: "n", modifiers: [.command]),
+            .nextWindow: .init(key: "backtick", modifiers: [.command]),
+            .previousWindow: .init(
+                key: "backtick",
+                modifiers: [.command, .shift]
+            ),
             .openHTML: .init(key: "o", modifiers: [.command]),
             .newTab: .init(key: "t", modifiers: [.command]),
             .renameTab: .init(key: "r", modifiers: [.command]),
             .closeTab: .init(key: "w", modifiers: [.command]),
             .reopenClosed: .init(key: "t", modifiers: [.command, .shift]),
+            .nextTab: .init(key: "tab", modifiers: [.control]),
+            .previousTab: .init(key: "tab", modifiers: [.control, .shift]),
+            .selectTab1: .init(key: "1", modifiers: [.command]),
+            .selectTab2: .init(key: "2", modifiers: [.command]),
+            .selectTab3: .init(key: "3", modifiers: [.command]),
+            .selectTab4: .init(key: "4", modifiers: [.command]),
+            .selectTab5: .init(key: "5", modifiers: [.command]),
+            .selectTab6: .init(key: "6", modifiers: [.command]),
+            .selectTab7: .init(key: "7", modifiers: [.command]),
+            .selectTab8: .init(key: "8", modifiers: [.command]),
+            .selectTab9: .init(key: "9", modifiers: [.command]),
             .splitRight: .init(key: "d", modifiers: [.command]),
             .splitDown: .init(key: "d", modifiers: [.command, .shift]),
             .focusLeft: .init(key: "left", modifiers: [.command, .option]),

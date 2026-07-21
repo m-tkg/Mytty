@@ -67,6 +67,31 @@ struct KeyBindingTests {
         )
         #expect(bindings[.splitLeft] == nil)
         #expect(bindings[.splitUp] == nil)
+        #expect(bindings[.selectTab1]?.serialized == "command+1")
+        #expect(bindings[.selectTab9]?.serialized == "command+9")
+        #expect(bindings[.nextTab]?.serialized == "control+tab")
+        #expect(
+            bindings[.previousTab]?.serialized == "control+shift+tab"
+        )
+        #expect(bindings[.nextWindow]?.serialized == "command+backtick")
+        #expect(
+            bindings[.previousWindow]?.serialized
+                == "shift+command+backtick"
+        )
+    }
+
+    @Test("has no accidental conflicts among the default bindings")
+    func defaultsDoNotConflict() {
+        let bindings = MyTTYCommand.defaultKeyBindings
+        for command in bindings.keys {
+            #expect(
+                MyTTYKeyBindingConflicts.commands(
+                    conflictingWith: command,
+                    in: bindings
+                ).isEmpty,
+                "\(command.rawValue) conflicts with another default binding"
+            )
+        }
     }
 
     @Test("reports every command sharing the same shortcut")

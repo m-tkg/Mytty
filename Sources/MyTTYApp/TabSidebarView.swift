@@ -76,6 +76,9 @@ struct TabSidebarRow: Identifiable, Equatable {
     var isRecording = false
     var hasCollapsedPanes = false
     var resourceURL: URL? = nil
+    /// Position among the tabs, 1-based, top to bottom. `0` means "no
+    /// number" and hides the digit under the drag handle.
+    var number = 0
 
     var visiblePaneCount: Int? {
         paneCount > 0 ? paneCount : nil
@@ -320,7 +323,7 @@ struct TabSidebarView: View {
         let selected = model.selectedTabID == row.id
 
         return HStack(spacing: 8) {
-            dragHandle
+            dragHandle(number: row.number)
 
             Button {
                 onSelect(row.id)
@@ -418,7 +421,7 @@ struct TabSidebarView: View {
         let selected = model.selectedTabID == row.id
 
         return HStack(spacing: 6) {
-            dragHandle
+            dragHandle(number: row.number)
 
             Button {
                 onSelect(row.id)
@@ -541,11 +544,8 @@ struct TabSidebarView: View {
         )
     }
 
-    private var dragHandle: some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.tertiary)
-            .frame(width: 14, height: 24)
+    private func dragHandle(number: Int) -> some View {
+        TabDragHandleGlyph(number: number)
             .contentShape(Rectangle())
             .help(localizer[.reorderTab])
             .accessibilityLabel(localizer[.reorderTab])
@@ -592,6 +592,28 @@ struct TabSidebarView: View {
             }
     }
 
+}
+
+/// The 3-line drag handle glyph with the tab's position stacked below it,
+/// in the same `.tertiary` color. Shared by the sidebar row (`dragHandle`)
+/// and its drag preview (`TabDragPreview`) so the two stay identical.
+private struct TabDragHandleGlyph: View {
+    let number: Int
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+            if number > 0 {
+                Text("\(number)")
+                    .font(.system(size: 9, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(width: 14, height: 24)
+    }
 }
 
 private struct TabStatusIndicators: View {
@@ -736,10 +758,7 @@ struct TabDragPreview: View {
 
     var body: some View {
         HStack(spacing: placement.isVertical ? 8 : 6) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: 14, height: 24)
+            TabDragHandleGlyph(number: row.number)
             Image(systemName: "terminal")
                 .foregroundStyle(
                     selected ? Color.accentColor : .secondary
