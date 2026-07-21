@@ -11,7 +11,12 @@ enum OneLinerPrompt {
     /// decision rules (file contents vs file names was a repeated
     /// misclassification) and few-shot examples — measured against the
     /// plain zero-shot prompt, these turn wrong `find -name` answers for
-    /// content searches into the expected recursive grep.
+    /// content searches into the expected recursive grep, and turn
+    /// mangled answers for "matches X but not Y" tasks into a
+    /// `grep | grep -v` pipe. The example count is at the model's
+    /// capacity: adding a seventh example measurably corrupted answers
+    /// that were previously correct, so extend this prompt only with an
+    /// eval run over the existing cases.
     static func instructions(language: ResolvedAppLanguage) -> String {
         let languageLine =
             switch language {
@@ -30,7 +35,12 @@ enum OneLinerPrompt {
         ファイル内, 含まれている文字列): use grep recursively. NEVER use \
         find -name for contents.
         - Searching file NAMES (ファイル名): use find -name.
-        - Always single-quote search patterns.
+        - Always single-quote search patterns. Search strings from the \
+        task are literal text — copy them exactly, never invent \
+        character classes.
+        - Only when the task EXCLUDES something (〜は含まない, \
+        〜を除く, "but not"), pipe into grep -v with the excluded \
+        string, as in the examples below. Otherwise never add grep -v.
 
         Examples:
         Task: ファイル名に log を含むファイルを探す
@@ -41,6 +51,10 @@ enum OneLinerPrompt {
         Reply: find . -type f -print0 | xargs -0 grep -l 'エラー'
         Task: list files larger than 100MB
         Reply: find . -type f -size +100M
+        Task: foo で始まるが foobar は含まない行を検索
+        Reply: grep -r '^foo' . | grep -v 'foobar'
+        Task: warn を含むが warning は含まない行を検索
+        Reply: grep -r 'warn' . | grep -v 'warning'
 
         If the task cannot reasonably be done in a single command line, \
         reply instead with one short sentence saying that it cannot and \
