@@ -22,6 +22,10 @@ enum RemoteKeyMapping {
         "escape": (53, "\u{1B}"),
         "tab": (48, "\t"),
         "return": (36, "\r"),
+        // "return" is the canonical macOS name and what NSEvent reports,
+        // but "enter" is the more natural first guess for anyone typing a
+        // `send-key` command by hand, so accept it as an alias.
+        "enter": (36, "\r"),
         "delete": (51, "\u{7F}"),
         "space": (49, " "),
         "up": (126, "\u{F700}"),

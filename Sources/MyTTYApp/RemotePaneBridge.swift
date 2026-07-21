@@ -1,3 +1,4 @@
+import Dispatch
 import GhosttyAdapter
 import MyTTYCore
 
@@ -58,6 +59,20 @@ final class RemotePaneBridge {
         return true
     }
 
+    /// Delay between delivering text and the follow-up Enter keystroke.
+    ///
+    /// Cursor Agent's TUI treats a same-runloop-turn text+Enter burst as a
+    /// paste and drops the Enter, leaving the text sitting unsent in the
+    /// input box (reproduced against the real app: `send --enter` landed
+    /// the text but never submitted it, while a separate `send-key return`
+    /// right after submitted immediately). Codex and Claude Code both
+    /// accept the same-turn burst fine, but there's no reliable way to
+    /// detect "is this pane's foreground process Cursor" from here without
+    /// reaching back into agent-provider detection, so we apply the delay
+    /// unconditionally — a fixed 50ms is imperceptible for a keystroke and
+    /// keeps this path provider-agnostic.
+    static let enterDeliveryDelay: DispatchTimeInterval = .milliseconds(50)
+
     @discardableResult
     func deliverInput(
         paneID: TerminalSurfaceID,
@@ -67,7 +82,17 @@ final class RemotePaneBridge {
         guard let surface = surface(paneID) else { return false }
         surface.sendText(text)
         if pressEnter {
-            surface.sendEnter()
+            // Send Enter as a separate event on a later runloop turn (see
+            // `enterDeliveryDelay`) so it isn't coalesced with the text
+            // burst. The weak capture means a pane closed within the
+            // delay window simply drops the keystroke instead of crashing;
+            // scheduling on the main queue in call order preserves
+            // per-pane ordering across successive `deliverInput` calls.
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + Self.enterDeliveryDelay
+            ) { [weak surface] in
+                surface?.sendEnter()
+            }
         }
         return true
     }

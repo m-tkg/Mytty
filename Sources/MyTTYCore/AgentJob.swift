@@ -158,14 +158,20 @@ public enum AgentIntegrationPreflight {
 /// 6. A pane disappearing transitions a nonterminal job to `.lost`.
 /// 7. No candidate binding before `launchDeadline` transitions the job to
 ///    `.launchFailed`.
+/// 8. Rule 5 is what stops a job from being confused about *which* run
+///    it's tracking, not a promise that a job can only ever track one
+///    run for its whole lifetime. `prepareForFollowUp` is the one
+///    deliberate, orchestrator-triggered exception: once the bound run
+///    has finished (`.succeeded`/`.failed`/`.disconnected`), it re-arms
+///    the job for a brand new run — see that method's documentation.
 public struct AgentJobTracker: Equatable, Sendable {
     public let jobID: AgentJobID
     public let paneID: TerminalSurfaceID
     public let provider: AgentWorkerProvider
     public let label: String?
     public let createdAt: Date
-    public let launchDeadline: Date
-    private let baselineRunIDs: Set<AgentRunID>
+    public private(set) var launchDeadline: Date
+    private var baselineRunIDs: Set<AgentRunID>
     public private(set) var boundRunID: AgentRunID?
     public private(set) var state: AgentJobState
     public private(set) var sessionID: String?
@@ -274,6 +280,59 @@ public struct AgentJobTracker: Equatable, Sendable {
             message = "No \(provider.rawValue) run was observed within "
                 + "the launch window after spawning."
         }
+    }
+
+    /// States a bound run must have reached for `prepareForFollowUp` to
+    /// rebind. Deliberately narrower than `AgentJobState.isTerminal`:
+    /// `.launchFailed` means no run ever bound (there's nothing to
+    /// "finish" and send a follow-up to), and `.lost` means the pane
+    /// itself is gone (a follow-up couldn't be delivered anyway) — both
+    /// stay untouched here rather than silently re-arming a job that
+    /// isn't in a state a follow-up makes sense for.
+    private static let followUpEligibleStates: Set<AgentJobState> = [
+        .succeeded, .failed, .disconnected,
+    ]
+
+    /// Called when `agent send` is about to deliver follow-up input to
+    /// this job. Rule 5 (a job never rebinds once bound) exists to stop a
+    /// *stale* run from being mistaken for the job's current one — it was
+    /// never meant to make a job permanently unable to track a follow-up
+    /// the orchestrator deliberately asked for. Without this, `agent
+    /// wait --until completed` after a follow-up `agent send` resolves
+    /// immediately against the *previous* run's already-terminal state,
+    /// which is the bug this exists to fix (reproduced against the real
+    /// app: a follow-up send followed immediately by `wait` returned the
+    /// prior run's `succeeded` without ever looking at the new one).
+    ///
+    /// If the bound run already reached one of `followUpEligibleStates`,
+    /// this releases the bind and re-arms the job exactly as it was right
+    /// after `spawn`: the baseline resets to `knownRunIDs` (everything
+    /// visible for this pane *right now*, including the just-finished
+    /// run, so it can never bind again — rule 2), state goes back to
+    /// `.launching`, and `launchDeadline` is pushed out by `launchWindow`
+    /// from `now` so a follow-up that never gets picked up still
+    /// eventually resolves to `.launchFailed` (rule 7) instead of hanging
+    /// forever.
+    ///
+    /// If the bound run is still active (or there is no bound run yet —
+    /// still `.launching`), this is a no-op: the input is just delivered
+    /// into the ongoing run, same as before this method existed.
+    ///
+    /// Returns whether a rebind window was (re)armed.
+    @discardableResult
+    public mutating func prepareForFollowUp(
+        knownRunIDs: Set<AgentRunID>,
+        now: Date,
+        launchWindow: TimeInterval = 30
+    ) -> Bool {
+        guard Self.followUpEligibleStates.contains(state) else {
+            return false
+        }
+        baselineRunIDs = knownRunIDs
+        boundRunID = nil
+        state = .launching
+        launchDeadline = now.addingTimeInterval(launchWindow)
+        return true
     }
 
     private mutating func apply(_ run: AgentRun) {

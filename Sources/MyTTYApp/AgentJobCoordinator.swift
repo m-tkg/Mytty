@@ -222,18 +222,37 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             return .failure(AgentControlFailure("job-not-found"))
         }
         refresh(&tracker)
-        trackers[jobID] = tracker
         guard let controller = windowSessionCoordinator.controller(
             owning: tracker.paneID
-        ),
-            controller.deliverRemoteInput(
-                paneID: tracker.paneID,
-                text: text,
-                pressEnter: pressEnter
-            )
-        else {
+        ) else {
+            trackers[jobID] = tracker
             return .failure(AgentControlFailure("job-lost"))
         }
+        // A follow-up `agent send` into a job whose previously bound run
+        // already finished must rebind before delivering the input, or
+        // the eventual `agent wait --until completed` would resolve
+        // immediately against the stale, already-terminal run instead of
+        // the new one this follow-up produces. No-op if the job is still
+        // tracking an active run — see AgentJobTracker.prepareForFollowUp.
+        tracker.prepareForFollowUp(
+            knownRunIDs: Set(
+                attentionCenter.runs(
+                    forPane: tracker.paneID,
+                    provider: tracker.provider.agentProvider
+                ).map(\.id)
+            ),
+            now: now(),
+            launchWindow: launchWindow
+        )
+        guard controller.deliverRemoteInput(
+            paneID: tracker.paneID,
+            text: text,
+            pressEnter: pressEnter
+        ) else {
+            trackers[jobID] = tracker
+            return .failure(AgentControlFailure("job-lost"))
+        }
+        trackers[jobID] = tracker
         return .success(())
     }
 

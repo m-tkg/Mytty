@@ -228,6 +228,18 @@ final class ControlServer {
             return .ok
 
         case let .sendKey(paneID, key, modifiers):
+            // Resolve the key name before touching the delegate so an
+            // unrecognized name (e.g. "enter" before it was added as a
+            // `return` alias) reports as its own failure instead of
+            // collapsing into "pane-not-found" — that used to send
+            // callers hunting for a pane bug when the pane was fine and
+            // the key name was the problem.
+            guard RemoteKeyMapping.event(
+                key: key,
+                modifiers: modifiers
+            ) != nil else {
+                return .failure(code: "invalid-key")
+            }
             guard delegate.controlServer(
                 self,
                 pressKey: key,
