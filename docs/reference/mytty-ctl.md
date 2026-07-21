@@ -233,7 +233,12 @@ text, and exits 0 without needing `MYTTY_CONTROL_SOCKET` or a running
 Mytty. This file documents argument syntax and JSON shapes; `mytty-ctl
 guide` is the primary source for the recipes themselves, so run it
 directly rather than looking for a copy here. `mytty-ctl --help` (or `-h`,
-or no arguments) prints the shorter command list above instead.
+or no arguments) prints the shorter command list above instead. Mytty
+itself writes this same text to
+`~/Library/Application Support/mytty/mytty-ctl.md` on every launch, and
+the "Teach agents about Mytty orchestration" setting for Claude Code /
+Codex writes a reference to that file (see the
+[agent providers reference](agent-providers.md)).
 
 ```bash
 mytty-ctl guide

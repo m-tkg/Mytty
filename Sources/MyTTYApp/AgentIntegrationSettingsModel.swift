@@ -29,6 +29,10 @@ protocol AgentIntegrationInstalling {
         for provider: AgentProvider,
         language: PaneTeamPointerLanguage
     ) -> String?
+    /// Where the guide Markdown file lives -- the file every pane-team
+    /// pointer now just refers to, rather than embedding the recipe
+    /// itself. Display-only, same reasoning as `paneTeamPointerURL`.
+    var installedGuideMarkdown: URL { get }
 }
 
 extension AgentIntegrationInstaller: AgentIntegrationInstalling {}
@@ -152,6 +156,12 @@ final class AgentIntegrationSettingsModel: ObservableObject {
         language: PaneTeamPointerLanguage
     ) -> String? {
         installer.paneTeamPointerPreview(for: provider, language: language)
+    }
+
+    /// Where the guide Markdown file lives on disk -- the file every
+    /// pane-team pointer now just points at.
+    var guideMarkdownURL: URL {
+        installer.installedGuideMarkdown
     }
 
     func state(

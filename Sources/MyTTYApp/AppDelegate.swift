@@ -479,13 +479,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         try TerminalPreferencesStore().prepareForLaunch(
             at: paths.terminalConfiguration
         )
+        let agentIntegrationInstaller = AgentIntegrationInstaller(
+            homeDirectory: fileManager.homeDirectoryForCurrentUser,
+            applicationSupportDirectory:
+                sharedIntegrationPaths.applicationSupportDirectory,
+            sourceHookExecutable: sourceHookExecutable()
+        )
+        // Best effort, every launch: keeps the standalone guide file in
+        // lockstep with whichever binary is actually running, the same way
+        // `installControlExecutable` below keeps the binary itself
+        // current. A write failure (read-only disk, permissions) must not
+        // block startup -- the pane-team pointers below only ever refer to
+        // this file's path, they don't depend on the write having
+        // succeeded.
+        try? agentIntegrationInstaller.installGuideMarkdown()
         let agentIntegrationSettingsModel = AgentIntegrationSettingsModel(
-            installer: AgentIntegrationInstaller(
-                homeDirectory: fileManager.homeDirectoryForCurrentUser,
-                applicationSupportDirectory:
-                    sharedIntegrationPaths.applicationSupportDirectory,
-                sourceHookExecutable: sourceHookExecutable()
-            ),
+            installer: agentIntegrationInstaller,
             preferenceStore: ApplicationPreferencesPaneTeamPointerStore(
                 store: ApplicationPreferencesStore(),
                 configurationURL: paths.appConfiguration
