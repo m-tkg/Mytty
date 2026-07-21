@@ -53,13 +53,18 @@ do {
             : "{\"decision\":\"stop\"}\n"
         FileHandle.standardOutput.write(Data(output.utf8))
     } else if provider == .cursor {
-        // beforeShellExecution can return a permission decision; mytty
-        // only observes, so say nothing rather than let an empty/garbled
-        // response get read as a denial.
+        // preToolUse and beforeShellExecution can both return a
+        // permission decision; mytty only observes, so it answers with an
+        // explicit "no opinion" rather than staying silent — an empty
+        // response to preToolUse was observed to make Cursor treat the
+        // tool call as denied.
         let object = try? JSONSerialization.jsonObject(with: payload)
             as? [String: Any]
-        if object?["hook_event_name"] as? String == "beforeShellExecution" {
+        switch object?["hook_event_name"] as? String {
+        case "preToolUse", "beforeShellExecution":
             FileHandle.standardOutput.write(Data("{}\n".utf8))
+        default:
+            break
         }
     }
 } catch {

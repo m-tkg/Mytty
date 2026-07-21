@@ -52,6 +52,11 @@ public struct AgentEvent: Codable, Equatable, Sendable {
     /// mytty synthesizes itself. Optional and Codable-default so existing
     /// persisted rows (recorded before this field existed) still decode.
     public let hookName: String?
+    /// The provider's `tool_use_id` for this hook delivery, when one
+    /// exists (currently only Cursor's `preToolUse` / `postToolUse` /
+    /// `postToolUseFailure`). Optional and Codable-default so existing
+    /// persisted rows still decode.
+    public let toolUseID: String?
 
     public init(
         schemaVersion: Int = AgentEvent.currentSchemaVersion,
@@ -63,7 +68,8 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         kind: AgentEventKind,
         occurredAt: Date,
         message: String? = nil,
-        hookName: String? = nil
+        hookName: String? = nil,
+        toolUseID: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -75,6 +81,7 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         self.occurredAt = occurredAt
         self.message = message
         self.hookName = hookName
+        self.toolUseID = toolUseID
     }
 }
 

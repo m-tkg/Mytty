@@ -279,10 +279,9 @@ struct AgentIntegrationInstallerTests {
         #expect(installedTwice["version"] as? Int == 1)
         for event in [
             "beforeSubmitPrompt",
+            "preToolUse",
             "postToolUse",
             "postToolUseFailure",
-            "beforeShellExecution",
-            "afterShellExecution",
             "stop",
         ] {
             #expect(
@@ -302,11 +301,11 @@ struct AgentIntegrationInstallerTests {
         )
 
         let hooks = try #require(installedTwice["hooks"] as? [String: Any])
-        let beforeShellHandlers = try #require(
-            hooks["beforeShellExecution"] as? [[String: Any]]
+        let preToolUseHandlers = try #require(
+            hooks["preToolUse"] as? [[String: Any]]
         )
         let ownedHandler = try #require(
-            beforeShellHandlers.first {
+            preToolUseHandlers.first {
                 ($0["command"] as? String)?
                     .contains("mytty-agent-hook' cursor") == true
             }
@@ -330,6 +329,68 @@ struct AgentIntegrationInstallerTests {
                 event: "beforeSubmitPrompt",
                 commandContaining: "mytty-agent-hook' cursor"
             ) == 0
+        )
+    }
+
+    @Test("replaces an old beforeShellExecution/afterShellExecution Cursor install with preToolUse")
+    func cursorHooksMigrateFromShellExecutionHandlers() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let hooksURL = harness.home
+            .appendingPathComponent(".cursor", isDirectory: true)
+            .appendingPathComponent("hooks.json")
+        let installer = harness.installer
+        let ownedCommand =
+            "'\(installer.installedHookExecutable.path)' cursor"
+
+        // Simulates a config left behind by the prior (PR #10) install,
+        // which registered mytty's own handler on beforeShellExecution
+        // and afterShellExecution.
+        try harness.writeJSON(
+            [
+                "version": 1,
+                "hooks": [
+                    "beforeShellExecution": [
+                        ["type": "command", "command": ownedCommand],
+                    ],
+                    "afterShellExecution": [
+                        ["type": "command", "command": ownedCommand],
+                    ],
+                    "stop": [
+                        ["type": "command", "command": ownedCommand],
+                        ["type": "command", "command": "./hooks/metrics.sh"],
+                    ],
+                ],
+            ],
+            to: hooksURL
+        )
+
+        try installer.install(.cursor)
+        let installed = try harness.readJSON(hooksURL)
+
+        #expect(try installer.status(for: .cursor) == .installed)
+        #expect(harness.eventGroups(in: installed, event: "beforeShellExecution").isEmpty)
+        #expect(harness.eventGroups(in: installed, event: "afterShellExecution").isEmpty)
+        #expect(
+            harness.directHandlerCount(
+                in: installed,
+                event: "preToolUse",
+                commandContaining: "mytty-agent-hook' cursor"
+            ) == 1
+        )
+        #expect(
+            harness.directHandlerCount(
+                in: installed,
+                event: "stop",
+                commandContaining: "mytty-agent-hook' cursor"
+            ) == 1
+        )
+        #expect(
+            harness.directHandlerCount(
+                in: installed,
+                event: "stop",
+                commandContaining: "./hooks/metrics.sh"
+            ) == 1
         )
     }
 

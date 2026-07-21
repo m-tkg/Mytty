@@ -1,11 +1,18 @@
 import Foundation
 
-/// Estimates the one Cursor signal its hooks never send: a shell command
+/// Estimates the one Cursor signal its hooks never send: a tool call
 /// stuck on a permission prompt. Cursor has no dedicated approval-request
-/// hook, but `beforeShellExecution` / `afterShellExecution` bracket every
-/// command; if no forward-progress hook for the same run follows
-/// `beforeShellExecution` within `threshold`, the command is presumed
+/// hook, but `preToolUse` brackets every tool call (shell or otherwise —
+/// file edits and deletes prompt for approval too, not just shell
+/// commands); if no matching `postToolUse` / `postToolUseFailure` for the
+/// same `tool_use_id` follows within `threshold`, the call is presumed
 /// waiting on the user.
+///
+/// Tool calls can run concurrently — Cursor has been observed firing
+/// `preToolUse` for two different tools back to back before either one's
+/// `postToolUse` arrives — so pending registrations are keyed by
+/// `(runID, toolUseID)`, never by run alone, or a still-pending tool
+/// would be forgotten as soon as any other tool in the same run resolves.
 ///
 /// Pure state machine: callers feed it observed events plus the current
 /// time and act on the returned deadline. It owns no timer itself — see
@@ -15,17 +22,19 @@ import Foundation
 public final class CursorApprovalPendingTracker {
     public struct FiredApproval: Equatable, Sendable {
         public let runID: AgentRunID
-        public let command: String
+        public let toolUseID: String
+        public let toolName: String
         public let sessionID: String?
         public let surfaceID: TerminalSurfaceID
     }
 
     private struct Key: Hashable {
         let runID: AgentRunID
-        let command: String
+        let toolUseID: String
     }
 
     private struct Registration {
+        let toolName: String
         let sessionID: String?
         let surfaceID: TerminalSurfaceID
         let deadline: Date
@@ -53,28 +62,34 @@ public final class CursorApprovalPendingTracker {
     public func handle(_ event: AgentEvent, now: Date) -> Date? {
         guard event.provider == .cursor else { return nextDeadline }
 
+        // A run-ending kind clears every tool call still pending for that
+        // run, regardless of which hook produced it.
+        if event.kind == .succeeded
+            || event.kind == .failed
+            || event.kind == .disconnected {
+            removeAll(for: event.runID)
+            return nextDeadline
+        }
+
         switch event.hookName {
-        case "beforeShellExecution":
-            if let command = event.message, !command.isEmpty {
-                let key = Key(runID: event.runID, command: command)
+        case "preToolUse":
+            if let toolUseID = event.toolUseID, !toolUseID.isEmpty {
+                let key = Key(runID: event.runID, toolUseID: toolUseID)
                 if pending[key] == nil {
                     pending[key] = Registration(
+                        toolName: event.message ?? "",
                         sessionID: event.sessionID,
                         surfaceID: event.surfaceID,
                         deadline: now.addingTimeInterval(threshold)
                     )
                 }
             }
-        case "afterShellExecution":
-            if let command = event.message {
+        case "postToolUse", "postToolUseFailure":
+            if let toolUseID = event.toolUseID {
                 pending.removeValue(
-                    forKey: Key(runID: event.runID, command: command)
+                    forKey: Key(runID: event.runID, toolUseID: toolUseID)
                 )
-            } else {
-                removeAll(for: event.runID)
             }
-        case "postToolUse", "postToolUseFailure", "stop":
-            removeAll(for: event.runID)
         default:
             break
         }
@@ -94,7 +109,8 @@ public final class CursorApprovalPendingTracker {
             fired.append(
                 FiredApproval(
                     runID: key.runID,
-                    command: key.command,
+                    toolUseID: key.toolUseID,
+                    toolName: registration.toolName,
                     sessionID: registration.sessionID,
                     surfaceID: registration.surfaceID
                 )

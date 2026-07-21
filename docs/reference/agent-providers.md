@@ -35,7 +35,7 @@ provider in **Settings > Agents** writes to:
 | Claude Code | `~/.claude/settings.json` | Command handlers for prompt, permission, post-tool, notification, stop, and failure events |
 | OpenCode | `~/.config/opencode/plugins/mytty.js` | One mytty-owned global plugin file |
 | Antigravity | `~/.gemini/config/plugins/mytty/` | One mytty-owned plugin directory with invocation and stop hooks |
-| Cursor | `~/.cursor/hooks.json` | Command handlers for prompt, post-tool, shell-execution, and stop events |
+| Cursor | `~/.cursor/hooks.json` | Command handlers for prompt, pre-tool, post-tool, and stop events |
 
 Codex, Claude Code, and Cursor configuration is JSON, parsed
 structurally and rewritten atomically; unrelated top-level values,
@@ -62,7 +62,7 @@ previous one completes.
 | `started` | `UserPromptSubmit` | `UserPromptSubmit` | user `message.updated` | not exposed | `beforeSubmitPrompt` |
 | `approval-requested` | `PermissionRequest` | `PermissionRequest` or permission notification | `permission.asked` / `permission.updated` | not exposed | estimated (see below) |
 | `input-requested` | input-oriented permission tool | input notification or `AskUserQuestion` | `question.asked` | not exposed | not exposed |
-| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `postToolUse` / `postToolUseFailure` / `beforeShellExecution` / `afterShellExecution` |
+| `running` | `PostToolUse` | `PostToolBatch` | `permission.replied` | `PreInvocation` / `PostInvocation` | `preToolUse` / `postToolUse` / `postToolUseFailure` |
 | `succeeded` | `Stop` | `Stop` | `session.idle` | idle `Stop` | `stop` with `completed`, or no `status` field at all |
 | `failed` | not exposed by the installed hooks | `StopFailure` | `session.error` | error `Stop` | `stop` with `error` |
 | `disconnected` | not exposed | not exposed | not exposed | not exposed | `stop` with `aborted` |
@@ -73,22 +73,37 @@ why `mytty-ctl wait --until attention` never resolves for panes running
 that provider (see [mytty-ctl reference](mytty-ctl.md)).
 
 Cursor has no hook of its own for a permission prompt either, but mytty
-estimates one from the two hooks it does fire around every shell
-command: `beforeShellExecution` starts a 10-second timer for that
-`(run, command)` pair; if `afterShellExecution` (matched by command),
-`postToolUse`, `postToolUseFailure`, or `stop` arrives first, the timer
-is cancelled. If nothing arrives in time, mytty synthesizes an
-`approval-requested` event itself — `CursorApprovalPendingTracker` holds
-the pending state, `CursorApprovalCoordinator`
+estimates one from `preToolUse`, which fires before every tool call —
+not just shell commands, but file edits and deletes too, which also
+prompt for approval. `preToolUse` starts a 10-second timer keyed by that
+call's `tool_use_id`; if the matching `postToolUse`, `postToolUseFailure`
+(same `tool_use_id`), or the run's `stop` arrives first, the timer is
+cancelled. Tool calls can run concurrently — Cursor has been observed
+firing `preToolUse` for two different tools back to back before either
+one's `postToolUse` arrives — so pending timers are tracked per
+`tool_use_id`, not per run, or a still-pending call could be forgotten as
+soon as any other call in the same run resolves. If nothing arrives in
+time, mytty synthesizes an `approval-requested` event itself —
+`CursorApprovalPendingTracker` holds the pending state,
+`CursorApprovalCoordinator`
 (`Sources/MyTTYApp/CursorApprovalCoordinator.swift`) owns the timer, and
-`AgentHookEventAdapter.pendingApprovalEvent` builds the event. Once
-`afterShellExecution` (or any other progress hook) does arrive, the run
+`AgentHookEventAdapter.pendingApprovalEvent` builds the event. Once the
+matching `postToolUse` or `postToolUseFailure` does arrive, the run
 transitions back to `running` the same way a real approval resolves, so
-no separate resolution step is needed. Auto-approved commands that
-finish inside the 10-second window never trigger this at all; one that
-runs long but was in fact auto-approved briefly shows as
-`approval-requested` in Attention and then resolves itself once
-`afterShellExecution` lands.
+no separate resolution step is needed. Auto-approved calls that finish
+inside the 10-second window never trigger this at all; one that runs
+long but was in fact auto-approved briefly shows as
+`approval-requested` in Attention and then resolves itself once its
+`postToolUse` lands.
+
+mytty no longer installs handlers on Cursor's `beforeShellExecution` /
+`afterShellExecution` hooks, and no longer uses them to detect a pending
+approval: they only bracket shell commands, so a tool call stuck on an
+approval prompt for a non-shell tool (a file delete, observed in
+practice) never produced either hook, and the delay-based estimate built
+on them missed it. The mapping for those two hooks is still recognized
+for anyone who installed them by hand, but installing or repairing the
+Cursor integration in Settings now writes `preToolUse` instead.
 
 Provider-native identifiers are converted to mytty run identifiers as
 follows: Codex `turn_id`, Claude Code `prompt_id`, the active OpenCode

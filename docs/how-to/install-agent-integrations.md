@@ -58,11 +58,12 @@ Start a fresh session with the provider and work through this checklist:
 Antigravity's installed hooks only report lifecycle and result status;
 they never create approval or input requests, so step 2 does not apply
 to it. Cursor's hooks don't create one directly either, but mytty
-estimates a shell approval request from a delay between its
-`beforeShellExecution` and `afterShellExecution` hooks (see
+estimates a stuck tool call from a delay between its `preToolUse` hook
+and the matching `postToolUse` / `postToolUseFailure` (see
 [Agent providers](../reference/agent-providers.md)) — to see it in step
-2, run a command Cursor doesn't auto-approve and wait roughly 10 seconds
-without answering the prompt in Cursor's own UI.
+2, trigger a tool call Cursor doesn't auto-approve (a shell command or a
+file edit/delete) and wait roughly 10 seconds without answering the
+prompt in Cursor's own UI.
 
 ## Provider hook references
 

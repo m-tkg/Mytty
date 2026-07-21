@@ -271,11 +271,11 @@ mytty-ctl focus "$paneA"
   ([Agent providers](agent-providers_ja.md) 参照)、この provider が
   動くペインでは `wait --until attention` は常にタイムアウトする。
   Antigravity には `--until idle` を使う。Cursor も入力待ちイベントは
-  出さないが、承認待ちには到達しうる: mytty は Cursor の
-  `beforeShellExecution` と `afterShellExecution` の間隔から承認待ちを
-  推定するため、その推定が発火した時点(何も解決しなければコマンド開始
-  からおおよそ10秒後)で Cursor ペインの `wait --until attention` も
-  解決する。
+  出さないが、承認待ちには到達しうる: mytty は Cursor の `preToolUse`
+  hook と、対応する `postToolUse` / `postToolUseFailure` との間隔から
+  詰まった tool call を推定するため、その推定が発火した時点(何も
+  解決しなければ tool call 開始からおおよそ10秒後)で Cursor ペインの
+  `wait --until attention` も解決する。
 - 対象 provider の hook 連携が設定でまだ有効化されていない場合、
   エージェントイベントが一切 Mytty に届かないため、条件に関わらず
   `wait` はタイムアウトするまでブロックし続ける。provider を初めて
