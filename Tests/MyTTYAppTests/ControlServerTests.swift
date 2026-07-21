@@ -171,6 +171,34 @@ struct ControlServerTests {
         #expect(response == .content(delegate.content["pane-1"]!))
     }
 
+    @Test("read returns pane content larger than one socket write buffer")
+    func readReturnsLargeContentWithoutTruncation() async throws {
+        // Regression test: a response bigger than the kernel's default
+        // socket send buffer (~8 KiB) used to be silently truncated
+        // because the accepted client fd inherited O_NONBLOCK from the
+        // listening socket and the write loop treated EAGAIN as "give up"
+        // instead of retrying. Use a payload comfortably past that
+        // threshold so the bug reproduces reliably.
+        let delegate = StubControlDelegate()
+        delegate.knownPaneIDs = ["pane-1"]
+        let largeText = String(repeating: "line of pane output\n", count: 4_000)
+        #expect(largeText.utf8.count > 64 * 1024)
+        delegate.content["pane-1"] = ControlPaneContent(
+            paneID: "pane-1",
+            text: largeText,
+            cursorRow: 0,
+            cursorColumn: 0
+        )
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let response = try await perform(
+            .read(paneID: "pane-1"),
+            to: socketURL
+        )
+        #expect(response == .content(delegate.content["pane-1"]!))
+    }
+
     @Test("wait resolves immediately once the pane reaches the target state")
     func waitResolvesOnMatchingState() async throws {
         let delegate = StubControlDelegate()

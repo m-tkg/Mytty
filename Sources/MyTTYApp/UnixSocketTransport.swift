@@ -16,6 +16,11 @@ enum UnixSocketTransportError: Error {
 /// same local user can connect, matching same-user tools like CGEvent.
 final class UnixSocketTransport: @unchecked Sendable {
     private static let maximumRequestSize = 64 * 1024
+    /// Upper bound on how long `write(_:to:)` will keep retrying a send
+    /// that's blocked because the client isn't draining its receive
+    /// buffer. Keeps a stalled peer from pinning a `workerQueue` thread
+    /// forever instead of eventually giving up like a dead peer would.
+    private static let writeTimeoutSeconds: TimeInterval = 10
 
     private let socketURL: URL
     private let queue: DispatchQueue
@@ -128,6 +133,21 @@ final class UnixSocketTransport: @unchecked Sendable {
                 &enabled,
                 socklen_t(MemoryLayout<Int32>.size)
             )
+
+            // On Darwin/BSD, a socket accepted from a non-blocking
+            // listener inherits O_NONBLOCK. Clear it so `recv`/`send` on
+            // this connection block (bounded by the SO_RCVTIMEO set
+            // below and the poll-based timeout in `write(_:to:)`)
+            // instead of returning EAGAIN as soon as the kernel buffer
+            // is briefly empty or full — a response larger than the
+            // socket's send buffer (~8 KiB by default) used to get
+            // silently truncated because `write(_:to:)` treated EAGAIN
+            // as a hard failure.
+            let clientFlags = fcntl(client, F_GETFL)
+            if clientFlags >= 0 {
+                _ = fcntl(client, F_SETFL, clientFlags & ~O_NONBLOCK)
+            }
+
             workerQueue.async { [weak self] in
                 self?.readRequest(from: client)
             }
@@ -171,10 +191,20 @@ final class UnixSocketTransport: @unchecked Sendable {
         }
     }
 
+    /// Writes the full response, retrying short writes and — as
+    /// defense-in-depth alongside clearing O_NONBLOCK in
+    /// `acceptAvailableClients` — waiting for the socket to become
+    /// writable again on EAGAIN/EWOULDBLOCK rather than giving up after
+    /// a partial send. Bounded by `writeTimeoutSeconds` overall, so a
+    /// peer that never drains its receive buffer eventually gets
+    /// dropped instead of pinning a worker thread forever; a genuinely
+    /// dead peer still fails fast via ECONNRESET/EPIPE.
     private static func write(_ data: Data, to client: Int32) {
         data.withUnsafeBytes { bytes in
-            guard let baseAddress = bytes.baseAddress else { return }
+            guard let baseAddress = bytes.baseAddress, bytes.count > 0
+            else { return }
             var sent = 0
+            let deadline = Date().addingTimeInterval(writeTimeoutSeconds)
             while sent < bytes.count {
                 let count = Darwin.send(
                     client,
@@ -186,11 +216,38 @@ final class UnixSocketTransport: @unchecked Sendable {
                     sent += count
                 } else if count < 0, errno == EINTR {
                     continue
+                } else if count < 0,
+                          errno == EAGAIN || errno == EWOULDBLOCK {
+                    let remaining = deadline.timeIntervalSinceNow
+                    guard remaining > 0,
+                          waitUntilWritable(client, timeout: remaining)
+                    else { return }
+                    continue
                 } else {
                     return
                 }
             }
         }
+    }
+
+    /// Blocks until `client` is writable or `timeout` elapses. Returns
+    /// `false` on timeout or a poll error, in which case the caller
+    /// should give up rather than spin.
+    private static func waitUntilWritable(
+        _ client: Int32,
+        timeout: TimeInterval
+    ) -> Bool {
+        var pollDescriptor = pollfd(
+            fd: client,
+            events: Int16(POLLOUT),
+            revents: 0
+        )
+        let timeoutMilliseconds = Int32(
+            min(max(timeout, 0), Double(Int32.max) / 1000) * 1000
+        )
+        let result = poll(&pollDescriptor, 1, timeoutMilliseconds)
+        guard result > 0 else { return false }
+        return pollDescriptor.revents & Int16(POLLOUT) != 0
     }
 
     private func unixAddress(path: String) throws -> sockaddr_un {
