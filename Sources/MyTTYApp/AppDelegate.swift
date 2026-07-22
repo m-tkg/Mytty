@@ -227,7 +227,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func closeTab(_ sender: Any?) {
-        windowSessionCoordinator.activeController?.closeSelectedTab()
+        let keyWindow = NSApplication.shared.keyWindow
+        switch CloseTabCommandRouting.make(
+            hasActiveTerminalController:
+                windowSessionCoordinator.activeController != nil,
+            hasKeyWindow: keyWindow != nil
+        ) {
+        case .closeSelectedTab:
+            windowSessionCoordinator.activeController?.closeSelectedTab()
+        case .closeKeyWindow:
+            keyWindow?.performClose(sender)
+        case .ignore:
+            break
+        }
     }
 
     @objc func reopenClosed(_ sender: Any?) {
