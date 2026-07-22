@@ -23,8 +23,28 @@ struct AgentLaunchPlanTests {
                 model: nil,
                 task: "do the thing"
             )
-            #expect(input.hasPrefix(expectedPrefix))
+            #expect(input.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
         }
+    }
+
+    @Test("prefixes every launch command with the history-suppression guard")
+    func historySuppressionPrefixApplied() {
+        // The exact bytes matter: the leading space is what
+        // `hist_ignore_space` setups key on, and the `unset` must run in
+        // the same typed line as the launch command.
+        #expect(
+            AgentLaunchPlan.historySuppressionPrefix
+                == " builtin unset HISTFILE 2>/dev/null; "
+        )
+        let input = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .review,
+            model: nil,
+            task: "task"
+        )
+        #expect(input.hasPrefix(" builtin unset HISTFILE 2>/dev/null; "))
     }
 
     @Test("appends the worker contract exactly once")
@@ -139,7 +159,9 @@ struct AgentLaunchPlanTests {
                 model: model,
                 task: "do the thing"
             )
-            #expect(input.hasPrefix(expectedPrefix))
+            #expect(input.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
         }
     }
 
@@ -172,7 +194,9 @@ struct AgentLaunchPlanTests {
                 model: nil,
                 task: "do the thing"
             )
-            #expect(input.hasPrefix(expectedPrefix))
+            #expect(input.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
             #expect(!input.contains("-m "))
             #expect(!input.contains("--model"))
         }
@@ -228,7 +252,9 @@ struct AgentLaunchPlanTests {
                 inheritedModeArguments: inherited,
                 task: "do the thing"
             )
-            #expect(input.hasPrefix(expectedPrefix))
+            #expect(input.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
         }
     }
 
@@ -260,7 +286,8 @@ struct AgentLaunchPlanTests {
             task: "task"
         )
         #expect(sandboxOnly.hasPrefix(
-            "command codex '-s' 'workspace-write' -a never -- "
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command codex '-s' 'workspace-write' -a never -- "
         ))
     }
 
@@ -288,7 +315,8 @@ struct AgentLaunchPlanTests {
             task: "task"
         )
         #expect(input.hasPrefix(
-            "command claude --model 'sonnet' '--permission-mode' 'acceptEdits' -- "
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command claude --model 'sonnet' '--permission-mode' 'acceptEdits' -- "
         ))
     }
 
@@ -343,7 +371,9 @@ struct AgentLaunchPlanTests {
                 inheritedModeArguments: nil,
                 task: "do the thing"
             )
-            #expect(withNilInherited.hasPrefix(expectedPrefix))
+            #expect(withNilInherited.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
 
             let withEmptyInherited = AgentLaunchPlan.initialInput(
                 provider: provider,
@@ -352,7 +382,9 @@ struct AgentLaunchPlanTests {
                 inheritedModeArguments: [],
                 task: "do the thing"
             )
-            #expect(withEmptyInherited.hasPrefix(expectedPrefix))
+            #expect(withEmptyInherited.hasPrefix(
+                AgentLaunchPlan.historySuppressionPrefix + expectedPrefix
+            ))
         }
     }
 }

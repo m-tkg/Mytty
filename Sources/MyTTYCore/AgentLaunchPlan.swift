@@ -21,10 +21,30 @@ public enum AgentLaunchPlan {
         - End with a concise summary containing: findings or changed files, tests run and results, and remaining issues.
         """
 
+    /// Typed ahead of the launch command so the spawn line (and everything
+    /// the pane's shell runs after it) never persists into the user's
+    /// shell history. macOS's `/etc/zshrc` sets `HISTFILE` unconditionally
+    /// for every interactive zsh, so scrubbing the pane's environment
+    /// cannot prevent the write — the unset has to happen inside the shell
+    /// itself, on the very line being typed. Stock zsh flushes history to
+    /// `HISTFILE` from memory when the shell exits, so unsetting it here
+    /// suppresses persistence of the whole pane while leaving in-memory
+    /// history (arrow-key recall) intact. Setups with
+    /// `inc_append_history`/`share_history` write each line as it is
+    /// accepted — before the unset runs — which is what the leading space
+    /// covers: such setups (oh-my-zsh and friends) also enable
+    /// `hist_ignore_space`, which drops space-prefixed lines entirely.
+    /// `builtin` dodges a shadowing user function; `2>/dev/null` silences
+    /// shells without an `unset` builtin (fish).
+    public static let historySuppressionPrefix
+        = " builtin unset HISTFILE 2>/dev/null; "
+
     /// The transient `initialInput` for a newly spawned worker pane: one
     /// fully quoted shell command ending in a trailing newline, so the pane
     /// launches the worker and hands it the task in a single keystroke
-    /// burst instead of two racing `send`s.
+    /// burst instead of two racing `send`s. The command is prefixed with
+    /// `historySuppressionPrefix` so it stays out of the shell's persisted
+    /// history.
     public static func initialInput(
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
@@ -33,7 +53,7 @@ public enum AgentLaunchPlan {
         task: String
     ) -> String {
         let quotedTask = ShellQuoting.quote(task + workerContract)
-        return command(
+        return historySuppressionPrefix + command(
             provider: provider,
             access: access,
             model: model,
