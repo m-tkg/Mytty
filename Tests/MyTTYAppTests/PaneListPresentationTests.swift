@@ -78,6 +78,70 @@ struct PaneListPresentationTests {
         #expect(!items[2].isActive)
     }
 
+    @Test("lists only the requested tab's panes for the sidebar popover")
+    func itemsForTab() throws {
+        let terminal = TerminalSurfaceState(
+            workingDirectory: URL(
+                fileURLWithPath: "/Users/example/project",
+                isDirectory: true
+            )
+        )
+        let browser = BrowserPaneState(
+            url: URL(string: "https://example.com/docs")!
+        )
+        var firstTab = TabSession(
+            initialSurface: terminal,
+            pinnedTitle: "Project"
+        )
+        try firstTab.split(browser: browser, direction: .right)
+
+        let secondTerminal = TerminalSurfaceState(
+            workingDirectory: URL(
+                fileURLWithPath: "/Users/example/notes",
+                isDirectory: true
+            )
+        )
+        let secondTab = TabSession(
+            initialSurface: secondTerminal,
+            pinnedTitle: "Notes"
+        )
+        let session = WindowSession(
+            frame: WindowFrame(x: 0, y: 0, width: 900, height: 600),
+            tabs: [firstTab, secondTab],
+            selectedTabID: secondTab.id
+        )
+        let snapshot = PaneListWindowSnapshot(
+            session: session,
+            commandsByPane: [
+                terminal.id: "Codex",
+                secondTerminal.id: "zsh",
+            ]
+        )
+
+        let items = PaneListPresentation.items(
+            forTab: firstTab.id,
+            snapshot: snapshot,
+            terminalTitle: "Terminal",
+            browserTitle: "Browser",
+            localizer: MyTTYLocalizer(language: .english)
+        )
+
+        #expect(items.map(\.paneID) == [terminal.id, browser.id])
+        #expect(items[0].command == "Codex")
+        #expect(items[0].location == "/Users/example/project")
+        #expect(items[1].command == "Browser")
+        #expect(items[1].location == "https://example.com/docs")
+
+        let missing = PaneListPresentation.items(
+            forTab: TabID(),
+            snapshot: snapshot,
+            terminalTitle: "Terminal",
+            browserTitle: "Browser",
+            localizer: MyTTYLocalizer(language: .english)
+        )
+        #expect(missing.isEmpty)
+    }
+
     @Test("uses safe fallback labels and command basenames")
     func fallbacks() {
         let terminal = TerminalSurfaceState(

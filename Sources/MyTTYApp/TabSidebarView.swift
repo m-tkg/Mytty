@@ -182,6 +182,7 @@ struct TabSidebarView: View {
     let onDropTab: (Int) -> Void
     let isTabDragActive: () -> Bool
     let onEqualizePanes: (TabID) -> Void
+    let onPaneProcesses: (TabID) -> [PaneListItem]
     let onFocusAttentionItem: (AttentionItem) -> Void
     let onAcknowledgeAttentionItem: (AttentionItem) -> Void
     let onAcknowledgeAllAttentionItems: () -> Void
@@ -191,6 +192,19 @@ struct TabSidebarView: View {
     let onStopRecording: (TabID) -> Void
 
     private static let tabAreaSpace = "tabAreaSpace"
+
+    /// Where the pane-process popover opens relative to its anchor. The
+    /// sidebar is at most 280pt wide, narrower than the popover, so a
+    /// vertical sidebar opens it sideways over the terminal instead of
+    /// letting the window edge clip it.
+    private var processPopoverArrowEdge: Edge {
+        switch placement {
+        case .left: .trailing
+        case .right: .leading
+        case .top: .bottom
+        case .bottom: .top
+        }
+    }
 
     var body: some View {
         Group {
@@ -369,43 +383,53 @@ struct TabSidebarView: View {
         return HStack(spacing: 8) {
             dragHandle(number: row.number)
 
-            Button {
-                onSelect(row.id)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "terminal")
-                        .foregroundStyle(selected ? Color.accentColor : .secondary)
-                        .frame(width: 16, height: 16)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 5) {
-                            Text(row.title)
-                                .font(.system(size: 13, weight: .medium))
-                                .lineLimit(1)
-                            Spacer(minLength: 2)
-                            if row.attentionCount > 0 {
-                                Text("\(row.attentionCount)")
-                                    .font(.caption2.weight(.semibold))
-                                    .padding(.horizontal, 5)
-                                    .frame(minWidth: 18, minHeight: 16)
-                                    .foregroundStyle(.white)
-                                    .background(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                // The select button covers only the title row: nesting
+                // the pane-process button inside it makes hit-testing
+                // flaky and merges both into one accessibility element,
+                // so the indicators row below stays a sibling. Clicks on
+                // the rest of the row still select via the row-level tap
+                // gesture.
+                Button {
+                    onSelect(row.id)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "terminal")
+                            .foregroundStyle(
+                                selected ? Color.accentColor : .secondary
+                            )
+                            .frame(width: 16, height: 16)
+                        Text(row.title)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                        Spacer(minLength: 2)
+                        if row.attentionCount > 0 {
+                            Text("\(row.attentionCount)")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 18, minHeight: 16)
+                                .foregroundStyle(.white)
+                                .background(Color.accentColor)
                                 .clipShape(Capsule())
-                            }
                         }
-                        TabStatusIndicators(
-                            row: row,
-                            localizer: localizer
-                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                // Fill the row's full height so the padding above and
-                // below the label still hits the button.
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                TabStatusIndicators(
+                    row: row,
+                    localizer: localizer,
+                    paneProcessProvider: onPaneProcesses,
+                    processPopoverArrowEdge: processPopoverArrowEdge
+                )
+                .padding(.leading, 24)
             }
-            .buttonStyle(.plain)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .leading
+            )
 
             if row.isRecording {
                 Button {
@@ -444,6 +468,10 @@ struct TabSidebarView: View {
             in: RoundedRectangle(cornerRadius: 6)
         )
         .contentShape(Rectangle())
+        // Clicks anywhere in the row that no inner button consumes still
+        // select the tab, keeping the full-row target the old whole-row
+        // button provided.
+        .onTapGesture { onSelect(row.id) }
         .simultaneousGesture(reorderGesture(for: row))
         .modifier(tabInteractions(for: row))
         .modifier(
@@ -468,41 +496,47 @@ struct TabSidebarView: View {
         return HStack(spacing: 6) {
             dragHandle(number: row.number)
 
-            Button {
-                onSelect(row.id)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "terminal")
-                        .foregroundStyle(
-                            selected ? Color.accentColor : .secondary
-                        )
-                    VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 1) {
+                // Same sibling structure as the vertical row: the select
+                // button covers the title row only, the interactive
+                // indicators live outside it.
+                Button {
+                    onSelect(row.id)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "terminal")
+                            .foregroundStyle(
+                                selected ? Color.accentColor : .secondary
+                            )
                         Text(row.title)
                             .font(.system(size: 12, weight: .medium))
                             .lineLimit(1)
-                        TabStatusIndicators(
-                            row: row,
-                            localizer: localizer
-                        )
+                        Spacer(minLength: 2)
+                        if row.attentionCount > 0 {
+                            Text("\(row.attentionCount)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .background(Color.accentColor, in: Capsule())
+                        }
                     }
-                    if row.attentionCount > 0 {
-                        Text("\(row.attentionCount)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 16, minHeight: 16)
-                            .background(Color.accentColor, in: Capsule())
-                    }
+                    .contentShape(Rectangle())
                 }
-                // Fill the row's full height so the padding above the
-                // title and below the icon still hits the button.
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .leading
+                .buttonStyle(.plain)
+
+                TabStatusIndicators(
+                    row: row,
+                    localizer: localizer,
+                    paneProcessProvider: onPaneProcesses,
+                    processPopoverArrowEdge: processPopoverArrowEdge
                 )
-                .contentShape(Rectangle())
+                .padding(.leading, 20)
             }
-            .buttonStyle(.plain)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .leading
+            )
 
             if row.isRecording {
                 Button {
@@ -540,6 +574,10 @@ struct TabSidebarView: View {
             in: RoundedRectangle(cornerRadius: 6)
         )
         .contentShape(Rectangle())
+        // Clicks anywhere in the row that no inner button consumes still
+        // select the tab, keeping the full-row target the old whole-row
+        // button provided.
+        .onTapGesture { onSelect(row.id) }
         .simultaneousGesture(reorderGesture(for: row))
         .modifier(tabInteractions(for: row))
         .modifier(
@@ -686,19 +724,21 @@ private struct TabDragHandleGlyph: View {
 private struct TabStatusIndicators: View {
     let row: TabSidebarRow
     let localizer: MyTTYLocalizer
+    /// Supplies the tab's panes and their foreground commands when the
+    /// pane-count indicator is clicked. Nil renders the indicator as a
+    /// plain, non-interactive glyph (the drag preview).
+    var paneProcessProvider: ((TabID) -> [PaneListItem])? = nil
+    var processPopoverArrowEdge: Edge = .bottom
+    /// Presentation trigger and content in one value: `popover(item:)`
+    /// snapshots the items in the same transaction that presents, so the
+    /// content can never render a stale (empty) list the way a separate
+    /// `isPresented` Bool alongside an items array can.
+    @State private var processPopover: TabPaneProcessPopover?
 
     var body: some View {
         HStack(spacing: 6) {
             if let paneCount = row.visiblePaneCount {
-                HStack(spacing: 2) {
-                    Image(systemName: "rectangle.split.2x1")
-                        .font(.system(size: 9))
-                    Text("\(paneCount)")
-                        .font(.caption2.monospacedDigit())
-                }
-                .fixedSize()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(localizer.paneCount(paneCount))
+                paneCountIndicator(paneCount)
             }
             if let uptimeOrigin = row.uptimeOrigin {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -737,6 +777,106 @@ private struct TabStatusIndicators: View {
         }
         .frame(minHeight: 14)
         .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func paneCountIndicator(_ paneCount: Int) -> some View {
+        if let paneProcessProvider {
+            Button {
+                processPopover = TabPaneProcessPopover(
+                    items: paneProcessProvider(row.id)
+                )
+            } label: {
+                paneCountLabel(paneCount)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(localizer[.paneProcesses])
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(localizer.paneCount(paneCount))
+            .accessibilityHint(localizer[.paneProcesses])
+            .popover(
+                item: $processPopover,
+                arrowEdge: processPopoverArrowEdge
+            ) { popover in
+                TabPaneProcessListView(
+                    items: popover.items,
+                    localizer: localizer
+                )
+            }
+        } else {
+            paneCountLabel(paneCount)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(localizer.paneCount(paneCount))
+        }
+    }
+
+    private func paneCountLabel(_ paneCount: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 9))
+            Text("\(paneCount)")
+                .font(.caption2.monospacedDigit())
+        }
+        .fixedSize()
+    }
+}
+
+struct TabPaneProcessPopover: Identifiable {
+    let id = UUID()
+    let items: [PaneListItem]
+}
+
+/// The popover the sidebar's pane-count indicator opens: one row per pane
+/// in the tab, showing the foreground command and its location.
+struct TabPaneProcessListView: View {
+    let items: [PaneListItem]
+    let localizer: MyTTYLocalizer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(localizer[.paneProcesses])
+                .font(.headline)
+            if items.isEmpty {
+                Text(localizer[.noPanes])
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(items) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(
+                            systemName: item.kind == .terminal
+                                ? "terminal"
+                                : "globe"
+                        )
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 5) {
+                                Text(item.command)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .lineLimit(1)
+                                if item.isActive {
+                                    Image(systemName: "circle.fill")
+                                        .font(.system(size: 5))
+                                        .foregroundStyle(.tint)
+                                }
+                            }
+                            Text(item.location)
+                                .font(
+                                    .system(size: 11, design: .monospaced)
+                                )
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(item.location)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 240, maxWidth: 340, alignment: .leading)
     }
 }
 

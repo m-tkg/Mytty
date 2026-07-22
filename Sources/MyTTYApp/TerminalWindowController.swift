@@ -1125,8 +1125,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func paneListSnapshot() -> PaneListWindowSnapshot {
-        let commands = surfaces.reduce(
+    /// Resolving a foreground command costs a few system calls per pane,
+    /// so `limitedTo` lets single-tab callers (the sidebar's pane-icon
+    /// popover) skip every other tab's surfaces. Nil inspects them all.
+    func paneListSnapshot(
+        limitedTo surfaceIDs: Set<TerminalSurfaceID>? = nil
+    ) -> PaneListWindowSnapshot {
+        let commands = surfaces.filter { entry in
+            surfaceIDs?.contains(entry.key) ?? true
+        }.reduce(
             into: [TerminalSurfaceID: String]()
         ) { result, entry in
             let processID = entry.value.foregroundProcessID
@@ -1142,6 +1149,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return PaneListWindowSnapshot(
             session: session,
             commandsByPane: commands
+        )
+    }
+
+    func paneProcessItems(forTab tabID: TabID) -> [PaneListItem] {
+        guard let tab = session.tabs.first(where: { $0.id == tabID })
+        else { return [] }
+        return PaneListPresentation.items(
+            forTab: tabID,
+            snapshot: paneListSnapshot(limitedTo: Set(tab.paneIDs)),
+            terminalTitle: localizer[.terminal],
+            browserTitle: localizer[.browser],
+            localizer: localizer
         )
     }
 
@@ -1525,6 +1544,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             },
             onEqualizePanes: { [weak self] id in
                 self?.equalizePanes(in: id)
+            },
+            onPaneProcesses: { [weak self] id in
+                self?.paneProcessItems(forTab: id) ?? []
             },
             onFocusAttentionItem: { [weak self] item in
                 self?.onFocusSurfaceRequested(item.surfaceID)

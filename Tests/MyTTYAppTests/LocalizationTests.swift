@@ -219,6 +219,7 @@ struct LocalizationTests {
         #expect(english[.focusPane] == "Focus Pane")
         #expect(english[.noPanes] == "No panes are open.")
         #expect(english[.paneZoomed] == "Focused pane is zoomed")
+        #expect(english[.paneProcesses] == "Running Processes")
         #expect(english.paneCount(3) == "3 panes")
         #expect(
             english[.hookHelperUnavailable]
@@ -381,6 +382,7 @@ struct LocalizationTests {
         #expect(japanese[.focusPane] == "ペインへ移動")
         #expect(japanese[.noPanes] == "開いているペインはありません。")
         #expect(japanese[.paneZoomed] == "現在のペインを全体表示中")
+        #expect(japanese[.paneProcesses] == "実行中のプロセス")
         #expect(japanese.paneCount(3) == "3 ペイン")
         #expect(
             japanese[.hookHelperUnavailable]
