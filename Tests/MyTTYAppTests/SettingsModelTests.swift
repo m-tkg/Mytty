@@ -95,6 +95,95 @@ struct SettingsModelTests {
         #expect(model.errorMessage == "Unable to apply terminal settings")
         #expect(try Data(contentsOf: harness.paths.terminalConfiguration) == original)
     }
+    @Test("imports release settings and publishes them")
+    @MainActor
+    func importsReleaseSettings() throws {
+        let harness = try Harness(profile: .development)
+        defer { harness.remove() }
+        try harness.writeReleaseSource(
+            application: "language = japanese\n",
+            terminal: "font-size = 18\n"
+        )
+        var terminalUpdates: [TerminalPreferences] = []
+        var applicationUpdates: [ApplicationPreferences] = []
+        let model = try SettingsModel(
+            paths: harness.paths,
+            onTerminalConfigurationChanged: { terminalUpdates.append($0) },
+            onApplicationPreferencesChanged: {
+                applicationUpdates.append($0)
+            }
+        )
+
+        let imported = model.importSettings(from: harness.releaseSource)
+
+        #expect(imported)
+        #expect(model.errorMessage == nil)
+        #expect(model.application.language == .japanese)
+        #expect(model.terminal.fontSize == 18)
+        #expect(terminalUpdates == [model.terminal])
+        #expect(applicationUpdates == [model.application])
+        #expect(
+            try ApplicationPreferencesStore()
+                .load(from: harness.paths.appConfiguration)
+                == model.application
+        )
+    }
+
+    @Test("reports when no release settings exist")
+    @MainActor
+    func importWithoutReleaseSettings() throws {
+        let harness = try Harness(profile: .development)
+        defer { harness.remove() }
+        let model = try SettingsModel(
+            paths: harness.paths,
+            onTerminalConfigurationChanged: { _ in },
+            onApplicationPreferencesChanged: { _ in }
+        )
+
+        let imported = model.importSettings(from: harness.releaseSource)
+
+        #expect(!imported)
+        #expect(model.errorMessage == "No Mytty release settings were found")
+    }
+
+    @Test("rolls back an import when libghostty rejects the terminal file")
+    @MainActor
+    func importRollsBackOnTerminalRejection() throws {
+        let harness = try Harness(profile: .development)
+        defer { harness.remove() }
+        try harness.writeReleaseSource(
+            application: "language = japanese\n",
+            terminal: "font-size = 18\n"
+        )
+        let originalTerminal = try Data(
+            contentsOf: harness.paths.terminalConfiguration
+        )
+        let originalApplication = try Data(
+            contentsOf: harness.paths.appConfiguration
+        )
+        let model = try SettingsModel(
+            paths: harness.paths,
+            onTerminalConfigurationChanged: { _ in
+                throw TestError.rejected
+            },
+            onApplicationPreferencesChanged: { _ in }
+        )
+
+        let imported = model.importSettings(from: harness.releaseSource)
+
+        #expect(!imported)
+        #expect(model.errorMessage == "Unable to import release settings")
+        #expect(model.application.language == .systemDefault)
+        #expect(model.terminal.fontSize == 13)
+        #expect(
+            try Data(contentsOf: harness.paths.terminalConfiguration)
+                == originalTerminal
+        )
+        #expect(
+            try Data(contentsOf: harness.paths.appConfiguration)
+                == originalApplication
+        )
+    }
 }
 
 private enum TestError: Error {
@@ -104,15 +193,42 @@ private enum TestError: Error {
 private struct Harness {
     let root: URL
     let paths: ApplicationPaths
+    let releaseSource: ApplicationPaths
 
-    init() throws {
+    init(profile: ApplicationPathProfile = .release) throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         paths = ApplicationPaths(
             homeDirectory: root,
-            temporaryDirectory: root.appendingPathComponent("tmp")
+            temporaryDirectory: root.appendingPathComponent("tmp"),
+            profile: profile
+        )
+        releaseSource = ApplicationPaths(
+            homeDirectory: root,
+            temporaryDirectory: root.appendingPathComponent("tmp"),
+            profile: .release
         )
         try ApplicationFileSystem().prepare(paths)
+    }
+
+    func writeReleaseSource(
+        application: String,
+        terminal: String
+    ) throws {
+        try FileManager.default.createDirectory(
+            at: releaseSource.configurationDirectory,
+            withIntermediateDirectories: true
+        )
+        try application.write(
+            to: releaseSource.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try terminal.write(
+            to: releaseSource.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     func remove() {

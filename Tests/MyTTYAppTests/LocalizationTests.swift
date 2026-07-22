@@ -104,6 +104,38 @@ struct LocalizationTests {
         #expect(japanese[.composeOneLiner] == "ワンライナー作成")
         #expect(japanese[.edit] == "編集")
         #expect(japanese[.generate] == "生成")
+        #expect(english[.development] == "Development")
+        #expect(japanese[.development] == "開発")
+        #expect(
+            english[.importReleaseSettings] == "Import Settings from Mytty"
+        )
+        #expect(japanese[.importReleaseSettings] == "Mytty の設定をインポート")
+        #expect(english[.releaseSettingsImported] == "Settings imported")
+        #expect(japanese[.releaseSettingsImported] == "設定をインポートしました")
+        #expect(
+            english[.releaseSettingsNotFound]
+                == "No Mytty release settings were found"
+        )
+        #expect(
+            japanese[.releaseSettingsNotFound]
+                == "Mytty リリース版の設定が見つかりませんでした"
+        )
+        #expect(
+            english[.importReleaseSettingsDescription]
+                == "Copy the installed Mytty release's settings into this development build."
+        )
+        #expect(
+            japanese[.importReleaseSettingsDescription]
+                == "インストール済みの Mytty (リリース版) の設定をこの開発ビルドにコピーします。"
+        )
+        #expect(
+            english[.unableToImportReleaseSettings]
+                == "Unable to import release settings"
+        )
+        #expect(
+            japanese[.unableToImportReleaseSettings]
+                == "リリース版の設定をインポートできませんでした"
+        )
         #expect(english[.clearAllAttention] == "Clear All")
         #expect(english.commandTitle(.reopenClosed) == "Reopen Closed Item")
         #expect(japanese.commandTitle(.reopenClosed) == "閉じた項目を開き直す")

@@ -239,6 +239,16 @@ private struct GeneralSettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var defaultTerminal: DefaultTerminalModel
     let localizer: MyTTYLocalizer
+    @State private var importedReleaseSettings = false
+
+    private static let releaseSettingsSource = ApplicationPaths(
+        homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+        temporaryDirectory: URL(
+            fileURLWithPath: NSTemporaryDirectory(),
+            isDirectory: true
+        ),
+        profile: .release
+    )
 
     var body: some View {
         Form {
@@ -385,6 +395,31 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.confirmClosingLastPane)
                 )
                 .toggleStyle(.switch)
+            }
+
+            if ApplicationIdentity.isDevelopmentBuild {
+                Section(localizer[.development]) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Button(localizer[.importReleaseSettings]) {
+                                importedReleaseSettings =
+                                    model.importSettings(
+                                        from: Self.releaseSettingsSource
+                                    )
+                            }
+                            if importedReleaseSettings {
+                                Label(
+                                    localizer[.releaseSettingsImported],
+                                    systemImage: "checkmark.circle.fill"
+                                )
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                        Text(localizer[.importReleaseSettingsDescription])
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .formStyle(.grouped)
