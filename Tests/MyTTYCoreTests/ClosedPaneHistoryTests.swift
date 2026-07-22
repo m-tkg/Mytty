@@ -85,6 +85,21 @@ struct ClosedPaneHistoryTests {
         #expect(restoredSurface.agentResume?.sessionID == "session-1")
     }
 
+    @Test("restarts the uptime clock when a closed tab is reopened")
+    @MainActor
+    func regeneratingIDsResetsCreatedAt() {
+        let tab = TabSession(
+            id: makeTabID(1),
+            initialSurface: makeSurface(id: 1, path: "/repo"),
+            createdAt: Date(timeIntervalSinceReferenceDate: 0)
+        )
+
+        let before = Date()
+        let restored = tab.regeneratingIDs()
+
+        #expect(restored.createdAt >= before)
+    }
+
     @Test("regenerates every pane ID in a split tab and remaps focus and layout")
     @MainActor
     func regeneratingIDsSplitTab() throws {
