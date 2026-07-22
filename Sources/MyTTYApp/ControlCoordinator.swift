@@ -106,7 +106,7 @@ extension ControlCoordinator: ControlServerDelegate {
         let url = workingDirectory.map {
             URL(fileURLWithPath: $0, isDirectory: true)
         }
-        return controller.newTab(workingDirectory: url)?
+        return controller.newTab(workingDirectory: url, orchestrated: true)?
             .rawValue.uuidString
     }
 
@@ -126,7 +126,8 @@ extension ControlCoordinator: ControlServerDelegate {
             surfaceID,
             direction: SplitDirection(rawValue: direction.rawValue)
                 ?? .right,
-            workingDirectory: url
+            workingDirectory: url,
+            orchestrated: true
         )?.rawValue.uuidString
     }
 
