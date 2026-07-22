@@ -345,6 +345,34 @@ struct ApplicationBehaviorTests {
         )
     }
 
+    @Test("routes Cmd+W to the key window when no terminal window is active")
+    func closeTabCommandRouting() {
+        #expect(
+            CloseTabCommandRouting.make(
+                hasActiveTerminalController: true,
+                hasKeyWindow: true
+            ) == .closeSelectedTab
+        )
+        #expect(
+            CloseTabCommandRouting.make(
+                hasActiveTerminalController: true,
+                hasKeyWindow: false
+            ) == .closeSelectedTab
+        )
+        #expect(
+            CloseTabCommandRouting.make(
+                hasActiveTerminalController: false,
+                hasKeyWindow: true
+            ) == .closeKeyWindow
+        )
+        #expect(
+            CloseTabCommandRouting.make(
+                hasActiveTerminalController: false,
+                hasKeyWindow: false
+            ) == .ignore
+        )
+    }
+
     @Test("accepts browser-only sessions for restoration")
     func restoresBrowserOnlySession() {
         let browser = BrowserPaneState(

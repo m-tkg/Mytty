@@ -53,6 +53,24 @@ enum TerminalPaneCloseAction: Equatable {
     }
 }
 
+/// Routes the Close Tab command (Cmd+W). `activeController` resolves to nil
+/// when the key window is an auxiliary window (Settings, About), so the
+/// command must fall back to closing that window instead of silently doing
+/// nothing.
+enum CloseTabCommandRouting: Equatable {
+    case closeSelectedTab
+    case closeKeyWindow
+    case ignore
+
+    static func make(
+        hasActiveTerminalController: Bool,
+        hasKeyWindow: Bool
+    ) -> Self {
+        if hasActiveTerminalController { return .closeSelectedTab }
+        return hasKeyWindow ? .closeKeyWindow : .ignore
+    }
+}
+
 extension ApplicationPreferences {
     func confirmation(
         for target: TerminalCloseTarget
