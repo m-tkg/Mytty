@@ -9,7 +9,7 @@ private struct DeviceSettingsRoute: Hashable {}
 /// rebuilt in a single assignment once a snapshot names where the pane
 /// lives; appending to a stack whose push animation is still running is
 /// how routes get silently dropped.
-private struct PendingNotificationOpen: Equatable {
+private struct PendingNotificationOpen {
     let mac: PairedMac
     let paneID: String?
 }
@@ -147,6 +147,13 @@ struct RootView: View {
         guard let pending = pendingNotificationOpen,
               let snapshot = client.snapshot
         else { return }
+        // The user connected to a different Mac while this open was still
+        // waiting; the tap's intent is stale, not worth hijacking the
+        // session they chose.
+        guard client.connectedMacID == pending.mac.deviceID else {
+            pendingNotificationOpen = nil
+            return
+        }
         // Without a pane to descend to (the push arrived undecrypted),
         // the session root already on the path is the destination.
         guard let paneID = pending.paneID else {
