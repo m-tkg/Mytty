@@ -270,9 +270,9 @@ struct AttentionCenterTests {
         )
     }
 
-    @Test("surfaces without actionable items acknowledge nothing")
+    @Test("acknowledging unrelated surfaces leaves items untouched")
     @MainActor
-    func acknowledgeSurfacesWithoutActionableItems() throws {
+    func acknowledgeUnrelatedSurfaces() throws {
         let harness = AttentionHarness()
         defer { harness.remove() }
         let center = harness.center
