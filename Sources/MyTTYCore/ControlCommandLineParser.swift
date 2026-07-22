@@ -93,7 +93,12 @@ public enum ControlCommandLineParser {
         launches the worker in it. --access review is read-only
         investigation; workspace-write (the default) lets the worker edit
         files. --model picks the provider's model, passed through to the
-        provider CLI's model flag, e.g. --model sonnet for claude. Prints an
+        provider CLI's model flag, e.g. --model sonnet for claude. --cwd
+        defaults to the anchor pane's shell-reported working directory,
+        not your own process cwd -- if you were started somewhere the
+        pane's shell never cd'd into (e.g. `claude --worktree` chdirs
+        into a git worktree while the shell stays put), pass --cwd "$PWD"
+        explicitly or workers start in the wrong checkout. Prints an
         agentJob response whose job.jobID.rawValue is the job ID every other
         agent command below takes.
 
