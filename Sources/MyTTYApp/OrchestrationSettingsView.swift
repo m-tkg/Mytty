@@ -8,6 +8,13 @@ import SwiftUI
 /// "teach agents about Mytty orchestration" toggle (moved here from Agents), a
 /// preview of exactly what that toggle writes, and worked examples of how
 /// to actually ask an agent to do this.
+/// Styling for the command line tool "installed" indicator, kept in sync with
+/// the other installed-state badges (e.g. `AgentIntegrationStatus.installed`).
+enum CommandLineToolStatusStyle {
+    static let installedSymbolName = "checkmark.circle.fill"
+    static let installedTint: Color = .green
+}
+
 struct OrchestrationSettingsView: View {
     @ObservedObject var model: AgentIntegrationSettingsModel
     @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
@@ -100,15 +107,22 @@ struct OrchestrationSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if commandLineToolInstall.isInstalled {
-                    Label(
-                        String(
-                            format: localizer[.commandLineToolInstalled],
-                            commandLineToolInstall.linkName
-                        ),
-                        systemImage: "checkmark.circle.fill"
-                    )
+                    Label {
+                        Text(
+                            String(
+                                format: localizer[.commandLineToolInstalled],
+                                commandLineToolInstall.linkName
+                            )
+                        )
+                        .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(
+                            systemName:
+                                CommandLineToolStatusStyle.installedSymbolName
+                        )
+                        .foregroundStyle(CommandLineToolStatusStyle.installedTint)
+                    }
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
                 } else {
                     Button(localizer[.installCommandLineTool]) {
                         commandLineToolInstall.install()
