@@ -101,7 +101,34 @@ enum PairedMacStore {
         SecItemDelete(legacyQuery() as CFDictionary)
         var query = baseQuery()
         query[kSecValueData as String] = data
+        // The notification service extension decrypts pushes while the
+        // phone is still locked; the default (kSecAttrAccessibleWhenUnlocked)
+        // would hide the pairing keys from it and every alert would fall
+        // back to the vague placeholder.
+        query[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(query as CFDictionary, nil)
+    }
+
+    /// Re-writes an item stored before `saveAll` set
+    /// `kSecAttrAccessibleAfterFirstUnlock`, so pushes arriving while the
+    /// phone is locked can still be decrypted. Call from the app at
+    /// launch — never from the extension, whose read can legitimately
+    /// fail under lock and must not touch the stored item.
+    static func migrateForLockedDeviceAccess() {
+        var query = baseQuery()
+        query[kSecReturnAttributes as String] = true
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result)
+                == errSecSuccess,
+              let attributes = result as? [String: Any],
+              let accessible = attributes[kSecAttrAccessible as String]
+                  as? String,
+              accessible != (kSecAttrAccessibleAfterFirstUnlock as String)
+        else { return }
+        let macs = loadAll()
+        guard !macs.isEmpty else { return }
+        saveAll(macs)
     }
 
     /// The pre-extension query, with no access group, kept only so
