@@ -46,6 +46,8 @@ Once you have a lot of tabs and panes, opening **Show All Panes** lists every pa
 
 The status bar follows whichever pane is focused, showing its working directory and, when the directory is under Git, the repository and branch.
 
+![The status bar showing the branch, working directory, the running AI agent's name and model, and the remaining context and limits](../images/status-bar.png)
+
 Clicking the GitHub icon opens the repository's GitHub page.
 
 Clicking the folder icon opens that directory in Finder.
