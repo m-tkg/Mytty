@@ -1,6 +1,6 @@
 # Record a pane as a GIF
 
-You can capture what's happening in a pane, a build, a demo, an agent at work, as a GIF animation.
+You can capture what's happening in a pane (a build, a demo, an agent at work) as a GIF animation.
 
 ## Start and stop a recording
 

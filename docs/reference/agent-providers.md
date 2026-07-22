@@ -1,6 +1,6 @@
 # Agent providers reference
 
-Mytty supports five agent providers, identified in code by `AgentProvider` (`Sources/MyTTYCore/AgentEvent.swift`): `codex`, `claude-code`, `opencode`, `antigravity`, `cursor`. This page lists, per provider, the configuration file Mytty installs hooks into, which mytty event kinds each provider's hooks can emit, and how session resume works. For the wire format of the events themselves, see [Agent event protocol](agent-event-protocol.md).
+Mytty supports five agent providers, identified in code by `AgentProvider` (`Sources/MyTTYCore/AgentEvent.swift`): `codex`, `claude-code`, `opencode`, `antigravity`, `cursor`. This page lists, per provider, the configuration file Mytty installs hooks into, which Mytty event kinds each provider's hooks can emit, and how session resume works. For the wire format of the events themselves, see [Agent event protocol](agent-event-protocol.md).
 
 The Antigravity provider covers two distinct binaries under one event category. `AgentProvider.antigravity` is a single protocol-level category for both the Google Antigravity IDE's agent and the standalone Gemini CLI; their hook events look identical to Mytty. Session resume is where they diverge. Mytty inspects the foreground process's executable basename and picks `gemini --resume=<id>` when it looks like the Gemini CLI (basename `gemini` or `gemini-cli`, or a path containing `/gemini-cli/`), and `agy --conversation=<id>` otherwise. See `AgentResumeLaunchPlan.isGeminiCLI` in `Sources/MyTTYApp/AgentSessionRestoration.swift`. Some in-app labels and older docs shorten this to "Gemini (Antigravity)"; that label names the provider, not a resume command.
 
@@ -33,9 +33,9 @@ The reference prose itself follows Settings > General's language setting (Englis
 
 ## Lifecycle mapping
 
-One mytty agent run represents one prompt or turn, not an entire long-lived CLI session, so a new prompt starts a new run once the previous one completes.
+One Mytty agent run represents one prompt or turn, not an entire long-lived CLI session, so a new prompt starts a new run once the previous one completes.
 
-| mytty event | Codex | Claude Code | OpenCode | Antigravity | Cursor |
+| Mytty event | Codex | Claude Code | OpenCode | Antigravity | Cursor |
 | --- | --- | --- | --- | --- | --- |
 | `started` | `UserPromptSubmit` | `UserPromptSubmit` | user `message.updated` | not exposed | `beforeSubmitPrompt` |
 | `approval-requested` | `PermissionRequest` | `PermissionRequest` or permission notification | `permission.asked` / `permission.updated` | not exposed | estimated (see below) |
@@ -47,11 +47,11 @@ One mytty agent run represents one prompt or turn, not an entire long-lived CLI 
 
 Antigravity's installed hooks provide lifecycle and result status only; they never produce `approval-requested` or `input-requested`, which is why `mytty-ctl wait --until attention` never resolves for panes running that provider (see [mytty-ctl reference](mytty-ctl.md)).
 
-Cursor has no hook of its own for a permission prompt either, but mytty estimates one from `preToolUse`, which fires before every tool call — not just shell commands, but file edits and deletes too, which also prompt for approval. `preToolUse` starts a 10-second timer keyed by that call's `tool_use_id`; if the matching `postToolUse`, `postToolUseFailure` (same `tool_use_id`), or the run's `stop` arrives first, the timer is cancelled. Tool calls can run concurrently — Cursor has been observed firing `preToolUse` for two different tools back to back before either one's `postToolUse` arrives — so pending timers are tracked per `tool_use_id`, not per run, or a still-pending call could be forgotten as soon as any other call in the same run resolves. If nothing arrives in time, mytty synthesizes an `approval-requested` event itself — `CursorApprovalPendingTracker` holds the pending state, `CursorApprovalCoordinator` (`Sources/MyTTYApp/CursorApprovalCoordinator.swift`) owns the timer, and `AgentHookEventAdapter.pendingApprovalEvent` builds the event. Once the matching `postToolUse` or `postToolUseFailure` does arrive, the run transitions back to `running` the same way a real approval resolves, so no separate resolution step is needed. Auto-approved calls that finish inside the 10-second window never trigger this at all; one that runs long but was in fact auto-approved briefly shows as `approval-requested` in Attention and then resolves itself once its `postToolUse` lands.
+Cursor has no hook of its own for a permission prompt either, but Mytty estimates one from `preToolUse`, which fires before every tool call -- not just shell commands, but file edits and deletes too, which also prompt for approval. `preToolUse` starts a 10-second timer keyed by that call's `tool_use_id`; if the matching `postToolUse`, `postToolUseFailure` (same `tool_use_id`), or the run's `stop` arrives first, the timer is cancelled. Tool calls can run concurrently -- Cursor has been observed firing `preToolUse` for two different tools back to back before either one's `postToolUse` arrives -- so pending timers are tracked per `tool_use_id`, not per run, or a still-pending call could be forgotten as soon as any other call in the same run resolves. If nothing arrives in time, Mytty synthesizes an `approval-requested` event itself -- `CursorApprovalPendingTracker` holds the pending state, `CursorApprovalCoordinator` (`Sources/MyTTYApp/CursorApprovalCoordinator.swift`) owns the timer, and `AgentHookEventAdapter.pendingApprovalEvent` builds the event. Once the matching `postToolUse` or `postToolUseFailure` does arrive, the run transitions back to `running` the same way a real approval resolves, so no separate resolution step is needed. Auto-approved calls that finish inside the 10-second window never trigger this at all; one that runs long but was in fact auto-approved briefly shows as `approval-requested` in Attention and then resolves itself once its `postToolUse` lands.
 
-mytty no longer installs handlers on Cursor's `beforeShellExecution` / `afterShellExecution` hooks, and no longer uses them to detect a pending approval: they only bracket shell commands, so a tool call stuck on an approval prompt for a non-shell tool (a file delete, observed in practice) never produced either hook, and the delay-based estimate built on them missed it. The mapping for those two hooks is still recognized for anyone who installed them by hand, but installing or repairing the Cursor integration in Settings now writes `preToolUse` instead.
+Mytty no longer installs handlers on Cursor's `beforeShellExecution` / `afterShellExecution` hooks, and no longer uses them to detect a pending approval: they only bracket shell commands, so a tool call stuck on an approval prompt for a non-shell tool (a file delete, observed in practice) never produced either hook, and the delay-based estimate built on them missed it. The mapping for those two hooks is still recognized for anyone who installed them by hand, but installing or repairing the Cursor integration in Settings now writes `preToolUse` instead.
 
-Provider-native identifiers are converted to mytty run identifiers as follows: Codex `turn_id`, Claude Code `prompt_id`, the active OpenCode user message ID, Antigravity `conversationId`, Cursor `generation_id`. Hook payloads themselves are never stored or parsed from human-readable terminal output.
+Provider-native identifiers are converted to Mytty run identifiers as follows: Codex `turn_id`, Claude Code `prompt_id`, the active OpenCode user message ID, Antigravity `conversationId`, Cursor `generation_id`. Hook payloads themselves are never stored or parsed from human-readable terminal output.
 
 ## Status bar session identifier
 
@@ -83,7 +83,7 @@ The status bar's model name and, where available, remaining-context meter come f
 
 ## Session restoration (resume commands)
 
-When **On Launch** is set to **Restore last session**, mytty restores an agent that was running in a pane when the session snapshot was saved, by submitting one of these commands as the restored shell's initial input:
+When **On Launch** is set to **Restore last session**, Mytty restores an agent that was running in a pane when the session snapshot was saved, by submitting one of these commands as the restored shell's initial input:
 
 | Agent | Resume command |
 | --- | --- |

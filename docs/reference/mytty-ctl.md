@@ -1,6 +1,6 @@
 # mytty-ctl reference
 
-`mytty-ctl` is the local CLI a coding agent (Claude Code, Codex, Cursor, ...) uses to drive Mytty itself. Its `agent` subcommands spawn a worker provider in a new pane, deliver its task as one shell input, and track that exact spawn as a job an orchestrator can wait on, read the result of, and send follow-ups to. The older pane-level commands (`split`, `send`, `wait`, `read`, ...) still work and remain the right tool for driving a pane by hand; the [orchestration how-to](../how-to/orchestrate-agents-with-mytty-ctl.md) covers when to reach for which. It talks to `ControlServer` (`MyTTYApp`) over a Unix-domain socket restricted to the current user, one JSON request per connection, and is a separate transport from the iOS remote (`RemoteAccessServer`, TCP with pairing and encryption). Source: `Sources/MyTTYCore/ControlProtocol.swift`, `Sources/MyTTYCore/ControlCommandLineParser.swift`, `Sources/MyTTYCore/AgentJob.swift`, `Sources/MyTTYCore/AgentLaunchPlan.swift`, `Sources/MyTTYApp/ControlServer.swift`, `Sources/MyTTYApp/ControlCoordinator.swift`, `Sources/MyTTYApp/AgentJobCoordinator.swift`.
+`mytty-ctl` is the local CLI a coding agent (Claude Code, Codex, Cursor, ...) uses to drive Mytty itself. Its `agent` subcommands spawn a worker provider in a new pane, deliver its task as one shell input, and track that exact spawn as a job a lead can wait on, read the result of, and send follow-ups to. The older pane-level commands (`split`, `send`, `wait`, `read`, ...) still work and remain the right tool for driving a pane by hand; the [orchestration how-to](../how-to/orchestrate-agents-with-mytty-ctl.md) covers when to reach for which. It talks to `ControlServer` (`MyTTYApp`) over a Unix-domain socket restricted to the current user, one JSON request per connection, and is a separate transport from the iOS remote (`RemoteAccessServer`, TCP with pairing and encryption). Source: `Sources/MyTTYCore/ControlProtocol.swift`, `Sources/MyTTYCore/ControlCommandLineParser.swift`, `Sources/MyTTYCore/AgentJob.swift`, `Sources/MyTTYCore/AgentLaunchPlan.swift`, `Sources/MyTTYApp/ControlServer.swift`, `Sources/MyTTYApp/ControlCoordinator.swift`, `Sources/MyTTYApp/AgentJobCoordinator.swift`.
 
 ## Environment variables
 
@@ -20,7 +20,7 @@ A debug build (`Mytty Dev`) and a release build each expose their own socket und
 
 ## Using mytty-ctl outside Mytty
 
-The `PATH` entry above only covers panes Mytty itself opened. To call `mytty-ctl` from somewhere else — another terminal app, a script — use the "Install CLI" button in Settings > Orchestration. It symlinks the installed binary into `~/.local/bin`, with no admin prompt. If something else already sits at that name (a link pointing elsewhere, or a real file), the button reports a failure instead of silently overwriting it.
+The `PATH` entry above only covers panes Mytty itself opened. To call `mytty-ctl` from somewhere else -- another terminal app, a script -- use the "Install CLI" button in Settings > Orchestration. It symlinks the installed binary into `~/.local/bin`, with no admin prompt. If something else already sits at that name (a link pointing elsewhere, or a real file), the button reports a failure instead of silently overwriting it.
 
 If `~/.local/bin` isn't already on your shell's `PATH`, the button shows a line to add after installing:
 
@@ -34,7 +34,7 @@ A development build (Mytty Dev) installs under a different name, `~/.local/bin/m
 
 ## Calling mytty-ctl from inside Codex's sandbox
 
-Shell commands Codex runs execute inside a macOS Seatbelt sandbox (`review` or `workspace-write`), so `mytty-ctl` called from there gets `connect(2)` to the Unix domain socket denied outright by the operating system — every command, including `list` and `agent spawn`, fails with `socketOperation(1)` (`EPERM`). The socket file, its permissions, and `MYTTY_CONTROL_SOCKET` are all fine; the same socket connects normally from outside the sandbox (another pane, a plain shell). If Codex is the orchestrator driving other panes, ask for approval to run `mytty-ctl` commands outside the sandbox. Workers `agent spawn` launches into other panes aren't affected — they run in their own shell, not the orchestrator's sandbox.
+Shell commands Codex runs execute inside a macOS Seatbelt sandbox (`review` or `workspace-write`), so `mytty-ctl` called from there gets `connect(2)` to the Unix domain socket denied outright by the operating system -- every command, including `list` and `agent spawn`, fails with `socketOperation(1)` (`EPERM`). The socket file, its permissions, and `MYTTY_CONTROL_SOCKET` are all fine; the same socket connects normally from outside the sandbox (another pane, a plain shell). If Codex is the lead driving other panes, ask for approval to run `mytty-ctl` commands outside the sandbox. Workers `agent spawn` launches into other panes aren't affected -- they run in their own shell, not the lead's sandbox.
 
 ## Exit status and output
 
@@ -67,7 +67,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 
-pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a `list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an `agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
+Pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a `list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an `agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
 
 ### agent spawn
 
@@ -365,10 +365,10 @@ The job registry lives only in the running app's memory; it is not persisted. A 
 
 - `new-tab` cannot target a specific window; it always lands in the active window, or the first window found if none is active. To open a pane in a specific window, `split` one of that window's existing panes instead.
 - `close-pane` never shows a confirmation dialog. The one exception, closing the last pane of the last tab, still triggers the window's own close confirmation; this does not normally apply to panes created for subagent teams.
-- pane IDs are `TerminalSurfaceID` UUID strings, obtained from `list`, a `pane` response, or `$MYTTY_SURFACE_ID`.
+- Pane IDs are `TerminalSurfaceID` UUID strings, obtained from `list`, a `pane` response, or `$MYTTY_SURFACE_ID`.
 - The maximum request size accepted by the control socket matches the agent-event socket's 64 KiB envelope limit; a very large `send` argument should be chunked or piped through the shell instead of passed as one oversized literal. `agent spawn` checks the same limit against the encoded request (task plus the appended worker contract) before opening a connection, so an oversized task fails as a plain CLI error instead of a socket write silently being rejected.
 - `agent spawn` never launches a worker in an existing pane -- every spawn creates a new one. This is what keeps job binding correct (see [Agent job binding](#agent-job-binding)); it also means closing jobs you no longer need (`agent close`) matters more than it does for a small number of manually managed panes.
-- job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from `job.jobID.rawValue` in any `agent` response. They are not interchangeable with pane IDs.
+- Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from `job.jobID.rawValue` in any `agent` response. They are not interchangeable with pane IDs.
 
 ## See also
 

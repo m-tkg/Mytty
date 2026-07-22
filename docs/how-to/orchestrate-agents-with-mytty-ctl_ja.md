@@ -1,8 +1,8 @@
 # mytty-ctl でエージェントのチームを動かす
 
-同梱されている CLI `mytty-ctl` を使うことで、AI エージェントが他のペインを開いて操作することができます。`Task`/`Agent` ツールが作るような見えないサブエージェントではなく、画面に見えて割り込めるペインでサブエージェントの小さなチームを動かすイメージです。
+同梱されている CLI `mytty-ctl` を使うと、AI エージェントが他のペインを開いて操作できます。`Task`/`Agent` ツールが作るような見えないサブエージェントではなく、画面に見えて割り込めるペインでサブエージェントの小さなチームを動かすイメージです。
 
-Mytty ではすべてのペインのシェル環境に `MYTTY_CONTROL_SOCKET`、`MYTTY_CTL_BIN`、`MYTTY_SURFACE_ID` が自動で入るため、エージェントは他に準備することなく `"$MYTTY_CTL_BIN" agent spawn --provider codex --task "..."` のように他の AI Agent を呼び出すことができます。
+Mytty ではすべてのペインのシェル環境に `MYTTY_CONTROL_SOCKET`、`MYTTY_CTL_BIN`、`MYTTY_SURFACE_ID` が自動で入るため、エージェントは他に準備することなく `"$MYTTY_CTL_BIN" agent spawn --provider codex --task "..."` のように他の AI エージェントを呼び出せます。
 
 mytty-ctl で使える全コマンドの一覧と JSON 出力の形式は [mytty-ctl リファレンス](../reference/mytty-ctl_ja.md) にまとめてあります。
 
