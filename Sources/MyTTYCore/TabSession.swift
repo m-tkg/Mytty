@@ -542,6 +542,9 @@ public struct TabSession: Codable, Equatable, Sendable {
     public private(set) var root: SplitNode
     public private(set) var focusedSurfaceID: TerminalSurfaceID
     public var pinnedTitle: String?
+    /// When the tab was first opened. Survives session restoration and
+    /// moving the tab between windows.
+    public let createdAt: Date
 
     public var surfaceIDs: [TerminalSurfaceID] {
         root.surfaceIDs
@@ -554,35 +557,69 @@ public struct TabSession: Codable, Equatable, Sendable {
     public init(
         id: TabID = TabID(),
         initialSurface: TerminalSurfaceState,
-        pinnedTitle: String? = nil
+        pinnedTitle: String? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.root = .surface(initialSurface)
         self.focusedSurfaceID = initialSurface.id
         self.pinnedTitle = pinnedTitle
+        self.createdAt = createdAt
     }
 
     public init(
         id: TabID = TabID(),
         initialBrowser: BrowserPaneState,
-        pinnedTitle: String? = nil
+        pinnedTitle: String? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.root = .browser(initialBrowser)
         self.focusedSurfaceID = initialBrowser.id
         self.pinnedTitle = pinnedTitle
+        self.createdAt = createdAt
     }
 
     public init(
         id: TabID = TabID(),
         root: SplitNode,
         focusedSurfaceID: TerminalSurfaceID,
-        pinnedTitle: String? = nil
+        pinnedTitle: String? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.root = root
         self.focusedSurfaceID = focusedSurfaceID
         self.pinnedTitle = pinnedTitle
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case root
+        case focusedSurfaceID
+        case pinnedTitle
+        case createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(TabID.self, forKey: .id)
+        root = try container.decode(SplitNode.self, forKey: .root)
+        focusedSurfaceID = try container.decode(
+            TerminalSurfaceID.self,
+            forKey: .focusedSurfaceID
+        )
+        pinnedTitle = try container.decodeIfPresent(
+            String.self,
+            forKey: .pinnedTitle
+        )
+        // Snapshots written before uptime tracking have no createdAt;
+        // counting from restore is the closest available origin.
+        createdAt = try container.decodeIfPresent(
+            Date.self,
+            forKey: .createdAt
+        ) ?? Date()
     }
 
     public mutating func focus(surface id: TerminalSurfaceID) throws {

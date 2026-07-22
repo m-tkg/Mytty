@@ -130,6 +130,7 @@ struct PreferencesStoreTests {
         autocomplete.enabled = "false"
         agents.prevent-system-sleep = "prevent-while-launched"
         attention.unread-only = "true"
+        tab.show-uptime = "true"
         agents.pane-team-pointers = "false"
         remote.access-enabled = "true"
         pane.inactive-dimming = "0.45"
@@ -155,6 +156,7 @@ struct PreferencesStoreTests {
             preferences.agentSleepPreventionMode == .preventWhileLaunched
         )
         #expect(preferences.attentionUnreadOnly)
+        #expect(preferences.showTabUptime)
         #expect(!preferences.paneTeamPointersEnabled)
         #expect(preferences.remoteAccessEnabled)
         #expect(preferences.inactivePaneDimming == 0.45)
@@ -171,6 +173,7 @@ struct PreferencesStoreTests {
         preferences.autocompleteEnabled = true
         preferences.agentSleepPreventionMode = .allowSleep
         preferences.attentionUnreadOnly = false
+        preferences.showTabUptime = false
         preferences.paneTeamPointersEnabled = true
         preferences.remoteAccessEnabled = false
         preferences.inactivePaneDimming = 0.6
@@ -203,6 +206,7 @@ struct PreferencesStoreTests {
             )
         )
         #expect(contents.contains("attention.unread-only = \"false\""))
+        #expect(contents.contains("tab.show-uptime = \"false\""))
         #expect(contents.contains("agents.pane-team-pointers = \"true\""))
         #expect(contents.contains("remote.access-enabled = \"false\""))
         #expect(contents.contains("pane.inactive-dimming = \"0.6\""))
@@ -308,6 +312,7 @@ struct PreferencesStoreTests {
         #expect(preferences.autocompleteEnabled)
         #expect(preferences.agentSleepPreventionMode == .allowSleep)
         #expect(!preferences.attentionUnreadOnly)
+        #expect(!preferences.showTabUptime)
         #expect(preferences.paneTeamPointersEnabled)
         #expect(preferences.inactivePaneDimming == 0.32)
         #expect(preferences.activePaneBorderEnabled)
