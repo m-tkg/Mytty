@@ -31,26 +31,19 @@ struct SessionView: View {
     @ViewBuilder
     private var content: some View {
         switch client.state {
-        case .disconnected, .connecting:
+        case .connecting:
             VStack(spacing: 12) {
                 ProgressView()
                 Text("Connecting to \(mac.displayName)…")
                     .foregroundStyle(.secondary)
             }
+        case .disconnected:
+            // A session only lands here dead (connect() always precedes the
+            // push onto this view), so a spinner would just sit forever —
+            // e.g. when the reconnect after a notification tap gave up.
+            ConnectionLostView(message: nil) { client.connect(mac: mac) }
         case let .failed(message):
-            VStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.secondary)
-                Text("Could not connect")
-                    .font(.headline)
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Retry") { client.connect(mac: mac) }
-            }
-            .multilineTextAlignment(.center)
-            .padding()
+            ConnectionLostView(message: message) { client.connect(mac: mac) }
         case .connected:
             WindowListView(client: client)
         }
@@ -180,7 +173,42 @@ struct PaneRouteView: View {
             // Reached while reconnecting, or after the pane closed on the
             // Mac. The detail views handle the disconnected case
             // themselves once a snapshot arrives.
-            ProgressView()
+            switch client.state {
+            case .connecting, .connected:
+                ProgressView()
+            case .disconnected:
+                // The reconnect this route was waiting on died (e.g. every
+                // attempt after a notification tap raced the network coming
+                // back): without this, the spinner would sit forever.
+                ConnectionLostView(message: nil) { client.reconnect() }
+            case let .failed(message):
+                ConnectionLostView(message: message) { client.reconnect() }
+            }
         }
+    }
+}
+
+/// Dead-end connection state with the way back in: shown wherever a view
+/// would otherwise wait on a snapshot that is never coming.
+struct ConnectionLostView: View {
+    let message: String?
+    let onReconnect: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text("Disconnected")
+                .font(.headline)
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button("Reconnect", action: onReconnect)
+        }
+        .multilineTextAlignment(.center)
+        .padding()
     }
 }
