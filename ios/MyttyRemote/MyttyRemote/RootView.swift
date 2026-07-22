@@ -20,9 +20,16 @@ struct RootView: View {
     @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase
     /// Armed when the app comes back to the foreground inside a session, so
-    /// the connection iOS tore down while suspended is re-established once
-    /// — and only once, so an unreachable Mac doesn't spin in a retry loop.
+    /// the connection iOS tore down while suspended is re-established. The
+    /// first attempt often races the network coming back after resume (Wi-Fi
+    /// re-associates a moment later, so the connect fails instantly), so a
+    /// failed attempt is retried a few times with a short delay — but only
+    /// a bounded number, so an unreachable Mac doesn't spin in a retry loop.
     @State private var pendingForegroundReconnect = false
+    @State private var foregroundReconnectAttempts = 0
+    @State private var foregroundReconnectRetryTask: Task<Void, Never>?
+    private static let maxForegroundReconnectAttempts = 3
+    private static let foregroundReconnectRetryDelay: Duration = .seconds(2)
     @ObservedObject private var pushRegistration = PushRegistration.shared
     /// A tapped notification whose pane cannot be located yet, because
     /// the session it belongs to is still connecting. Resolved against
@@ -89,10 +96,14 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
+                foregroundReconnectAttempts = 0
                 pendingForegroundReconnect = !path.isEmpty
                 reconnectAfterForegroundIfNeeded()
             case .background:
                 pendingForegroundReconnect = false
+                foregroundReconnectRetryTask?.cancel()
+                foregroundReconnectRetryTask = nil
+                foregroundReconnectAttempts = 0
             default:
                 break
             }
@@ -132,6 +143,7 @@ struct RootView: View {
             // scene-phase handler has already run and found nothing to
             // arm. Arm it here so a stale connection heals instead of
             // leaving the pane spinning forever.
+            foregroundReconnectAttempts = 0
             pendingForegroundReconnect = true
         }
         pendingNotificationOpen = PendingNotificationOpen(
@@ -194,11 +206,45 @@ struct RootView: View {
               client.canReconnect
         else { return }
         switch client.state {
-        case .disconnected, .failed:
+        case .connected:
+            // Reconnected (or the stale session turned out alive): done.
             pendingForegroundReconnect = false
-            client.reconnect()
-        case .connecting, .connected:
+            foregroundReconnectAttempts = 0
+        case .connecting:
             break
+        case .disconnected, .failed:
+            guard foregroundReconnectRetryTask == nil else { return }
+            guard
+                foregroundReconnectAttempts
+                    < Self.maxForegroundReconnectAttempts
+            else {
+                // Out of attempts: stop, leaving the visible disconnected
+                // state and its Reconnect button as the way back in.
+                pendingForegroundReconnect = false
+                return
+            }
+            foregroundReconnectAttempts += 1
+            // The first attempt fires immediately; later ones wait out the
+            // window where the network is still coming back after resume.
+            let delay: Duration =
+                foregroundReconnectAttempts == 1
+                ? .zero : Self.foregroundReconnectRetryDelay
+            foregroundReconnectRetryTask = Task {
+                if delay > .zero { try? await Task.sleep(for: delay) }
+                foregroundReconnectRetryTask = nil
+                guard !Task.isCancelled,
+                      pendingForegroundReconnect,
+                      scenePhase == .active,
+                      !path.isEmpty,
+                      client.canReconnect
+                else { return }
+                switch client.state {
+                case .disconnected, .failed:
+                    client.reconnect()
+                case .connecting, .connected:
+                    break
+                }
+            }
         }
     }
 }
