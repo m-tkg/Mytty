@@ -277,11 +277,13 @@ private struct GeneralSettingsView: View {
 
                 LabeledContent(localizer[.defaultTerminal]) {
                     if defaultTerminal.isDefault {
-                        Label(
-                            localizer[.defaultTerminalActive],
-                            systemImage: "checkmark.circle.fill"
-                        )
-                        .foregroundStyle(.secondary)
+                        Label {
+                            Text(localizer[.defaultTerminalActive])
+                                .foregroundStyle(.secondary)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
                     } else {
                         Button(localizer[.makeDefaultTerminal]) {
                             Task {
