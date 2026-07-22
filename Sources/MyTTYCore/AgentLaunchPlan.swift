@@ -28,31 +28,56 @@ public enum AgentLaunchPlan {
     public static func initialInput(
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
+        model: String?,
         task: String
     ) -> String {
         let quotedTask = ShellQuoting.quote(task + workerContract)
-        return command(provider: provider, access: access, quotedTask: quotedTask)
-            + "\n"
+        return command(
+            provider: provider,
+            access: access,
+            model: model,
+            quotedTask: quotedTask
+        ) + "\n"
+    }
+
+    /// `--model <quoted-model> ` (with a trailing space) for the given
+    /// provider, or the empty string when no model was requested — kept
+    /// separate from `command(...)` so each provider's flag ordering below
+    /// stays a single readable line.
+    private static func modelSegment(
+        provider: AgentWorkerProvider,
+        model: String?
+    ) -> String {
+        guard let model else { return "" }
+        let quotedModel = ShellQuoting.quote(model)
+        switch provider {
+        case .codex:
+            return "-m \(quotedModel) "
+        case .claude, .cursor:
+            return "--model \(quotedModel) "
+        }
     }
 
     private static func command(
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
+        model: String?,
         quotedTask: String
     ) -> String {
-        switch (provider, access) {
+        let modelFlag = modelSegment(provider: provider, model: model)
+        return switch (provider, access) {
         case (.codex, .review):
-            "command codex -s read-only -a never -- \(quotedTask)"
+            "command codex \(modelFlag)-s read-only -a never -- \(quotedTask)"
         case (.codex, .workspaceWrite):
-            "command codex -s workspace-write -a never -- \(quotedTask)"
+            "command codex \(modelFlag)-s workspace-write -a never -- \(quotedTask)"
         case (.claude, .review):
-            "command claude --permission-mode plan -- \(quotedTask)"
+            "command claude \(modelFlag)--permission-mode plan -- \(quotedTask)"
         case (.claude, .workspaceWrite):
-            "command claude --permission-mode acceptEdits -- \(quotedTask)"
+            "command claude \(modelFlag)--permission-mode acceptEdits -- \(quotedTask)"
         case (.cursor, .review):
-            "command cursor-agent --mode plan -- \(quotedTask)"
+            "command cursor-agent \(modelFlag)--mode plan -- \(quotedTask)"
         case (.cursor, .workspaceWrite):
-            "command cursor-agent --force --sandbox enabled -- \(quotedTask)"
+            "command cursor-agent \(modelFlag)--force --sandbox enabled -- \(quotedTask)"
         }
     }
 }

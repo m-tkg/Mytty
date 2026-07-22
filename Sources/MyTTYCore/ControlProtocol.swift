@@ -116,6 +116,7 @@ public enum ControlRequest: Equatable, Sendable {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     )
@@ -178,6 +179,7 @@ extension ControlRequest: Codable {
         case provider
         case cwd
         case access
+        case model
         case task
         case label
         case jobID
@@ -272,6 +274,10 @@ extension ControlRequest: Codable {
                     AgentAccessPolicy.self,
                     forKey: .access
                 ),
+                model: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .model
+                ),
                 task: try container.decode(String.self, forKey: .task),
                 label: try container.decodeIfPresent(
                     String.self,
@@ -358,7 +364,7 @@ extension ControlRequest: Codable {
             try container.encode(RequestType.focus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
         case let .spawnAgent(
-            anchorPaneID, direction, provider, cwd, access, task, label
+            anchorPaneID, direction, provider, cwd, access, model, task, label
         ):
             try container.encode(RequestType.spawnAgent, forKey: .type)
             try container.encode(anchorPaneID, forKey: .anchorPaneID)
@@ -366,6 +372,7 @@ extension ControlRequest: Codable {
             try container.encode(provider, forKey: .provider)
             try container.encodeIfPresent(cwd, forKey: .cwd)
             try container.encode(access, forKey: .access)
+            try container.encodeIfPresent(model, forKey: .model)
             try container.encode(task, forKey: .task)
             try container.encodeIfPresent(label, forKey: .label)
         case let .waitAgent(jobID, until, timeoutSeconds):

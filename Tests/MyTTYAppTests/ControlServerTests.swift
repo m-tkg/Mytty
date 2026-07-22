@@ -280,6 +280,7 @@ struct ControlServerTests {
                 provider: .codex,
                 cwd: nil,
                 access: .workspaceWrite,
+                model: "gpt-5.2",
                 task: "investigate",
                 label: "investigate-a"
             ),
@@ -288,6 +289,7 @@ struct ControlServerTests {
         #expect(response == .agentJob(job))
         #expect(agentDelegate.lastSpawnTask == "investigate")
         #expect(agentDelegate.lastSpawnLabel == "investigate-a")
+        #expect(agentDelegate.lastSpawnModel == "gpt-5.2")
 
         for code in [
             "pane-not-found",
@@ -295,6 +297,7 @@ struct ControlServerTests {
             "provider-integration-needs-repair",
             "invalid-cwd",
             "invalid-label",
+            "invalid-model",
             "invalid-task",
         ] {
             agentDelegate.spawnResult = .failure(AgentControlFailure(code))
@@ -305,6 +308,7 @@ struct ControlServerTests {
                     provider: .codex,
                     cwd: nil,
                     access: .workspaceWrite,
+                    model: nil,
                     task: "investigate",
                     label: nil
                 ),
@@ -312,6 +316,35 @@ struct ControlServerTests {
             )
             #expect(failureResponse == .failure(code: code))
         }
+    }
+
+    @Test("spawnAgent forwards a nil model unchanged")
+    func agentSpawnForwardsNilModel() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let job = Self.makeJob(state: .launching)
+        agentDelegate.spawnResult = .success(job)
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .codex,
+                cwd: nil,
+                access: .workspaceWrite,
+                model: nil,
+                task: "investigate",
+                label: nil
+            ),
+            to: socketURL
+        )
+        #expect(response == .agentJob(job))
+        #expect(agentDelegate.lastSpawnModel == nil)
     }
 
     @Test("agent wait resolves once running/attention/completed is reached")
@@ -793,6 +826,7 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
 
     var lastSpawnTask: String?
     var lastSpawnLabel: String?
+    var lastSpawnModel: String?
     var lastSendText: String?
     var lastSendPressEnter: Bool?
 
@@ -803,11 +837,13 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         lastSpawnTask = task
         lastSpawnLabel = label
+        lastSpawnModel = model
         return spawnResult
     }
 
@@ -903,6 +939,7 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {

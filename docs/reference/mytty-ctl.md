@@ -50,7 +50,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 
 | Command | Arguments | Success response |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write>] [--label <text>]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write>] [--model <text>] [--label <text>]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
@@ -71,7 +71,7 @@ Pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a `list` 
 
 ### agent spawn
 
-Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and launches the given provider in it, delivering `--task` (or the contents of `--task-file`, read by `mytty-ctl` itself before the request is sent) as one shell input together with the launch command -- there is no separate `send` that could race the worker's TUI starting up. `--access` defaults to `workspace-write`; `review` launches the provider in its read-only/plan mode instead. A worker contract (stay in the working directory, keep going instead of stopping to ask, end with a concise summary) is appended to every task automatically.
+Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and launches the given provider in it, delivering `--task` (or the contents of `--task-file`, read by `mytty-ctl` itself before the request is sent) as one shell input together with the launch command -- there is no separate `send` that could race the worker's TUI starting up. `--access` defaults to `workspace-write`; `review` launches the provider in its read-only/plan mode instead. `--model` is optional and picks the provider's model, passed straight through to the provider CLI's own model flag -- `-m <model>` for `codex`, `--model <model>` for `claude` and `cursor` -- e.g. `--model sonnet` for a `claude` worker. Omit it to use whatever model the provider defaults to. A worker contract (stay in the working directory, keep going instead of stopping to ask, end with a concise summary) is appended to every task automatically.
 
 ```bash
 job=$(mytty-ctl agent spawn \
@@ -338,6 +338,7 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `provider-integration-needs-repair` | `agent spawn`: the provider's hook integration is installed but stale/broken |
 | `invalid-cwd` | `agent spawn`: `--cwd` doesn't name an existing directory |
 | `invalid-label` | `agent spawn`: `--label` contains a control character or exceeds 100 Unicode scalars |
+| `invalid-model` | `agent spawn`: `--model` is empty, contains a control character or whitespace, or exceeds 100 Unicode scalars |
 | `invalid-task` | `agent spawn`: the resolved task text is empty |
 | `spawn-failed` | `agent spawn`: the pane could not be created |
 | `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: the given job ID is unknown -- either it never existed, or it was issued before the last Mytty restart (job IDs are not persisted) |
