@@ -24,6 +24,7 @@ final class AgentStatusPollingCoordinator: NSObject {
     private(set) var statusBySurface: [TerminalSurfaceID: AgentSessionStatus] = [:]
 
     private let throttle = AgentSessionThrottleCache()
+    private let processProviderCache = AgentProcessProviderCache()
     private var timer: Timer?
 
     private let surfaces: () -> [TerminalSurfaceID: GhosttySurfaceView]
@@ -119,10 +120,12 @@ final class AgentStatusPollingCoordinator: NSObject {
     @discardableResult
     func refreshProviders() -> Bool {
         let currentSurfaces = surfaces()
+        processProviderCache.purge(activeSurfaceIDs: currentSurfaces.keys)
         let providers = currentSurfaces.reduce(
             into: [TerminalSurfaceID: AgentProvider]()
         ) { result, entry in
-            guard let provider = TerminalAgentProcessDetector.provider(
+            guard let provider = processProviderCache.provider(
+                surfaceID: entry.key,
                 processID: entry.value.foregroundProcessID
             ) else { return }
             result[entry.key] = provider

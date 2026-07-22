@@ -169,7 +169,31 @@ enum TerminalAgentProcessDetector {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
-    private static func executablePath(processID: pid_t) -> String? {
+    /// The process's start time via `proc_pidinfo(PROC_PIDTBSDINFO)`, used
+    /// by `AgentProcessProviderCache` to defeat pid reuse (a recycled pid
+    /// running a different process has a different start time). `internal`
+    /// rather than `private` so the cache can use it as a probe default.
+    static func startTime(
+        processID: pid_t
+    ) -> (seconds: UInt64, microseconds: UInt64)? {
+        var info = proc_bsdinfo()
+        let size = proc_pidinfo(
+            processID,
+            PROC_PIDTBSDINFO,
+            0,
+            &info,
+            Int32(MemoryLayout<proc_bsdinfo>.size)
+        )
+        guard size >= Int32(MemoryLayout<proc_bsdinfo>.size) else {
+            return nil
+        }
+        return (info.pbi_start_tvsec, info.pbi_start_tvusec)
+    }
+
+    /// `internal` rather than `private` so `AgentProcessProviderCache` can
+    /// reuse the same `proc_pidpath` call as a cache-key probe default
+    /// instead of duplicating it.
+    static func executablePath(processID: pid_t) -> String? {
         var buffer = [CChar](
             repeating: 0,
             count: Int(MAXPATHLEN) * 4
