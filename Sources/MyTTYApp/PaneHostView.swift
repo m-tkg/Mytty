@@ -26,7 +26,12 @@ struct PaneActiveBorderStyle: Equatable {
 
 @MainActor
 final class PaneHostView: NSView {
+    /// Alpha of the red orchestration tint overlay, kept in one place so
+    /// the constant and the test expectation can't drift apart.
+    private static let tintAlpha: CGFloat = 0.08
+
     private let dimmingView = PaneDimmingView()
+    private let orchestrationTintView = PaneOrchestrationTintView()
     private let keyToastView = PaneKeyToastView()
     private let sizeIndicatorView = PaneSizeIndicatorView()
     private let swapClickCatcher = PaneSwapClickCatcherView()
@@ -39,6 +44,16 @@ final class PaneHostView: NSView {
         didSet {
             dimmingView.isHidden = isFocused
             updateBorder()
+        }
+    }
+
+    /// Whether this pane was created by mytty-ctl orchestration rather than
+    /// interactively. Ghostty has no per-surface background color, so a
+    /// faint red tint overlay stands in for it — independent of focus, so
+    /// it stays visible whether or not the pane is dimmed.
+    var isOrchestrated = false {
+        didSet {
+            orchestrationTintView.isHidden = !isOrchestrated
         }
     }
 
@@ -94,11 +109,22 @@ final class PaneHostView: NSView {
         // `borderColor` is a resolved CGColor, so dynamic colors — the
         // accent color especially — have to be re-resolved by hand.
         updateBorder()
+        updateOrchestrationTintColor()
+    }
+
+    private func updateOrchestrationTintColor() {
+        orchestrationTintView.layer?.backgroundColor = NSColor.systemRed
+            .withAlphaComponent(Self.tintAlpha)
+            .cgColor
     }
 
     var isDimmed: Bool { !dimmingView.isHidden }
     var inactiveDimmingAlpha: CGFloat {
         dimmingView.layer?.backgroundColor?.alpha ?? 0
+    }
+    var isOrchestrationTintVisible: Bool { !orchestrationTintView.isHidden }
+    var orchestrationTintAlpha: CGFloat {
+        orchestrationTintView.layer?.backgroundColor?.alpha ?? 0
     }
     var focusBorderWidth: CGFloat { layer?.borderWidth ?? 0 }
     var focusBorderColor: NSColor? {
@@ -114,6 +140,11 @@ final class PaneHostView: NSView {
     init(content: NSView) {
         super.init(frame: .zero)
         wantsLayer = true
+        orchestrationTintView.translatesAutoresizingMaskIntoConstraints = false
+        orchestrationTintView.wantsLayer = true
+        updateOrchestrationTintColor()
+        orchestrationTintView.isHidden = true
+        addSubview(orchestrationTintView)
         dimmingView.translatesAutoresizingMaskIntoConstraints = false
         dimmingView.wantsLayer = true
         updateInactiveDimming(0.32)
@@ -132,6 +163,10 @@ final class PaneHostView: NSView {
         )
         indicatorWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
+            orchestrationTintView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            orchestrationTintView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            orchestrationTintView.topAnchor.constraint(equalTo: topAnchor),
+            orchestrationTintView.bottomAnchor.constraint(equalTo: bottomAnchor),
             dimmingView.leadingAnchor.constraint(equalTo: leadingAnchor),
             dimmingView.trailingAnchor.constraint(equalTo: trailingAnchor),
             dimmingView.topAnchor.constraint(equalTo: topAnchor),
@@ -181,7 +216,7 @@ final class PaneHostView: NSView {
         detachContent()
         content.removeFromSuperview()
         content.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(content, positioned: .below, relativeTo: dimmingView)
+        addSubview(content, positioned: .below, relativeTo: orchestrationTintView)
         contentView = content
         contentConstraints = [
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -261,6 +296,13 @@ final class PaneHostView: NSView {
 
 @MainActor
 private final class PaneDimmingView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
+@MainActor
+private final class PaneOrchestrationTintView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
     }
