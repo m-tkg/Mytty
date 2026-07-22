@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = PushRegistration.shared
+        // Items written by older builds are unreadable while the phone is
+        // locked, which left the notification extension showing the vague
+        // placeholder instead of the decrypted alert.
+        PairedMacStore.migrateForLockedDeviceAccess()
         return true
     }
 
