@@ -112,6 +112,10 @@ final class BrowserPaneView: NSView, NSTextFieldDelegate, WKNavigationDelegate,
         window?.makeFirstResponder(webView)
     }
 
+    func reloadPage() {
+        webView.reload()
+    }
+
     func showFind() {
         isFindPresented = true
         findBar.isHidden = false
@@ -325,7 +329,7 @@ final class BrowserPaneView: NSView, NSTextFieldDelegate, WKNavigationDelegate,
     }
 
     @objc private func reload(_ sender: Any?) {
-        webView.reload()
+        reloadPage()
     }
 
     @objc private func closeBrowser(_ sender: Any?) {

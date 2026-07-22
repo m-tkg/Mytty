@@ -36,6 +36,9 @@ struct KeyBindingIntegrationTests {
             menu.item(titled: "Toggle Pane Zoom")
         )
         let findInPane = try #require(menu.item(titled: "Find in Pane"))
+        let reloadBrowser = try #require(
+            menu.item(titled: "Reload Page")
+        )
         let showPaneList = try #require(
             menu.item(titled: "Show All Panes")
         )
@@ -75,6 +78,8 @@ struct KeyBindingIntegrationTests {
         )
         #expect(findInPane.keyEquivalent == "f")
         #expect(findInPane.keyEquivalentModifierMask == .control)
+        #expect(reloadBrowser.keyEquivalent == "r")
+        #expect(reloadBrowser.keyEquivalentModifierMask == .control)
         #expect(showPaneList.keyEquivalent == "a")
         #expect(
             showPaneList.keyEquivalentModifierMask == [.control, .command]
@@ -166,6 +171,75 @@ struct KeyBindingIntegrationTests {
         scheduledActions.forEach { $0() }
 
         #expect(timeline == ["split-right", "⌘D"])
+    }
+
+    @Test("routes the reload-browser shortcut to its command")
+    @MainActor
+    func routesReloadBrowserShortcut() throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .control,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "r",
+            charactersIgnoringModifiers: "r",
+            isARepeat: false,
+            keyCode: 15
+        ))
+        var invokedCommands: [MyTTYCommand] = []
+        var scheduledAction: (@MainActor () -> Void)?
+
+        let routedEvent = ApplicationShortcutRouter.route(
+            event,
+            bindings: [.reloadBrowser: MyTTYCommand.defaultKeyBindings[
+                .reloadBrowser
+            ]!],
+            schedule: { scheduledAction = $0 },
+            invoke: { command in
+                invokedCommands.append(command)
+                return true
+            }
+        )
+
+        #expect(routedEvent == nil)
+        scheduledAction?()
+        #expect(invokedCommands == [.reloadBrowser])
+    }
+
+    @Test("passes an unavailable command's shortcut through unchanged")
+    @MainActor
+    func passesUnavailableShortcutThrough() throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .control,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "r",
+            charactersIgnoringModifiers: "r",
+            isARepeat: false,
+            keyCode: 15
+        ))
+        var invokedCommands: [MyTTYCommand] = []
+
+        let routedEvent = ApplicationShortcutRouter.route(
+            event,
+            bindings: [.reloadBrowser: MyTTYCommand.defaultKeyBindings[
+                .reloadBrowser
+            ]!],
+            isAvailable: { _ in false },
+            schedule: { $0() },
+            invoke: { command in
+                invokedCommands.append(command)
+                return true
+            }
+        )
+
+        #expect(routedEvent === event)
+        #expect(invokedCommands.isEmpty)
     }
 
     @Test("Delete clears a key binding while recording")

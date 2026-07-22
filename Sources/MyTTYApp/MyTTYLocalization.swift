@@ -212,6 +212,7 @@ enum MyTTYText: String {
     case selectPaneToSwap = "Select a pane to swap"
     case selectSecondPaneToSwap = "Select the second pane to swap"
     case findInPane = "Find in Pane"
+    case reloadBrowserPage = "Reload Page"
     case showPaneList = "Show All Panes"
     case focusPane = "Focus Pane"
     case noPanes = "No panes are open."
@@ -673,6 +674,7 @@ struct MyTTYLocalizer: Equatable {
         case .selectPaneToSwap: "入れ替えるペインを選択してください"
         case .selectSecondPaneToSwap: "入れ替えるもう一方のペインを選択してください"
         case .findInPane: "ペイン内を検索"
+        case .reloadBrowserPage: "ページを再読み込み"
         case .showPaneList: "すべてのペインを表示"
         case .focusPane: "ペインへ移動"
         case .noPanes: "開いているペインはありません。"
@@ -830,6 +832,7 @@ private extension MyTTYCommand {
         case .togglePaneZoom: .togglePaneZoom
         case .swapPanes: .swapPanes
         case .findInPane: .findInPane
+        case .reloadBrowser: .reloadBrowserPage
         case .showPaneList: .showPaneList
         case .closePane: .closePane
         case .toggleTabPanel: .toggleTabPanel

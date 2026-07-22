@@ -34,6 +34,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case togglePaneZoom = "toggle-pane-zoom"
     case swapPanes = "swap-panes"
     case findInPane = "find-in-pane"
+    case reloadBrowser = "reload-browser"
     case showPaneList = "show-pane-list"
     case closePane = "close-pane"
     case toggleTabPanel = "toggle-tab-panel"
@@ -103,6 +104,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .togglePaneZoom: "Toggle Pane Zoom"
         case .swapPanes: "Swap Panes"
         case .findInPane: "Find in Pane"
+        case .reloadBrowser: "Reload Page"
         case .showPaneList: "Show All Panes"
         case .closePane: "Close Pane"
         case .toggleTabPanel: "Toggle Tab Panels"
@@ -170,6 +172,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
                 modifiers: [.control, .command]
             ),
             .findInPane: .init(key: "f", modifiers: [.control]),
+            .reloadBrowser: .init(key: "r", modifiers: [.control]),
             .showPaneList: .init(
                 key: "a",
                 modifiers: [.control, .command]
