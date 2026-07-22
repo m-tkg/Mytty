@@ -227,6 +227,77 @@ struct AttentionCenterTests {
         )
     }
 
+    @Test("closing several panes acknowledges their items in one pass")
+    @MainActor
+    func acknowledgeClosedPanes() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let firstClosed = TerminalSurfaceID()
+        let secondClosed = TerminalSurfaceID()
+        let survivingSurface = TerminalSurfaceID()
+
+        for (runID, surfaceID, request) in [
+            (AgentRunID(), firstClosed, AgentEventKind.approvalRequested),
+            (AgentRunID(), secondClosed, AgentEventKind.inputRequested),
+            (AgentRunID(), survivingSurface, AgentEventKind.approvalRequested),
+        ] {
+            try center.append(harness.event(
+                runID: runID,
+                surfaceID: surfaceID,
+                kind: .started,
+                at: 1
+            ))
+            try center.append(harness.event(
+                runID: runID,
+                surfaceID: surfaceID,
+                kind: request,
+                at: 2
+            ))
+        }
+
+        let acknowledged = try center.acknowledgeActionableItems(
+            for: [firstClosed, secondClosed],
+            at: Date(timeIntervalSince1970: 10)
+        )
+
+        #expect(acknowledged == 2)
+        #expect(center.actionableCount(for: [firstClosed, secondClosed]) == 0)
+        #expect(center.actionableCount(for: [survivingSurface]) == 1)
+        #expect(
+            center.items.filter { $0.surfaceID != survivingSurface }
+                .allSatisfy { $0.acknowledgedAt != nil }
+        )
+    }
+
+    @Test("acknowledging unrelated surfaces leaves items untouched")
+    @MainActor
+    func acknowledgeUnrelatedSurfaces() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surface = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runID, surfaceID: surface, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: runID,
+            surfaceID: surface,
+            kind: .approvalRequested,
+            at: 2
+        ))
+
+        let acknowledged = try center.acknowledgeActionableItems(
+            for: [TerminalSurfaceID(), TerminalSurfaceID()],
+            at: Date(timeIntervalSince1970: 10)
+        )
+
+        #expect(acknowledged == 0)
+        #expect(center.actionableCount(for: [surface]) == 1)
+    }
+
     @Test("startup sweep clears only completions from before the cutoff")
     @MainActor
     func acknowledgeStaleCompletions() throws {

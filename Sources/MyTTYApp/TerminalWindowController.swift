@@ -1190,6 +1190,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             }
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
+            acknowledgeAttention(for: tab.surfaceIDs)
         } catch {
             presentActionError(error)
         }
@@ -2263,9 +2264,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func acknowledgeAttention(for surfaceID: TerminalSurfaceID) {
+        acknowledgeAttention(for: [surfaceID])
+    }
+
+    private func acknowledgeAttention(for surfaceIDs: [TerminalSurfaceID]) {
         do {
             let acknowledgedCount = try attentionCenter
-                .acknowledgeActionableItems(for: surfaceID)
+                .acknowledgeActionableItems(for: surfaceIDs)
             if acknowledgedCount > 0 {
                 refreshSidebarRows()
             }
@@ -2773,6 +2778,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             renderedTabID = nil
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
+            acknowledgeAttention(for: paneID)
         } catch {
             presentActionError(error)
         }

@@ -41,8 +41,23 @@ final class AttentionCenter: ObservableObject {
         for surfaceID: TerminalSurfaceID,
         at acknowledgedAt: Date = Date()
     ) throws -> Int {
+        try acknowledgeActionableItems(
+            for: [surfaceID],
+            at: acknowledgedAt
+        )
+    }
+
+    /// Acknowledges every actionable item on the given surfaces in one
+    /// pass with a single reload — closing a pane, tab, or window must
+    /// not leave unread items behind for surfaces that no longer exist.
+    @discardableResult
+    func acknowledgeActionableItems(
+        for surfaceIDs: [TerminalSurfaceID],
+        at acknowledgedAt: Date = Date()
+    ) throws -> Int {
+        let identifiers = Set(surfaceIDs)
         let matchingItems = items.filter {
-            $0.surfaceID == surfaceID && $0.isActionable
+            identifiers.contains($0.surfaceID) && $0.isActionable
         }
         guard !matchingItems.isEmpty else { return 0 }
 
