@@ -95,7 +95,7 @@ struct PaneScheduleView: View {
                 rejectionMessage = nil
             } else {
                 rejectionMessage =
-                    "The Mac didn't accept the schedule — check that the time is still in the future."
+                    "The Mac didn't accept the schedule. Make sure the time is in the future and try again."
             }
             self.pendingCreateID = nil
         }
