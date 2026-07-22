@@ -263,10 +263,12 @@ public final class GhosttyRuntime {
     }
 
     nonisolated private static func resolveOpenURL(_ urlString: String) -> URL? {
-        if urlString.hasPrefix("/") || urlString.hasPrefix("~") {
-            return URL(fileURLWithPath: (urlString as NSString).expandingTildeInPath)
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
+            return URL(fileURLWithPath: (trimmed as NSString).expandingTildeInPath)
         }
-        return URL(string: urlString)
+        return URL(string: trimmed)
     }
 
     nonisolated private static func readClipboard(
