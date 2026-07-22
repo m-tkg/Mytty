@@ -233,6 +233,49 @@ struct WindowSessionTests {
         #expect(second == .surface(outer))
     }
 
+    @Test("splits a surface in an unselected tab without selecting or focusing it")
+    func backgroundSplit() throws {
+        let background = makeTab(id: 1, surfaceID: 11, path: "/background")
+        let selected = makeTab(id: 2, surfaceID: 12, path: "/selected")
+        var window = makeWindow(tab: background)
+        try window.add(tab: selected, select: true)
+        let added = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(13)),
+            workingDirectory: URL(fileURLWithPath: "/added", isDirectory: true)
+        )
+
+        try window.split(
+            surface: background.focusedSurfaceID,
+            adding: added,
+            direction: .right
+        )
+
+        #expect(window.selectedTabID == selected.id)
+        let backgroundTab = window.tabs.first { $0.id == background.id }
+        #expect(
+            backgroundTab?.surfaceIDs
+                == [background.focusedSurfaceID, added.id]
+        )
+        #expect(
+            backgroundTab?.focusedSurfaceID == background.focusedSurfaceID
+        )
+
+        let unknownSurface = TerminalSurfaceID(rawValue: makeUUID(19))
+        #expect(throws: WindowSessionError.surfaceNotFound(unknownSurface)) {
+            try window.split(
+                surface: unknownSurface,
+                adding: TerminalSurfaceState(
+                    id: TerminalSurfaceID(rawValue: makeUUID(14)),
+                    workingDirectory: URL(
+                        fileURLWithPath: "/other",
+                        isDirectory: true
+                    )
+                ),
+                direction: .right
+            )
+        }
+    }
+
     @Test("equalizes panes in a requested tab without selecting it")
     func equalizeRequestedTab() throws {
         var first = makeTab(id: 1, surfaceID: 11, path: "/first")

@@ -231,6 +231,29 @@ public struct WindowSession: Codable, Equatable, Sendable {
         tabs[index] = tab
     }
 
+    /// Splits next to `targetID` inside whichever tab contains it, without
+    /// selecting that tab or moving its focus — the background counterpart
+    /// of `splitFocusedSurface`, for orchestrated (agent/mytty-ctl) pane
+    /// creation that must not steal the user's current tab or keyboard
+    /// focus.
+    public mutating func split(
+        surface targetID: TerminalSurfaceID,
+        adding newSurface: TerminalSurfaceState,
+        direction: SplitDirection
+    ) throws {
+        guard let index = tabs.firstIndex(where: {
+            $0.surfaceIDs.contains(targetID)
+        }) else { throw WindowSessionError.surfaceNotFound(targetID) }
+        var tab = tabs[index]
+        try tab.split(
+            surface: targetID,
+            adding: newSurface,
+            direction: direction,
+            focus: false
+        )
+        tabs[index] = tab
+    }
+
     public mutating func splitOuterFocusedSurface(
         adding surface: TerminalSurfaceState,
         direction: SplitDirection

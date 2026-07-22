@@ -659,13 +659,15 @@ public struct TabSession: Codable, Equatable, Sendable {
     public mutating func split(
         surface targetID: TerminalSurfaceID,
         adding newSurface: TerminalSurfaceState,
-        direction: SplitDirection
+        direction: SplitDirection,
+        focus: Bool = true
     ) throws {
         try split(
             pane: targetID,
             adding: .surface(newSurface),
             id: newSurface.id,
-            direction: direction
+            direction: direction,
+            focus: focus
         )
     }
 
@@ -703,7 +705,8 @@ public struct TabSession: Codable, Equatable, Sendable {
         pane targetID: TerminalSurfaceID,
         adding newNode: SplitNode,
         id newID: TerminalSurfaceID,
-        direction: SplitDirection
+        direction: SplitDirection,
+        focus: Bool = true
     ) throws {
         guard root.contains(targetID) else {
             throw TabSessionError.surfaceNotFound(targetID)
@@ -720,7 +723,9 @@ public struct TabSession: Codable, Equatable, Sendable {
             throw TabSessionError.surfaceNotFound(targetID)
         }
         root = replacement
-        focusedSurfaceID = newID
+        if focus {
+            focusedSurfaceID = newID
+        }
     }
 
     private static func wrapped(
