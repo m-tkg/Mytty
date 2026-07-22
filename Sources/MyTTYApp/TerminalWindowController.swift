@@ -2660,6 +2660,21 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return tab.root.surfaceState(with: paneID)?.workingDirectory
     }
 
+    /// The executable path and argv of a pane's foreground process, for
+    /// `mytty-ctl agent spawn --access inherit`: it reads the anchor
+    /// pane's own foreground process (the lead agent) to detect its
+    /// provider and copy its mode flags onto a newly spawned worker. Nil
+    /// for panes this controller doesn't own or whose foreground process
+    /// can't be resolved.
+    func foregroundProcessInvocation(
+        forPane paneID: TerminalSurfaceID
+    ) -> (executablePath: String, arguments: [String])? {
+        guard let surface = surfaces[paneID] else { return nil }
+        return TerminalAgentProcessDetector.invocation(
+            processID: surface.foregroundProcessID
+        )
+    }
+
     /// Closes a pane on behalf of `mytty-ctl close-pane`, skipping the
     /// interactive "close pane with a running agent?" confirmation dialog
     /// that `closeFocusedPane()` shows for human-driven closes — an AI

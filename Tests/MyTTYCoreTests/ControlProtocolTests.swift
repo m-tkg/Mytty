@@ -60,6 +60,16 @@ struct ControlProtocolTests {
                 task: "review the diff",
                 label: "review-a"
             ),
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .claude,
+                cwd: nil,
+                access: .inherit,
+                model: nil,
+                task: "pair on the fix",
+                label: "worker-a"
+            ),
             .waitAgent(
                 jobID: AgentJobID(),
                 until: .running,

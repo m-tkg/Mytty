@@ -15,7 +15,7 @@ public enum ControlCommandLineParser {
     Commands:
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
-                  [--cwd <path>] [--access <review|workspace-write>]
+                  [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>]
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
@@ -87,13 +87,20 @@ public enum ControlCommandLineParser {
 
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
-                  [--cwd <path>] [--access <review|workspace-write>]
+                  [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --access review is read-only
         investigation; workspace-write (the default) lets the worker edit
-        files. --model picks the provider's model, passed through to the
-        provider CLI's model flag, e.g. --model sonnet for claude. --cwd
+        files; inherit copies the mode flags of the agent running in the
+        anchor pane (your own process) into the worker's launch command --
+        use it when spawning a worker of the same provider as yourself so
+        it runs with your permission/sandbox mode; it fails with
+        inherit-unavailable when the anchor pane's foreground process is a
+        different provider. A mode you switched to interactively after
+        launch is not visible; inherit reads launch flags only. --model
+        picks the provider's model, passed through to the provider CLI's
+        model flag, e.g. --model sonnet for claude. --cwd
         defaults to the anchor pane's shell-reported working directory,
         not your own process cwd -- if you were started somewhere the
         pane's shell never cd'd into (e.g. `claude --worktree` chdirs
@@ -534,7 +541,7 @@ public enum ControlCommandLineParser {
     mytty-ctl agent spawn --provider <codex|claude|cursor> \
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down>] [--cwd <path>] \
-    [--access <review|workspace-write>] [--model <text>] [--label <text>]
+    [--access <review|workspace-write|inherit>] [--model <text>] [--label <text>]
     """
 
     /// `agent` routed through `parseInvocation`: unlike every other

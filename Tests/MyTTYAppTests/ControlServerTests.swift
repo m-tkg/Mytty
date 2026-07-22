@@ -299,6 +299,7 @@ struct ControlServerTests {
             "invalid-label",
             "invalid-model",
             "invalid-task",
+            "inherit-unavailable",
         ] {
             agentDelegate.spawnResult = .failure(AgentControlFailure(code))
             let failureResponse = try await perform(

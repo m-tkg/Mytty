@@ -129,6 +129,21 @@ enum TerminalAgentProcessDetector {
         return nil
     }
 
+    /// The executable path and argv for a running process, exposed
+    /// together (rather than via the private helpers below individually)
+    /// for callers that need both to resolve a provider *and* inspect its
+    /// launch flags — e.g. `agent spawn --access inherit`, which reads the
+    /// anchor pane's foreground process to copy its mode flags onto a new
+    /// worker. Returns `nil` when the process can't be resolved at all.
+    static func invocation(
+        processID: pid_t
+    ) -> (executablePath: String, arguments: [String])? {
+        guard processID > 0,
+              let executablePath = executablePath(processID: processID)
+        else { return nil }
+        return (executablePath, arguments(processID: processID))
+    }
+
     private static func executablePath(processID: pid_t) -> String? {
         var buffer = [CChar](
             repeating: 0,

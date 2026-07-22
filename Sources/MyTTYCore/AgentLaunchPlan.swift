@@ -29,6 +29,7 @@ public enum AgentLaunchPlan {
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
         model: String?,
+        inheritedModeArguments: [String]? = nil,
         task: String
     ) -> String {
         let quotedTask = ShellQuoting.quote(task + workerContract)
@@ -36,6 +37,7 @@ public enum AgentLaunchPlan {
             provider: provider,
             access: access,
             model: model,
+            inheritedModeArguments: inheritedModeArguments,
             quotedTask: quotedTask
         ) + "\n"
     }
@@ -58,26 +60,79 @@ public enum AgentLaunchPlan {
         }
     }
 
+    /// The codex flags that already govern approval behavior on their own
+    /// -- when one of these came from the lead's own argv, appending our
+    /// usual `-a never` on top would be redundant at best and could
+    /// override an inherited `-a`/`--ask-for-approval` value at worst.
+    private static let codexApprovalGoverningFlags: Set<String> = [
+        "-a", "--ask-for-approval", "--full-auto", "--yolo",
+        "--dangerously-bypass-approvals-and-sandbox",
+    ]
+
     private static func command(
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
         model: String?,
+        inheritedModeArguments: [String]?,
         quotedTask: String
     ) -> String {
         let modelFlag = modelSegment(provider: provider, model: model)
+        if let inheritedModeArguments, !inheritedModeArguments.isEmpty {
+            return inheritedCommand(
+                provider: provider,
+                modelFlag: modelFlag,
+                inheritedModeArguments: inheritedModeArguments,
+                quotedTask: quotedTask
+            )
+        }
+        // `.inherit` reaching here with nothing to inherit means either the
+        // lead is running in its default mode or (defensively) that a
+        // caller passed `.inherit` without resolving it first -- either
+        // way, workspace-write is the right fallback, so `.inherit` is
+        // folded into the `.workspaceWrite` cases below rather than given
+        // its own arm.
         return switch (provider, access) {
         case (.codex, .review):
             "command codex \(modelFlag)-s read-only -a never -- \(quotedTask)"
-        case (.codex, .workspaceWrite):
+        case (.codex, .workspaceWrite), (.codex, .inherit):
             "command codex \(modelFlag)-s workspace-write -a never -- \(quotedTask)"
         case (.claude, .review):
             "command claude \(modelFlag)--permission-mode plan -- \(quotedTask)"
-        case (.claude, .workspaceWrite):
+        case (.claude, .workspaceWrite), (.claude, .inherit):
             "command claude \(modelFlag)--permission-mode acceptEdits -- \(quotedTask)"
         case (.cursor, .review):
             "command cursor-agent \(modelFlag)--mode plan -- \(quotedTask)"
-        case (.cursor, .workspaceWrite):
+        case (.cursor, .workspaceWrite), (.cursor, .inherit):
             "command cursor-agent \(modelFlag)--force --sandbox enabled -- \(quotedTask)"
+        }
+    }
+
+    /// Builds the launch command for `--access inherit` once the lead's
+    /// mode flags have already been extracted and validated by
+    /// `AgentModeInheritance` -- each token is shell-quoted individually
+    /// (not the joined string) so a value containing shell metacharacters
+    /// can't reshape the command.
+    private static func inheritedCommand(
+        provider: AgentWorkerProvider,
+        modelFlag: String,
+        inheritedModeArguments: [String],
+        quotedTask: String
+    ) -> String {
+        let quotedFlags = inheritedModeArguments
+            .map { ShellQuoting.quote($0) }
+            .joined(separator: " ")
+        switch provider {
+        case .claude:
+            return "command claude \(modelFlag)\(quotedFlags) -- \(quotedTask)"
+        case .codex:
+            let hasApprovalFlag = inheritedModeArguments.contains {
+                codexApprovalGoverningFlags.contains($0)
+            }
+            let approvalSuffix = hasApprovalFlag ? "" : " -a never"
+            return "command codex \(modelFlag)\(quotedFlags)\(approvalSuffix)"
+                + " -- \(quotedTask)"
+        case .cursor:
+            return "command cursor-agent \(modelFlag)\(quotedFlags) -- \(quotedTask)"
         }
     }
 }
