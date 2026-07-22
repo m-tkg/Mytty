@@ -46,6 +46,7 @@ struct ControlProtocolTests {
                 provider: .codex,
                 cwd: nil,
                 access: .workspaceWrite,
+                model: nil,
                 task: "investigate the bug",
                 label: nil
             ),
@@ -55,6 +56,7 @@ struct ControlProtocolTests {
                 provider: .claude,
                 cwd: "/tmp/repo",
                 access: .review,
+                model: "sonnet",
                 task: "review the diff",
                 label: "review-a"
             ),
@@ -183,6 +185,25 @@ struct ControlProtocolTests {
                 missingPaneID
             )
         }
+    }
+
+    @Test("decoding a legacy spawnAgent payload without a model key yields nil")
+    func decodesLegacySpawnAgentWithoutModel() throws {
+        let legacy = Data("""
+        {"type":"spawnAgent","anchorPaneID":"pane-1","direction":"right",\
+        "provider":"codex","access":"workspace-write","task":"investigate"}
+        """.utf8)
+        let decoded: ControlRequest = try ControlMessageCodec.decode(legacy)
+        #expect(decoded == .spawnAgent(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: .workspaceWrite,
+            model: nil,
+            task: "investigate",
+            label: nil
+        ))
     }
 
     @Test("rejects an agent request missing its required fields")

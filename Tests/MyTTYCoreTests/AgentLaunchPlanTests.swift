@@ -20,6 +20,7 @@ struct AgentLaunchPlanTests {
             let input = AgentLaunchPlan.initialInput(
                 provider: provider,
                 access: access,
+                model: nil,
                 task: "do the thing"
             )
             #expect(input.hasPrefix(expectedPrefix))
@@ -31,6 +32,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
             access: .review,
+            model: nil,
             task: "investigate the bug"
         )
         let occurrences = input.components(
@@ -48,6 +50,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .claude,
             access: .workspaceWrite,
+            model: nil,
             task: "task"
         )
         #expect(input.hasSuffix("\n"))
@@ -59,6 +62,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
             access: .review,
+            model: nil,
             task: "fix the login bug"
         )
         #expect(input.contains("'fix the login bug"))
@@ -69,6 +73,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
             access: .review,
+            model: nil,
             task: "don't break it"
         )
         #expect(input.contains("don'\\''t break it"))
@@ -79,6 +84,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
             access: .review,
+            model: nil,
             task: "line one\nline two"
         )
         // The whole quoted argument, contract included, must stay inside a
@@ -95,6 +101,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
             access: .review,
+            model: nil,
             task: "--rm -rf /"
         )
         // A leading dash must stay inside the quoted argument rather than
@@ -107,9 +114,68 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(
             provider: .cursor,
             access: .workspaceWrite,
+            model: nil,
             task: "日本語のタスク 🎉"
         )
         #expect(input.contains("日本語のタスク 🎉"))
+    }
+
+    @Test("inserts each provider's model flag, quoted, ahead of its other launch flags")
+    func modelFlagPerProvider() {
+        let cases: [(AgentWorkerProvider, AgentAccessPolicy, String)] = [
+            (.codex, .review, "command codex -m 'gpt-5.2' -s read-only -a never -- "),
+            (.codex, .workspaceWrite, "command codex -m 'gpt-5.2' -s workspace-write -a never -- "),
+            (.claude, .review, "command claude --model 'sonnet' --permission-mode plan -- "),
+            (.claude, .workspaceWrite, "command claude --model 'sonnet' --permission-mode acceptEdits -- "),
+            (.cursor, .review, "command cursor-agent --model 'sonnet' --mode plan -- "),
+            (.cursor, .workspaceWrite, "command cursor-agent --model 'sonnet' --force --sandbox enabled -- "),
+        ]
+
+        for (provider, access, expectedPrefix) in cases {
+            let model = provider == .codex ? "gpt-5.2" : "sonnet"
+            let input = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: access,
+                model: model,
+                task: "do the thing"
+            )
+            #expect(input.hasPrefix(expectedPrefix))
+        }
+    }
+
+    @Test("shell-quotes a model containing a single quote")
+    func quotesModelWithSingleQuote() {
+        let input = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .workspaceWrite,
+            model: "weird'model",
+            task: "task"
+        )
+        #expect(input.contains("--model 'weird'\\''model' --permission-mode acceptEdits"))
+    }
+
+    @Test("a nil model leaves the launch command byte-for-byte unchanged")
+    func nilModelKeepsCommandUnchanged() {
+        let cases: [(AgentWorkerProvider, AgentAccessPolicy, String)] = [
+            (.codex, .review, "command codex -s read-only -a never -- "),
+            (.codex, .workspaceWrite, "command codex -s workspace-write -a never -- "),
+            (.claude, .review, "command claude --permission-mode plan -- "),
+            (.claude, .workspaceWrite, "command claude --permission-mode acceptEdits -- "),
+            (.cursor, .review, "command cursor-agent --mode plan -- "),
+            (.cursor, .workspaceWrite, "command cursor-agent --force --sandbox enabled -- "),
+        ]
+
+        for (provider, access, expectedPrefix) in cases {
+            let input = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: access,
+                model: nil,
+                task: "do the thing"
+            )
+            #expect(input.hasPrefix(expectedPrefix))
+            #expect(!input.contains("-m "))
+            #expect(!input.contains("--model"))
+        }
     }
 
     @Test("worker contract text matches the documented contract verbatim")

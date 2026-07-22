@@ -87,6 +87,7 @@ protocol ControlServerAgentDelegate: AnyObject {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure>
@@ -304,7 +305,7 @@ final class ControlServer {
     ) async -> ControlResponse {
         switch request {
         case let .spawnAgent(
-            anchorPaneID, direction, provider, cwd, access, task, label
+            anchorPaneID, direction, provider, cwd, access, model, task, label
         ):
             return Self.encodeAgentResult(
                 delegate.controlServer(
@@ -314,6 +315,7 @@ final class ControlServer {
                     provider: provider,
                     cwd: cwd,
                     access: access,
+                    model: model,
                     task: task,
                     label: label
                 )

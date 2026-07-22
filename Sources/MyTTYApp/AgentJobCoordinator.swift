@@ -64,6 +64,21 @@ final class AgentJobCoordinator {
                 !CharacterSet.controlCharacters.contains($0)
             }
     }
+
+    /// A model id is a single shell token dropped straight into the launch
+    /// command (see `AgentLaunchPlan.modelSegment`), so — unlike a label,
+    /// which only travels as a quoted argument — it must be nonempty and
+    /// contain no whitespace, on top of the same length/control-character
+    /// checks `isValidLabel` applies.
+    private func isValidModel(_ model: String?) -> Bool {
+        guard let model else { return true }
+        return !model.isEmpty
+            && model.unicodeScalars.count <= Self.maximumLabelScalars
+            && model.unicodeScalars.allSatisfy {
+                !CharacterSet.controlCharacters.contains($0)
+                    && !CharacterSet.whitespacesAndNewlines.contains($0)
+            }
+    }
 }
 
 extension AgentJobCoordinator: ControlServerAgentDelegate {
@@ -74,6 +89,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
@@ -92,6 +108,9 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         }
         guard isValidLabel(label) else {
             return .failure(AgentControlFailure("invalid-label"))
+        }
+        guard isValidModel(model) else {
+            return .failure(AgentControlFailure("invalid-model"))
         }
 
         let status = integrationStatus(provider.agentProvider)
@@ -125,6 +144,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         let initialInput = AgentLaunchPlan.initialInput(
             provider: provider,
             access: access,
+            model: model,
             task: task
         )
 

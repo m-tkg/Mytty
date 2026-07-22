@@ -15,7 +15,8 @@ public enum ControlCommandLineParser {
     Commands:
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
-                  [--cwd <path>] [--access <review|workspace-write>] [--label <text>]
+                  [--cwd <path>] [--access <review|workspace-write>]
+                  [--model <text>] [--label <text>]
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
       agent send <job-id> <text> [--enter]
@@ -86,12 +87,15 @@ public enum ControlCommandLineParser {
 
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
-                  [--cwd <path>] [--access <review|workspace-write>] [--label <text>]
+                  [--cwd <path>] [--access <review|workspace-write>]
+                  [--model <text>] [--label <text>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --access review is read-only
         investigation; workspace-write (the default) lets the worker edit
-        files. Prints an agentJob response whose job.jobID.rawValue is the
-        job ID every other agent command below takes.
+        files. --model picks the provider's model, passed through to the
+        provider CLI's model flag, e.g. --model sonnet for claude. Prints an
+        agentJob response whose job.jobID.rawValue is the job ID every other
+        agent command below takes.
 
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
         Blocks until this exact job's own spawned run reaches the given
@@ -252,6 +256,7 @@ public enum ControlCommandLineParser {
         public let provider: AgentWorkerProvider
         public let cwd: String?
         public let access: AgentAccessPolicy
+        public let model: String?
         public let label: String?
         public let taskFilePath: String
 
@@ -261,6 +266,7 @@ public enum ControlCommandLineParser {
             provider: AgentWorkerProvider,
             cwd: String?,
             access: AgentAccessPolicy,
+            model: String?,
             label: String?,
             taskFilePath: String
         ) {
@@ -269,6 +275,7 @@ public enum ControlCommandLineParser {
             self.provider = provider
             self.cwd = cwd
             self.access = access
+            self.model = model
             self.label = label
             self.taskFilePath = taskFilePath
         }
@@ -346,6 +353,7 @@ public enum ControlCommandLineParser {
             provider: pending.provider,
             cwd: pending.cwd,
             access: pending.access,
+            model: pending.model,
             task: task,
             label: pending.label
         )
@@ -521,7 +529,7 @@ public enum ControlCommandLineParser {
     mytty-ctl agent spawn --provider <codex|claude|cursor> \
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down>] [--cwd <path>] \
-    [--access <review|workspace-write>] [--label <text>]
+    [--access <review|workspace-write>] [--model <text>] [--label <text>]
     """
 
     /// `agent` routed through `parseInvocation`: unlike every other
@@ -680,7 +688,7 @@ public enum ControlCommandLineParser {
             flags: [],
             valued: [
                 "--anchor", "--direction", "--provider", "--cwd",
-                "--access", "--task", "--task-file", "--label",
+                "--access", "--model", "--task", "--task-file", "--label",
             ]
         )
         guard positional.isEmpty else {
@@ -722,6 +730,7 @@ public enum ControlCommandLineParser {
             provider: provider,
             cwd: options.values["--cwd"],
             access: access,
+            model: options.values["--model"],
             label: options.values["--label"],
             taskFilePath: options.values["--task-file"] ?? ""
         )
@@ -745,6 +754,7 @@ public enum ControlCommandLineParser {
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy,
+        model: String?,
         task: String,
         label: String?
     ) throws -> ControlRequest {
@@ -759,6 +769,7 @@ public enum ControlCommandLineParser {
             provider: provider,
             cwd: cwd,
             access: access,
+            model: model,
             task: task,
             label: label
         )

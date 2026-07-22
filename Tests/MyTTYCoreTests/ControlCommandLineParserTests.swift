@@ -273,6 +273,7 @@ struct ControlCommandLineParserTests {
             provider: .codex,
             cwd: nil,
             access: .workspaceWrite,
+            model: nil,
             task: "investigate",
             label: nil
         ))
@@ -288,6 +289,7 @@ struct ControlCommandLineParserTests {
                 "--provider", "claude",
                 "--cwd", "/tmp/repo",
                 "--access", "review",
+                "--model", "sonnet",
                 "--task", "review the diff",
                 "--label", "review-a",
             ],
@@ -299,9 +301,27 @@ struct ControlCommandLineParserTests {
             provider: .claude,
             cwd: "/tmp/repo",
             access: .review,
+            model: "sonnet",
             task: "review the diff",
             label: "review-a"
         ))
+    }
+
+    @Test("agent spawn --model is optional and defaults to nil")
+    func agentSpawnModelDefaultsToNil() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(_, _, _, _, _, model, _, _) = request else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(model == nil)
     }
 
     @Test("agent spawn requires --anchor or MYTTY_SURFACE_ID")
@@ -411,6 +431,7 @@ struct ControlCommandLineParserTests {
                 provider: .cursor,
                 cwd: nil,
                 access: .review,
+                model: nil,
                 label: "investigate-b",
                 taskFilePath: "/tmp/does-not-exist-anywhere.txt"
             )
@@ -425,6 +446,7 @@ struct ControlCommandLineParserTests {
             provider: .codex,
             cwd: nil,
             access: .workspaceWrite,
+            model: "gpt-5.2",
             label: nil,
             taskFilePath: "/tmp/task.txt"
         )
@@ -444,6 +466,7 @@ struct ControlCommandLineParserTests {
             provider: .codex,
             cwd: nil,
             access: .workspaceWrite,
+            model: "gpt-5.2",
             task: "do it",
             label: nil
         ))
