@@ -413,7 +413,8 @@ struct PaneDetailView: View {
         }
         // Shift+Tab is a single bar key (Claude Code cycles its permission
         // mode with it), but the wire format only knows "tab" plus a shift
-        // modifier — "shiftTab" is not a named key on the Mac side.
+        // modifier — "shiftTab" is not a named key on the Mac side. The Set
+        // merge keeps "shift" from appearing twice when it is also armed.
         if key == .shiftTab {
             client.sendKey(
                 paneID: pane.id,
