@@ -183,6 +183,165 @@ struct TerminalRecordingTests {
         #expect((gif[kCGImagePropertyGIFLoopCount] as? NSNumber)?.intValue == 0)
     }
 
+    @Test("splits the fade-out duration into per-frame alpha steps")
+    func fadeOutAlphas() {
+        let fadeOut = TerminalRecordingFadeOut(
+            duration: 0.5,
+            colorHex: "000000"
+        )
+        #expect(
+            fadeOut.alphas(frameDelay: 0.125) == [0.25, 0.5, 0.75, 1.0]
+        )
+
+        let short = TerminalRecordingFadeOut(
+            duration: 0.01,
+            colorHex: "000000"
+        )
+        #expect(short.alphas(frameDelay: 0.125) == [1.0])
+
+        let invalid = TerminalRecordingFadeOut(
+            duration: 0,
+            colorHex: "000000"
+        )
+        #expect(invalid.alphas(frameDelay: 0.125).isEmpty)
+    }
+
+    @Test("parses the fade-out color hex into components")
+    func fadeOutColorComponents() {
+        let fadeOut = TerminalRecordingFadeOut(
+            duration: 1,
+            colorHex: "FF8800"
+        )
+        let components = fadeOut.colorComponents
+        #expect(components.red == 1)
+        #expect(abs(components.green - CGFloat(0x88) / 255) < 0.001)
+        #expect(components.blue == 0)
+
+        let malformed = TerminalRecordingFadeOut(
+            duration: 1,
+            colorHex: "not-a-color"
+        )
+        let fallback = malformed.colorComponents
+        #expect(fallback.red == 0)
+        #expect(fallback.green == 0)
+        #expect(fallback.blue == 0)
+    }
+
+    @Test("overlays the fade color onto the final frame")
+    func fadeOutFrameRendering() throws {
+        let base = try makeImage(red: 1, green: 0, blue: 0)
+        // DeviceRGB is the display's profile (P3 on modern Macs), so the
+        // sRGB red lands on device-dependent component values; compare the
+        // fade output against the base pixel instead of literal channels.
+        let basePixel = try #require(pixel(of: base))
+        let fadeOut = TerminalRecordingFadeOut(
+            duration: 1,
+            colorHex: "000000"
+        )
+
+        let opaque = try TerminalRecordingFadeOutRenderer.image(
+            over: base,
+            fadeOut: fadeOut,
+            alpha: 1
+        )
+        let opaquePixel = try #require(pixel(of: opaque))
+        #expect(opaquePixel.red == 0)
+        #expect(opaquePixel.green == 0)
+        #expect(opaquePixel.blue == 0)
+
+        let half = try TerminalRecordingFadeOutRenderer.image(
+            over: base,
+            fadeOut: fadeOut,
+            alpha: 0.5
+        )
+        let halfPixel = try #require(pixel(of: half))
+        #expect(abs(Int(halfPixel.red) - Int(basePixel.red) / 2) <= 2)
+        #expect(abs(Int(halfPixel.green) - Int(basePixel.green) / 2) <= 2)
+        #expect(abs(Int(halfPixel.blue) - Int(basePixel.blue) / 2) <= 2)
+    }
+
+    @Test("appends fade-out frames after the recorded frames")
+    @MainActor
+    func fadeOutAppendsFrames() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mytty-recording-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("recording.gif")
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let view = NSView(frame: window.contentView?.bounds ?? .zero)
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.red.cgColor
+        window.contentView = view
+        let recorder = TerminalGIFRecorder(
+            tabID: TabID(),
+            surfaceID: TerminalSurfaceID(),
+            view: view,
+            showPressedKeys: false,
+            keyLabelCursorRect: { .zero },
+            onLimitReached: {},
+            onFailure: { _ in }
+        )
+
+        try recorder.start()
+        recorder.stopCapturing()
+
+        // 0.25 s at 8 fps adds two fade frames after the captured frame.
+        let result = await withCheckedContinuation { continuation in
+            recorder.finish(
+                to: output,
+                fadeOut: TerminalRecordingFadeOut(
+                    duration: 0.25,
+                    colorHex: "000000"
+                )
+            ) { result in
+                continuation.resume(returning: result)
+            }
+        }
+        _ = try result.get()
+
+        let source = try #require(CGImageSourceCreateWithURL(
+            output as CFURL,
+            nil
+        ))
+        #expect(CGImageSourceGetCount(source) == 3)
+        let last = try #require(CGImageSourceCreateImageAtIndex(
+            source,
+            2,
+            nil
+        ))
+        let lastPixel = try #require(pixel(of: last))
+        #expect(lastPixel.red <= 2)
+        #expect(lastPixel.green <= 2)
+        #expect(lastPixel.blue <= 2)
+    }
+
+    private func pixel(
+        of image: CGImage
+    ) -> (red: UInt8, green: UInt8, blue: UInt8)? {
+        var data = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(
+            data: &data,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .none
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (data[0], data[1], data[2])
+    }
+
     private func makeImage(
         red: CGFloat,
         green: CGFloat,

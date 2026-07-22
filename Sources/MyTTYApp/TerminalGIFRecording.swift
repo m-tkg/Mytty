@@ -78,6 +78,109 @@ enum TerminalKeyLabel {
     }
 }
 
+/// Fade-to-color applied after the last captured frame so a looping GIF
+/// visibly ends before it restarts.
+struct TerminalRecordingFadeOut: Equatable, Sendable {
+    var duration: TimeInterval
+    var colorHex: String
+
+    /// The per-frame overlay opacities, ramping evenly up to fully opaque.
+    /// Empty when the duration or frame delay is not positive; otherwise at
+    /// least one frame, even for durations shorter than a single frame.
+    func alphas(frameDelay: TimeInterval) -> [Double] {
+        guard duration > 0, frameDelay > 0 else { return [] }
+        let count = max(1, Int((duration / frameDelay).rounded()))
+        return (1...count).map { Double($0) / Double(count) }
+    }
+
+    /// `colorHex` parsed as `RRGGBB`; falls back to black when malformed,
+    /// because by the time the fade renders the recording frames are already
+    /// on disk and failing the save over a color would be worse.
+    var colorComponents: (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        guard colorHex.count == 6,
+              colorHex.allSatisfy(\.isHexDigit),
+              let value = UInt32(colorHex, radix: 16)
+        else { return (0, 0, 0) }
+        return (
+            CGFloat((value >> 16) & 0xFF) / 255,
+            CGFloat((value >> 8) & 0xFF) / 255,
+            CGFloat(value & 0xFF) / 255
+        )
+    }
+}
+
+enum TerminalRecordingFadeOutRenderer {
+    static func image(
+        over base: CGImage,
+        fadeOut: TerminalRecordingFadeOut,
+        alpha: Double
+    ) throws -> CGImage {
+        guard let context = CGContext(
+            data: nil,
+            width: base.width,
+            height: base.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { throw TerminalRecordingError.unableToEncode }
+        let bounds = CGRect(
+            x: 0,
+            y: 0,
+            width: base.width,
+            height: base.height
+        )
+        context.draw(base, in: bounds)
+        let color = fadeOut.colorComponents
+        context.setFillColor(CGColor(
+            red: color.red,
+            green: color.green,
+            blue: color.blue,
+            alpha: alpha
+        ))
+        context.fill(bounds)
+        guard let image = context.makeImage() else {
+            throw TerminalRecordingError.unableToEncode
+        }
+        return image
+    }
+
+    /// Renders the fade frames over `lastFrameURL` and writes them as PNGs
+    /// next to the captured frames, returning their URLs in playback order.
+    static func frames(
+        after lastFrameURL: URL,
+        fadeOut: TerminalRecordingFadeOut,
+        frameDelay: TimeInterval,
+        in directory: URL
+    ) throws -> [URL] {
+        let alphas = fadeOut.alphas(frameDelay: frameDelay)
+        guard !alphas.isEmpty else { return [] }
+        guard let source = CGImageSourceCreateWithURL(
+            lastFrameURL as CFURL,
+            nil
+        ), let base = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw TerminalRecordingError.unableToEncode
+        }
+        return try alphas.enumerated().map { index, alpha in
+            let frame = try image(over: base, fadeOut: fadeOut, alpha: alpha)
+            let url = directory.appendingPathComponent(
+                String(format: "fade-%04d.png", index)
+            )
+            guard let destination = CGImageDestinationCreateWithURL(
+                url as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else { throw TerminalRecordingError.unableToWriteFrame }
+            CGImageDestinationAddImage(destination, frame, nil)
+            guard CGImageDestinationFinalize(destination) else {
+                throw TerminalRecordingError.unableToWriteFrame
+            }
+            return url
+        }
+    }
+}
+
 struct AnimatedGIFEncoder: Sendable {
     func encode(
         frames: [CGImage],
@@ -421,6 +524,7 @@ final class TerminalGIFRecorder: NSObject {
 
     func finish(
         to outputURL: URL,
+        fadeOut: TerminalRecordingFadeOut? = nil,
         completion: @escaping @MainActor (
             Result<URL, TerminalRecordingError>
         ) -> Void
@@ -438,10 +542,23 @@ final class TerminalGIFRecorder: NSObject {
                 guard let directory else {
                     return .failure(.unableToCreateTemporaryDirectory)
                 }
+                var allFrames = frames
+                if let fadeOut, let lastFrame = frames.last {
+                    // A failed fade must not lose the recording itself.
+                    let fadeFrames = try? TerminalRecordingFadeOutRenderer
+                        .frames(
+                            after: lastFrame,
+                            fadeOut: fadeOut,
+                            frameDelay:
+                                TerminalRecordingConfiguration.frameDelay,
+                            in: directory
+                        )
+                    allFrames.append(contentsOf: fadeFrames ?? [])
+                }
                 let encoded = directory.appendingPathComponent("recording.gif")
                 do {
                     try AnimatedGIFEncoder().encode(
-                        frameURLs: frames,
+                        frameURLs: allFrames,
                         frameDelay: TerminalRecordingConfiguration.frameDelay,
                         to: encoded
                     )

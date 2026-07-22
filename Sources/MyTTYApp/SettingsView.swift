@@ -358,6 +358,49 @@ private struct GeneralSettingsView: View {
                 .toggleStyle(.switch)
             }
 
+            Section(localizer[.gifRecording]) {
+                Toggle(
+                    localizer[.recordingFadeOutAtEnd],
+                    isOn: applicationBinding(\.recordingFadeOutEnabled)
+                )
+                .toggleStyle(.switch)
+
+                if model.application.recordingFadeOutEnabled {
+                    ColorPicker(
+                        localizer[.recordingFadeOutColor],
+                        selection: applicationColorBinding(
+                            \.recordingFadeOutColorHex
+                        ),
+                        supportsOpacity: false
+                    )
+
+                    HStack {
+                        Text(localizer[.recordingFadeOutDuration])
+                        Slider(
+                            value: applicationBinding(
+                                \.recordingFadeOutDuration
+                            ),
+                            in: 0.1...2,
+                            step: 0.1
+                        )
+                        Text(
+                            Measurement<UnitDuration>(
+                                value: model.application
+                                    .recordingFadeOutDuration,
+                                unit: .seconds
+                            ),
+                            format: .measurement(
+                                width: .narrow,
+                                numberFormatStyle:
+                                    .number.precision(.fractionLength(1))
+                            )
+                        )
+                        .monospacedDigit()
+                        .frame(width: 42, alignment: .trailing)
+                    }
+                }
+            }
+
             Section(localizer[.window]) {
                 Picker(
                     localizer[.mode],
@@ -447,6 +490,24 @@ private struct GeneralSettingsView: View {
             get: { model.application[keyPath: keyPath] },
             set: { value in
                 model.updateApplication { $0[keyPath: keyPath] = value }
+            }
+        )
+    }
+
+    private func applicationColorBinding(
+        _ keyPath: WritableKeyPath<ApplicationPreferences, String>
+    ) -> Binding<Color> {
+        Binding(
+            get: {
+                Color(
+                    nsColor: NSColor(
+                        hexRGB: model.application[keyPath: keyPath]
+                    )
+                )
+            },
+            set: { color in
+                guard let hex = NSColor(color).hexRGB else { return }
+                model.updateApplication { $0[keyPath: keyPath] = hex }
             }
         )
     }
