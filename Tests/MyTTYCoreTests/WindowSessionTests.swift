@@ -276,6 +276,30 @@ struct WindowSessionTests {
         }
     }
 
+    @Test("splits next to a browser pane in the background")
+    func backgroundSplitBrowserAnchor() throws {
+        let tab = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let browser = BrowserPaneState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            url: URL(string: "https://example.com/")!
+        )
+        var window = makeWindow(tab: tab)
+        try window.splitFocusedBrowser(adding: browser, direction: .right)
+        try window.focus(pane: tab.focusedSurfaceID)
+        let added = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(13)),
+            workingDirectory: URL(fileURLWithPath: "/added", isDirectory: true)
+        )
+
+        try window.split(surface: browser.id, adding: added, direction: .down)
+
+        let updated = window.selectedTab
+        #expect(
+            updated?.paneIDs == [tab.focusedSurfaceID, browser.id, added.id]
+        )
+        #expect(updated?.focusedSurfaceID == tab.focusedSurfaceID)
+    }
+
     @Test("equalizes panes in a requested tab without selecting it")
     func equalizeRequestedTab() throws {
         var first = makeTab(id: 1, surfaceID: 11, path: "/first")

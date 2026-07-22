@@ -686,7 +686,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         initialInput: String?
     ) -> TerminalSurfaceID? {
         guard session.tabs.contains(where: {
-            $0.surfaceIDs.contains(paneID)
+            $0.paneIDs.contains(paneID)
         }) else { return nil }
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
@@ -719,7 +719,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             // Only the selected tab is attached to the view hierarchy, so
             // a re-render is needed (and focus restore is safe — the tab's
             // focused pane is unchanged) only when the split lands there.
-            if session.selectedTab?.surfaceIDs.contains(paneID) == true {
+            if session.selectedTab?.paneIDs.contains(paneID) == true {
                 renderedTabID = nil
             }
             sessionDidChange()
