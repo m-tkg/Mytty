@@ -238,6 +238,10 @@ enum MyTTYText: String {
     case generate = "Generate"
     case oneLinerGenerating = "Generating…"
     case oneLinerFailed = "Could not generate a command."
+    case composeInput = "Compose Input"
+    case inputComposerSend = "Send"
+    case inputComposerNoTerminalPane =
+        "Focus a terminal pane to send input."
     case summarizeLastCommand = "Summarize Last Command"
     case commandSummaryAnalyzing = "Summarizing the last command…"
     case paneExplanationAnalyzing = "Analyzing the pane…"
@@ -669,6 +673,10 @@ struct MyTTYLocalizer: Equatable {
         case .generate: "生成"
         case .oneLinerGenerating: "生成中…"
         case .oneLinerFailed: "コマンドを生成できませんでした。"
+        case .composeInput: "テキストボックスから入力"
+        case .inputComposerSend: "送信"
+        case .inputComposerNoTerminalPane:
+            "送信先のターミナルペインをフォーカスしてください。"
         case .summarizeLastCommand: "実行結果を要約"
         case .commandSummaryAnalyzing: "実行結果を要約中…"
         case .paneExplanationAnalyzing: "ペインを解析中…"
@@ -864,6 +872,7 @@ private extension MyTTYCommand {
         case .toggleTabPanel: .toggleTabPanel
         case .toggleRecording: .toggleRecording
         case .commandPalette: .commandPalette
+        case .composeInput: .composeInput
         case .explainPane: .explainPane
         case .composeOneLiner: .composeOneLiner
         case .summarizeLastCommand: .summarizeLastCommand

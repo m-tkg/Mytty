@@ -102,6 +102,18 @@ struct LocalizationTests {
         #expect(japanese[.paneExplanationAnalyzing] == "ペインを解析中…")
         #expect(english.commandTitle(.composeOneLiner) == "Compose One-Liner")
         #expect(japanese[.composeOneLiner] == "ワンライナー作成")
+        #expect(english.commandTitle(.composeInput) == "Compose Input")
+        #expect(japanese[.composeInput] == "テキストボックスから入力")
+        #expect(english[.inputComposerSend] == "Send")
+        #expect(japanese[.inputComposerSend] == "送信")
+        #expect(
+            english[.inputComposerNoTerminalPane]
+                == "Focus a terminal pane to send input."
+        )
+        #expect(
+            japanese[.inputComposerNoTerminalPane]
+                == "送信先のターミナルペインをフォーカスしてください。"
+        )
         #expect(japanese[.edit] == "編集")
         #expect(japanese[.generate] == "生成")
         #expect(english[.development] == "Development")

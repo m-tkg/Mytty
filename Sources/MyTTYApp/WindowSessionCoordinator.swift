@@ -59,6 +59,38 @@ final class WindowSessionCoordinator {
         return controllers.first { $0.window === keyWindow }
     }
 
+    /// Picks the window an auxiliary key panel (e.g. the input composer)
+    /// should target: the key window when it is one of the candidates,
+    /// otherwise the main window — an NSPanel can become key but never
+    /// main, so the user's terminal window stays `mainWindow` while the
+    /// panel is frontmost. With no key window at all (app inactive) the
+    /// first candidate wins, matching `activeController`.
+    static func composerTargetWindow(
+        keyWindow: NSWindow?,
+        mainWindow: NSWindow?,
+        candidates: [NSWindow]
+    ) -> NSWindow? {
+        guard let keyWindow else { return candidates.first }
+        if let key = candidates.first(where: { $0 === keyWindow }) {
+            return key
+        }
+        guard let mainWindow else { return nil }
+        return candidates.first { $0 === mainWindow }
+    }
+
+    /// The controller a floating composer panel should send into. Unlike
+    /// `activeController`, this still resolves while the panel itself is
+    /// the key window.
+    var composerTargetController: TerminalWindowController? {
+        let windows = controllers.compactMap(\.window)
+        guard let target = Self.composerTargetWindow(
+            keyWindow: NSApplication.shared.keyWindow,
+            mainWindow: NSApplication.shared.mainWindow,
+            candidates: windows
+        ) else { return nil }
+        return controllers.first { $0.window === target }
+    }
+
     func focus(surface surfaceID: TerminalSurfaceID) {
         for controller in controllers where controller.focus(surface: surfaceID) {
             return

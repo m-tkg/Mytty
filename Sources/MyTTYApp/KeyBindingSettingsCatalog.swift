@@ -21,6 +21,7 @@ enum KeyBindingSettingsCatalog {
             .togglePaneZoom,
             .swapPanes,
             .findInPane,
+            .composeInput,
             .reloadBrowser,
             .closePane,
         ]

@@ -69,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var appearanceObservation: NSKeyValueObservation?
     private var shortcutRouter: ApplicationShortcutRouter?
     private var oneLinerPanel: OneLinerPanelController?
+    private var inputComposerPanel: InputComposerPanelController?
     private lazy var applicationUpdateCoordinator = ApplicationUpdateCoordinator(
         localizerProvider: { [weak self] in
             self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
@@ -365,6 +366,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
         }
         oneLinerPanel = panel
+        panel.show()
+    }
+
+    @objc func composeInput(_ sender: Any?) {
+        let panel = inputComposerPanel ?? InputComposerPanelController(
+            localizer: localizer
+        ) { [weak self] text in
+            self?.windowSessionCoordinator.composerTargetController?
+                .sendTextToFocusedPane(text) ?? false
+        }
+        inputComposerPanel = panel
         panel.show()
     }
 

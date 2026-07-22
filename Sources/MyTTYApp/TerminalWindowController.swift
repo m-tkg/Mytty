@@ -868,6 +868,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    /// Sends composer text into the focused pane's terminal surface in one
+    /// paste-like delivery. Returns false when the focused pane is not a
+    /// terminal (e.g. a browser pane), so the composer can tell the user.
+    func sendTextToFocusedPane(_ text: String) -> Bool {
+        guard let tab = session.selectedTab,
+              let surface = surfaces[tab.focusedSurfaceID]
+        else { return false }
+        surface.sendText(text)
+        return true
+    }
+
     func findInFocusedPane() {
         guard let tab = session.selectedTab else { return }
         if let (browserID, browser) = browsers.first(where: {

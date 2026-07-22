@@ -40,6 +40,9 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case toggleTabPanel = "toggle-tab-panel"
     case toggleRecording = "toggle-recording"
     case commandPalette = "command-palette"
+    /// Opens the floating text box that sends its contents to the focused
+    /// terminal pane in one paste-like delivery.
+    case composeInput = "compose-input"
     /// macOS 26+ only: explains the focused pane with the on-device model.
     case explainPane = "explain-pane"
     /// macOS 26+ only: composes a shell one-liner from natural language
@@ -123,6 +126,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .toggleTabPanel: "Toggle Tab Panels"
         case .toggleRecording: "Start/Stop Recording"
         case .commandPalette: "Command Palette"
+        case .composeInput: "Compose Input"
         case .explainPane: "Explain Pane"
         case .composeOneLiner: "Compose One-Liner"
         case .summarizeLastCommand: "Summarize Last Command"
@@ -199,6 +203,10 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             .commandPalette: .init(
                 key: "p",
                 modifiers: [.command, .shift]
+            ),
+            .composeInput: .init(
+                key: "t",
+                modifiers: [.control, .command]
             ),
             .explainPane: .init(
                 key: "i",
