@@ -339,6 +339,39 @@ struct TabSessionTests {
         #expect(abs(nestedRatio - 0.5) < 0.0001)
     }
 
+    @Test("decodes isOrchestrated as false when the key is absent")
+    func decodesMissingIsOrchestratedAsFalse() throws {
+        let json = """
+        {
+            "id": { "rawValue": "\(makeUUID(1).uuidString)" },
+            "workingDirectory": "file:///repo/"
+        }
+        """
+        let state = try JSONDecoder().decode(
+            TerminalSurfaceState.self,
+            from: Data(json.utf8)
+        )
+        #expect(state.isOrchestrated == false)
+    }
+
+    @Test("round-trips isOrchestrated through encode/decode")
+    func roundTripsIsOrchestrated() throws {
+        let surface = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(1)),
+            workingDirectory: URL(fileURLWithPath: "/repo", isDirectory: true),
+            isOrchestrated: true
+        )
+
+        let encoded = try JSONEncoder().encode(surface)
+        let decoded = try JSONDecoder().decode(
+            TerminalSurfaceState.self,
+            from: encoded
+        )
+
+        #expect(decoded.isOrchestrated == true)
+        #expect(decoded == surface)
+    }
+
     private func makeTabID(_ value: UInt8) -> TabID {
         TabID(rawValue: makeUUID(value))
     }

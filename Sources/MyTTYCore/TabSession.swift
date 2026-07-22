@@ -46,17 +46,58 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     public var agentResume: AgentResumeDescriptor?
     /// Scrollback encoded as VT/ANSI text so visual attributes can be replayed.
     public var terminalHistory: String?
+    /// True when this pane was created through the mytty-ctl control surface
+    /// by an orchestrating agent; attention notifications for it are
+    /// suppressed because the orchestrator handles its approvals/results.
+    public var isOrchestrated: Bool
 
     public init(
         id: TerminalSurfaceID = TerminalSurfaceID(),
         workingDirectory: URL,
         agentResume: AgentResumeDescriptor? = nil,
-        terminalHistory: String? = nil
+        terminalHistory: String? = nil,
+        isOrchestrated: Bool = false
     ) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.agentResume = agentResume
         self.terminalHistory = terminalHistory
+        self.isOrchestrated = isOrchestrated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case workingDirectory
+        case agentResume
+        case terminalHistory
+        case isOrchestrated
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(TerminalSurfaceID.self, forKey: .id)
+        workingDirectory = try container.decode(URL.self, forKey: .workingDirectory)
+        agentResume = try container.decodeIfPresent(
+            AgentResumeDescriptor.self,
+            forKey: .agentResume
+        )
+        terminalHistory = try container.decodeIfPresent(
+            String.self,
+            forKey: .terminalHistory
+        )
+        isOrchestrated = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .isOrchestrated
+        ) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(workingDirectory, forKey: .workingDirectory)
+        try container.encodeIfPresent(agentResume, forKey: .agentResume)
+        try container.encodeIfPresent(terminalHistory, forKey: .terminalHistory)
+        try container.encode(isOrchestrated, forKey: .isOrchestrated)
     }
 }
 

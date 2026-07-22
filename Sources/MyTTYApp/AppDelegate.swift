@@ -1038,13 +1038,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .compactMap { $0.tabTitle(for: event.surfaceID) }
             .first
 
+        // Panes spawned through mytty-ctl (new-tab/split/agent spawn) are
+        // watched by the orchestrating agent, not the human — the human is
+        // notified by the orchestrator's own pane instead, so both the
+        // phone push and the Mac banner stay silent for these panes
+        // regardless of visibility/focus/app-active state.
+        let orchestrated = windowSessionCoordinator.controllers.contains {
+            $0.isOrchestratedSurface(event.surfaceID)
+        }
+
         // The phone is gated on the Mac being unattended rather than on
         // pane visibility: the case this exists for is walking away from a
         // running agent, where the pane is still focused on screen and the
         // Mac deliberately stays silent.
-        if !NSApplication.shared.isActive {
+        if !orchestrated, !NSApplication.shared.isActive {
             remotePushNotifier?.notify(item, tabTitle: tabTitle)
         }
+
+        guard !orchestrated else { return inserted }
 
         guard !windowSessionCoordinator.controllers.contains(where: {
             $0.isSurfaceActivelyFocused(event.surfaceID)

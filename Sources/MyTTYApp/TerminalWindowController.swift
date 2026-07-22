@@ -438,13 +438,24 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return isSurfaceVisible(surfaceID)
     }
 
+    /// True when `surfaceID` was created through the mytty-ctl control
+    /// surface (`new-tab`, `split`, `agent spawn`). Such panes never raise
+    /// attention notifications — see `AppDelegate.receiveAgentEvent`.
+    func isOrchestratedSurface(_ surfaceID: TerminalSurfaceID) -> Bool {
+        session.tabs.contains {
+            $0.root.surfaceState(with: surfaceID)?.isOrchestrated == true
+        }
+    }
+
     @discardableResult
     func newTab(
         workingDirectory: URL? = nil,
-        initialInput: String? = nil
+        initialInput: String? = nil,
+        orchestrated: Bool = false
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
-            workingDirectory: workingDirectory ?? currentWorkingDirectory
+            workingDirectory: workingDirectory ?? currentWorkingDirectory,
+            isOrchestrated: orchestrated
         )
         do {
             let tab = TabSession(initialSurface: state)
@@ -570,10 +581,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func splitFocusedPane(
         _ direction: SplitDirection,
         workingDirectory: URL? = nil,
-        initialInput: String? = nil
+        initialInput: String? = nil,
+        orchestrated: Bool = false
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
-            workingDirectory: workingDirectory ?? currentWorkingDirectory
+            workingDirectory: workingDirectory ?? currentWorkingDirectory,
+            isOrchestrated: orchestrated
         )
         let focusedPaneSize = session.selectedTab.flatMap {
             paneLayout.host(for: $0.focusedSurfaceID)?.bounds.size
@@ -620,13 +633,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ paneID: TerminalSurfaceID,
         direction: SplitDirection,
         workingDirectory: URL? = nil,
-        initialInput: String? = nil
+        initialInput: String? = nil,
+        orchestrated: Bool = false
     ) -> TerminalSurfaceID? {
         guard focus(pane: paneID) else { return nil }
         return splitFocusedPane(
             direction,
             workingDirectory: workingDirectory,
-            initialInput: initialInput
+            initialInput: initialInput,
+            orchestrated: orchestrated
         )
     }
 

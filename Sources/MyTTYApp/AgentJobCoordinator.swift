@@ -132,7 +132,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             anchorSurfaceID,
             direction: splitDirection,
             workingDirectory: resolvedWorkingDirectory,
-            initialInput: initialInput
+            initialInput: initialInput,
+            orchestrated: true
         ) else {
             return .failure(AgentControlFailure("spawn-failed"))
         }
