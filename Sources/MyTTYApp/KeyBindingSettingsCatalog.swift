@@ -21,6 +21,7 @@ enum KeyBindingSettingsCatalog {
             .togglePaneZoom,
             .swapPanes,
             .findInPane,
+            .reloadBrowser,
             .closePane,
         ]
         var applicationCommands: [MyTTYCommand] = [

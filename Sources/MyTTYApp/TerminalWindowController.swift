@@ -867,6 +867,34 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Whether a browser pane in the selected tab currently holds
+    /// keyboard focus, either as first responder or as the tab's
+    /// `focusedSurfaceID`. Used to scope the Ctrl+R reload shortcut so it
+    /// only routes when a browser is focused, leaving terminal panes free
+    /// to use Ctrl+R for shell history reverse search.
+    var hasFocusedBrowserPane: Bool {
+        guard let tab = session.selectedTab else { return false }
+        if browsers.contains(where: {
+            tab.paneIDs.contains($0.key)
+                && $0.value.containsFirstResponder(window?.firstResponder)
+        }) {
+            return true
+        }
+        return browsers[tab.focusedSurfaceID] != nil
+    }
+
+    func reloadFocusedBrowser() {
+        guard let tab = session.selectedTab else { return }
+        if let (_, browser) = browsers.first(where: {
+            tab.paneIDs.contains($0.key)
+                && $0.value.containsFirstResponder(window?.firstResponder)
+        }) {
+            browser.reloadPage()
+            return
+        }
+        browsers[tab.focusedSurfaceID]?.reloadPage()
+    }
+
     /// macOS 26+ only: explains what the focused terminal pane has been
     /// doing, using the on-device model. Shows a floating panel with a
     /// spinner while the model runs; browser panes are not explainable.

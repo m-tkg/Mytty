@@ -339,6 +339,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windowSessionCoordinator.activeController?.findInFocusedPane()
     }
 
+    @objc func reloadBrowser(_ sender: Any?) {
+        windowSessionCoordinator.activeController?.reloadFocusedBrowser()
+    }
+
     @objc func explainPane(_ sender: Any?) {
         windowSessionCoordinator.activeController?.explainFocusedPane()
     }
@@ -818,6 +822,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             shortcutRouter = ApplicationShortcutRouter(
                 bindings: preferences.keyBindings,
+                isAvailable: { [weak self] command in
+                    guard command == .reloadBrowser else { return true }
+                    return self?.isReloadBrowserAvailable() ?? false
+                },
                 onKeyPressed: { [weak self] event in
                     self?.windowSessionCoordinator.activeController?
                         .showPressedKey(event)
@@ -846,6 +854,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         agentIntegrationSettingsModel?.repairInstalledIntegrations(
             language: localizer.language.paneTeamPointerLanguage
         )
+    }
+
+    /// Whether the reload-browser shortcut should route to its command
+    /// right now: only when the active controller's window is key and a
+    /// browser pane in it holds focus. Everything else -- including a
+    /// terminal pane focused in that same window -- lets the shortcut fall
+    /// through so Ctrl+R still reaches the shell's reverse-i-search.
+    private func isReloadBrowserAvailable() -> Bool {
+        guard let controller = windowSessionCoordinator.activeController,
+              controller.window === NSApplication.shared.keyWindow
+        else { return false }
+        return controller.hasFocusedBrowserPane
     }
 
     private func applyTerminalPresentation(

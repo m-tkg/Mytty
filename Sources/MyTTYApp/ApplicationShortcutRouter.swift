@@ -4,14 +4,17 @@ import MyTTYCore
 @MainActor
 final class ApplicationShortcutRouter {
     private var bindings: [MyTTYCommand: MyTTYKeyBinding]
+    private let isAvailable: (MyTTYCommand) -> Bool
     private let onKeyPressed: (NSEvent) -> Void
     private var eventMonitor: Any?
 
     init(
         bindings: [MyTTYCommand: MyTTYKeyBinding],
+        isAvailable: @escaping (MyTTYCommand) -> Bool = { _ in true },
         onKeyPressed: @escaping (NSEvent) -> Void = { _ in }
     ) {
         self.bindings = bindings
+        self.isAvailable = isAvailable
         self.onKeyPressed = onKeyPressed
         eventMonitor = NSEvent.addLocalMonitorForEvents(
             matching: .keyDown
@@ -23,6 +26,7 @@ final class ApplicationShortcutRouter {
             return Self.routeAndObserve(
                 event,
                 bindings: self.bindings,
+                isAvailable: self.isAvailable,
                 schedule: { action in
                     DispatchQueue.main.async { action() }
                 },
@@ -45,6 +49,7 @@ final class ApplicationShortcutRouter {
     static func route(
         _ event: NSEvent,
         bindings: [MyTTYCommand: MyTTYKeyBinding],
+        isAvailable: (MyTTYCommand) -> Bool = { _ in true },
         schedule: (@escaping @MainActor () -> Void) -> Void,
         invoke: @escaping (MyTTYCommand) -> Bool
     ) -> NSEvent? {
@@ -52,7 +57,8 @@ final class ApplicationShortcutRouter {
               let binding = MyTTYKeyBinding(event: event),
               let command = MyTTYCommand.allCases.first(where: {
                   bindings[$0] == binding
-              })
+              }),
+              isAvailable(command)
         else { return event }
         schedule { _ = invoke(command) }
         return nil
@@ -61,6 +67,7 @@ final class ApplicationShortcutRouter {
     static func routeAndObserve(
         _ event: NSEvent,
         bindings: [MyTTYCommand: MyTTYKeyBinding],
+        isAvailable: (MyTTYCommand) -> Bool = { _ in true },
         schedule: (@escaping @MainActor () -> Void) -> Void,
         observe: @escaping (NSEvent) -> Void,
         invoke: @escaping (MyTTYCommand) -> Bool
@@ -68,6 +75,7 @@ final class ApplicationShortcutRouter {
         let routed = route(
             event,
             bindings: bindings,
+            isAvailable: isAvailable,
             schedule: schedule,
             invoke: invoke
         )

@@ -49,6 +49,7 @@ struct KeyBindingTests {
         #expect(bindings[.renameTab]?.serialized == "shift+command+r")
         #expect(bindings[.openHTML]?.serialized == "command+o")
         #expect(bindings[.findInPane]?.serialized == "control+f")
+        #expect(bindings[.reloadBrowser]?.serialized == "control+r")
         #expect(
             bindings[.showPaneList]?.serialized
                 == "control+command+a"
