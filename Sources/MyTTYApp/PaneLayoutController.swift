@@ -115,6 +115,7 @@ final class PaneLayoutController {
             surface.removeFromSuperview()
             let pane = PaneHostView(content: surface)
             pane.updateInactiveDimming(inactivePaneDimming())
+            pane.isOrchestrated = state.isOrchestrated
             paneHosts[state.id] = pane
             return pane
 
@@ -172,6 +173,7 @@ final class PaneLayoutController {
             // defaults rather than the configured appearance.
             zoomPresentation.zoomedHost?
                 .updateInactiveDimming(inactivePaneDimming())
+            zoomPresentation.zoomedHost?.isOrchestrated = pane.isOrchestrated
             updateActiveBorder()
         }
         return shown

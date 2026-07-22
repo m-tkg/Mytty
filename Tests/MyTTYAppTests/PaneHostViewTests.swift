@@ -121,4 +121,28 @@ struct PaneHostViewTests {
         #expect(pane.keyToastFrame.minY >= pane.bounds.minY + 6)
         #expect(pane.keyToastFrame.minY == 26)
     }
+
+    @Test("tints only a pane created by mytty-ctl orchestration")
+    @MainActor
+    func orchestrationTint() {
+        let pane = PaneHostView(content: NSView())
+
+        #expect(!pane.isOrchestrated)
+        #expect(!pane.isOrchestrationTintVisible)
+
+        pane.isOrchestrated = true
+        #expect(pane.isOrchestrationTintVisible)
+        #expect(pane.orchestrationTintAlpha == 0.08)
+
+        pane.isFocused = true
+        #expect(pane.isDimmed == false)
+        #expect(pane.isOrchestrationTintVisible)
+
+        pane.isFocused = false
+        #expect(pane.isDimmed)
+        #expect(pane.isOrchestrationTintVisible)
+
+        pane.isOrchestrated = false
+        #expect(!pane.isOrchestrationTintVisible)
+    }
 }
