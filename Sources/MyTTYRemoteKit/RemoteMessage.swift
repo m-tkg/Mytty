@@ -52,6 +52,18 @@ public enum RemoteMessage: Equatable, Sendable {
     /// "stop pushing to me". Older servers close the connection on this,
     /// which is why clients gate it on the version in the snapshot.
     case registerPushRelay(pushID: String, relaySecretBase64: String)
+    /// Asks the Mac for the pane's currently scheduled inputs.
+    case listPaneSchedules(paneID: String)
+    /// Reply to `listPaneSchedules` (and to `createPaneSchedule` /
+    /// `deletePaneSchedule`, which both answer with the fresh list rather
+    /// than a bespoke ack).
+    case paneSchedules(paneID: String, schedules: [RemotePaneSchedule])
+    /// `schedule.id` is client-generated so the phone can address it before
+    /// the round trip completes. The Mac silently ignores requests for an
+    /// unknown pane or a past `fireAt`; the reply list simply won't
+    /// contain it.
+    case createPaneSchedule(paneID: String, schedule: RemotePaneSchedule)
+    case deletePaneSchedule(paneID: String, scheduleID: String)
     case failure(code: String)
 }
 
@@ -70,6 +82,10 @@ extension RemoteMessage: Codable {
         case newTab
         case registerPushToken
         case registerPushRelay
+        case listPaneSchedules
+        case paneSchedules
+        case createPaneSchedule
+        case deletePaneSchedule
         case failure
     }
 
@@ -97,6 +113,9 @@ extension RemoteMessage: Codable {
         case styledLines
         case altScreen
         case deltaY
+        case schedules
+        case schedule
+        case scheduleID
     }
 
     public init(from decoder: Decoder) throws {
@@ -192,6 +211,34 @@ extension RemoteMessage: Codable {
                     forKey: .relaySecretBase64
                 )
             )
+        case .listPaneSchedules:
+            self = .listPaneSchedules(
+                paneID: try container.decode(String.self, forKey: .paneID)
+            )
+        case .paneSchedules:
+            self = .paneSchedules(
+                paneID: try container.decode(String.self, forKey: .paneID),
+                schedules: try container.decode(
+                    [RemotePaneSchedule].self,
+                    forKey: .schedules
+                )
+            )
+        case .createPaneSchedule:
+            self = .createPaneSchedule(
+                paneID: try container.decode(String.self, forKey: .paneID),
+                schedule: try container.decode(
+                    RemotePaneSchedule.self,
+                    forKey: .schedule
+                )
+            )
+        case .deletePaneSchedule:
+            self = .deletePaneSchedule(
+                paneID: try container.decode(String.self, forKey: .paneID),
+                scheduleID: try container.decode(
+                    String.self,
+                    forKey: .scheduleID
+                )
+            )
         case .failure:
             self = .failure(
                 code: try container.decode(String.self, forKey: .code)
@@ -270,6 +317,21 @@ extension RemoteMessage: Codable {
                 relaySecretBase64,
                 forKey: .relaySecretBase64
             )
+        case let .listPaneSchedules(paneID):
+            try container.encode(MessageType.listPaneSchedules, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+        case let .paneSchedules(paneID, schedules):
+            try container.encode(MessageType.paneSchedules, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+            try container.encode(schedules, forKey: .schedules)
+        case let .createPaneSchedule(paneID, schedule):
+            try container.encode(MessageType.createPaneSchedule, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+            try container.encode(schedule, forKey: .schedule)
+        case let .deletePaneSchedule(paneID, scheduleID):
+            try container.encode(MessageType.deletePaneSchedule, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+            try container.encode(scheduleID, forKey: .scheduleID)
         case let .failure(code):
             try container.encode(MessageType.failure, forKey: .type)
             try container.encode(code, forKey: .code)
@@ -281,8 +343,9 @@ public enum RemoteMessageCodec {
     /// 2 added `registerPushToken` (and the `serverProtocolVersion` field
     /// on `RemoteSessionSnapshot` that lets a client detect it); 3
     /// replaced it with `registerPushRelay` when pushes moved off a
-    /// provider key on the Mac and onto the relay.
-    public static let protocolVersion = 3
+    /// provider key on the Mac and onto the relay; 4 added the
+    /// pane-schedule messages.
+    public static let protocolVersion = 4
 
     /// JSON payload only. Wire framing (and, for authenticated
     /// connections, encryption) is applied by `RemoteFrameCodec` /
