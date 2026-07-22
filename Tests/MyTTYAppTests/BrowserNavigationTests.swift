@@ -113,6 +113,49 @@ struct BrowserNavigationTests {
         #expect(!browser.containsFirstResponder(nil))
     }
 
+    @Test("treats a scheme-less absolute path as a local HTML file")
+    func schemelessAbsolutePathLoadPlan() {
+        let schemeless = URL(string: "/tmp/site/index.html")!
+
+        #expect(
+            BrowserLoadPlan(url: schemeless)
+                == .file(
+                    URL(fileURLWithPath: "/tmp/site/index.html"),
+                    readAccess: URL(fileURLWithPath: "/tmp/site", isDirectory: true)
+                )
+        )
+    }
+
+    @Test("normalizes a scheme-less tilde path to a file URL under the home directory")
+    func normalizesTildePath() {
+        let normalized = BrowserAddress.normalize(
+            URL(string: "~/site/index.html")!
+        )
+
+        let expected = URL(
+            fileURLWithPath: (NSHomeDirectory() as NSString)
+                .appendingPathComponent("site/index.html")
+        )
+        #expect(normalized == expected)
+    }
+
+    @Test("normalizes a percent-encoded scheme-less path")
+    func normalizesPercentEncodedPath() {
+        let normalized = BrowserAddress.normalize(
+            URL(string: "/tmp/report%20v2/index.html")!
+        )
+
+        #expect(normalized.isFileURL)
+        #expect(normalized.path.contains("report v2"))
+    }
+
+    @Test("leaves URLs with a scheme unchanged")
+    func normalizePassesThroughSchemedURL() {
+        let url = URL(string: "https://example.com/docs")!
+
+        #expect(BrowserAddress.normalize(url) == url)
+    }
+
     @Test("claims the Safari that ships with the running macOS")
     func safariApplicationNameForUserAgent() {
         #expect(
