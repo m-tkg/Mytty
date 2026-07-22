@@ -2,6 +2,13 @@ import AppKit
 import MyTTYCore
 import SwiftUI
 
+/// Styling for the command line tool "installed" indicator, sourced from the
+/// same mapping as the other installed-state badges so they can't drift apart.
+enum CommandLineToolStatusStyle {
+    static let installedSymbolName = AgentIntegrationStatus.installed.symbolName
+    static let installedTint = AgentIntegrationStatus.installed.color
+}
+
 /// Settings > Orchestration. Gathers everything related to letting an
 /// agent running in a Mytty pane drive `mytty-ctl` to run other agents in
 /// other panes as a team: the CLI symlink (moved here from General), the
@@ -100,15 +107,22 @@ struct OrchestrationSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if commandLineToolInstall.isInstalled {
-                    Label(
-                        String(
-                            format: localizer[.commandLineToolInstalled],
-                            commandLineToolInstall.linkName
-                        ),
-                        systemImage: "checkmark.circle.fill"
-                    )
+                    Label {
+                        Text(
+                            String(
+                                format: localizer[.commandLineToolInstalled],
+                                commandLineToolInstall.linkName
+                            )
+                        )
+                        .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(
+                            systemName:
+                                CommandLineToolStatusStyle.installedSymbolName
+                        )
+                        .foregroundStyle(CommandLineToolStatusStyle.installedTint)
+                    }
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
                 } else {
                     Button(localizer[.installCommandLineTool]) {
                         commandLineToolInstall.install()
