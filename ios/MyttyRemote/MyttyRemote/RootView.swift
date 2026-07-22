@@ -1,7 +1,18 @@
+import MyTTYRemoteKit
 import SwiftUI
 
 private struct AddMacRoute: Hashable {}
 private struct DeviceSettingsRoute: Hashable {}
+
+/// A tapped notification still being navigated to. The Mac is kept
+/// alongside the pane so the whole path — session, tab, pane — can be
+/// rebuilt in a single assignment once a snapshot names where the pane
+/// lives; appending to a stack whose push animation is still running is
+/// how routes get silently dropped.
+private struct PendingNotificationOpen {
+    let mac: PairedMac
+    let paneID: String?
+}
 
 struct RootView: View {
     @StateObject private var client = RemoteClient()
@@ -16,7 +27,7 @@ struct RootView: View {
     /// A tapped notification whose pane cannot be located yet, because
     /// the session it belongs to is still connecting. Resolved against
     /// the first snapshot that arrives.
-    @State private var pendingPaneOpen: String?
+    @State private var pendingNotificationOpen: PendingNotificationOpen?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -108,31 +119,72 @@ struct RootView: View {
             $0.deviceID == target.macID
         }) else { return }
 
-        // Re-connecting to the Mac already shown would drop a working
-        // session and lose the pane content on screen.
-        if client.connectedMacID != mac.deviceID || !client.isConnected {
+        switch PushOpenConnectPolicy.action(
+            targetMacID: mac.deviceID,
+            connectedMacID: client.connectedMacID,
+            isConnected: client.isConnected
+        ) {
+        case .connect:
             client.connect(mac: mac)
+        case .reuseButArmReconnect:
+            // A session that survived backgrounding often only reports its
+            // death a moment after the app resumes — by which time the
+            // scene-phase handler has already run and found nothing to
+            // arm. Arm it here so a stale connection heals instead of
+            // leaving the pane spinning forever.
+            pendingForegroundReconnect = true
         }
+        pendingNotificationOpen = PendingNotificationOpen(
+            mac: mac,
+            paneID: target.paneID
+        )
         path = NavigationPath()
         path.append(mac)
-        pendingPaneOpen = target.paneID
         openPendingPaneIfPossible()
     }
 
     private func openPendingPaneIfPossible() {
-        guard let paneID = pendingPaneOpen,
-              let snapshot = client.snapshot,
-              let location = snapshot.location(ofPaneID: paneID)
+        guard let pending = pendingNotificationOpen,
+              let snapshot = client.snapshot
         else { return }
-        pendingPaneOpen = nil
-
-        // A single window is shown as its tab list directly, with no
-        // window level in the stack, so the path has to match that.
-        if snapshot.windows.count > 1 {
-            path.append(WindowRoute(windowID: location.windowID))
+        // The user connected to a different Mac while this open was still
+        // waiting; the tap's intent is stale, not worth hijacking the
+        // session they chose.
+        guard client.connectedMacID == pending.mac.deviceID else {
+            pendingNotificationOpen = nil
+            return
         }
-        path.append(TabRoute(tabID: location.tabID))
-        path.append(PaneRoute(paneID: location.paneID))
+        // Without a pane to descend to (the push arrived undecrypted),
+        // the session root already on the path is the destination.
+        guard let paneID = pending.paneID else {
+            pendingNotificationOpen = nil
+            return
+        }
+        // Not in this snapshot — which may be a stale one from before the
+        // app was suspended. Keep waiting; the reconnect armed by the tap
+        // delivers a fresh snapshot, and a pane closed on the Mac simply
+        // leaves the session root showing.
+        guard let steps = snapshot.paneOpenSteps(toPaneID: paneID)
+        else { return }
+        pendingNotificationOpen = nil
+
+        // Rebuilding the path in one assignment rather than appending to
+        // the stack already animating its way into the session: appends
+        // landing mid-transition are silently dropped, which stranded
+        // notification taps on the tab list.
+        var rebuilt = NavigationPath()
+        rebuilt.append(pending.mac)
+        for step in steps {
+            switch step {
+            case .window(let id):
+                rebuilt.append(WindowRoute(windowID: id))
+            case .tab(let id):
+                rebuilt.append(TabRoute(tabID: id))
+            case .pane(let id):
+                rebuilt.append(PaneRoute(paneID: id))
+            }
+        }
+        path = rebuilt
     }
 
     private func reconnectAfterForegroundIfNeeded() {
