@@ -80,6 +80,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
     public var attentionUnreadOnly: Bool
+    /// Whether tab rows show how long each tab has been open.
+    public var showTabUptime: Bool
     /// Whether Mytty writes a "pane-team pointer" (a short note telling the
     /// agent to run `mytty-ctl guide`) into a supported provider's global
     /// configuration whenever that provider's hook integration is
@@ -119,6 +121,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         attentionUnreadOnly: Bool = false,
+        showTabUptime: Bool = false,
         paneTeamPointersEnabled: Bool = true,
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
@@ -142,6 +145,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.attentionUnreadOnly = attentionUnreadOnly
+        self.showTabUptime = showTabUptime
         self.paneTeamPointersEnabled = paneTeamPointersEnabled
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
@@ -244,6 +248,7 @@ public struct ApplicationPreferencesStore {
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
             "attention.unread-only",
+            "tab.show-uptime",
             "agents.pane-team-pointers",
             "remote.access-enabled",
             "pane.inactive-dimming",
@@ -386,6 +391,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.attentionUnreadOnly = enabled
         }
+        if let value = document.lastValue(for: "tab.show-uptime") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "tab.show-uptime", value: value)
+            }
+            preferences.showTabUptime = enabled
+        }
         if let value = document.lastValue(for: "agents.pane-team-pointers") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "agents.pane-team-pointers", value: value)
@@ -497,6 +508,7 @@ public struct ApplicationPreferencesStore {
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
+            "tab.show-uptime = \(quoted(String(preferences.showTabUptime)))",
             "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",

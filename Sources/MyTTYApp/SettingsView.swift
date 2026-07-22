@@ -324,6 +324,12 @@ private struct GeneralSettingsView: View {
                         .tag(NewTabPosition.afterCurrent)
                 }
                 .pickerStyle(.menu)
+
+                Toggle(
+                    localizer[.showTabUptime],
+                    isOn: applicationBinding(\.showTabUptime)
+                )
+                .toggleStyle(.switch)
             }
 
             Section(localizer[.input]) {

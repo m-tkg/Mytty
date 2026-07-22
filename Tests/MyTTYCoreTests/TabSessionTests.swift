@@ -372,6 +372,53 @@ struct TabSessionTests {
         #expect(decoded == surface)
     }
 
+    @Test("round-trips createdAt through encode/decode")
+    func roundTripsCreatedAt() throws {
+        let createdAt = Date(timeIntervalSinceReferenceDate: 700_000_000)
+        let tab = TabSession(
+            id: makeTabID(1),
+            initialSurface: makeSurface(id: 2, path: "/repo"),
+            createdAt: createdAt
+        )
+
+        let encoded = try JSONEncoder().encode(tab)
+        let decoded = try JSONDecoder().decode(
+            TabSession.self,
+            from: encoded
+        )
+
+        #expect(decoded.createdAt == createdAt)
+        #expect(decoded == tab)
+    }
+
+    @Test("decodes createdAt as now when the key is absent")
+    func decodesMissingCreatedAtAsNow() throws {
+        let json = """
+        {
+            "id": { "rawValue": "\(makeUUID(1).uuidString)" },
+            "root": {
+                "surface": {
+                    "_0": {
+                        "id": { "rawValue": "\(makeUUID(2).uuidString)" },
+                        "workingDirectory": "file:///repo/",
+                        "isOrchestrated": false
+                    }
+                }
+            },
+            "focusedSurfaceID": { "rawValue": "\(makeUUID(2).uuidString)" }
+        }
+        """
+        let before = Date()
+        let tab = try JSONDecoder().decode(
+            TabSession.self,
+            from: Data(json.utf8)
+        )
+        let after = Date()
+
+        #expect(tab.createdAt >= before)
+        #expect(tab.createdAt <= after)
+    }
+
     private func makeTabID(_ value: UInt8) -> TabID {
         TabID(rawValue: makeUUID(value))
     }

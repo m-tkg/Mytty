@@ -42,6 +42,19 @@ struct TabSidebarViewTests {
         #expect(row.number == 0)
     }
 
+    @Test("hides the uptime indicator by default")
+    func uptimeOriginDefault() {
+        let row = TabSidebarRow(
+            id: TabID(),
+            title: "Tab",
+            paneCount: 1,
+            attentionCount: 0,
+            hasRunningAgent: false
+        )
+
+        #expect(row.uptimeOrigin == nil)
+    }
+
     @Test("shows pane counts for every tab")
     func paneCountVisibility() {
         let singlePane = TabSidebarRow(
