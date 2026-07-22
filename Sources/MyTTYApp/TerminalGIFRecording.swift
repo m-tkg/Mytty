@@ -97,9 +97,8 @@ struct TerminalRecordingFadeOut: Equatable, Sendable {
     /// because by the time the fade renders the recording frames are already
     /// on disk and failing the save over a color would be worse.
     var colorComponents: (red: CGFloat, green: CGFloat, blue: CGFloat) {
-        guard colorHex.count == 6,
-              colorHex.allSatisfy(\.isHexDigit),
-              let value = UInt32(colorHex, radix: 16)
+        guard let hex = RecordingFadeOut.normalizedColorHex(colorHex),
+              let value = UInt32(hex, radix: 16)
         else { return (0, 0, 0) }
         return (
             CGFloat((value >> 16) & 0xFF) / 255,
