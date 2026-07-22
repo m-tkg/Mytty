@@ -2028,7 +2028,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
         case let .openURLRequested(url):
             guard let surface = surfaces[surfaceID] else { return }
-            presentLinkMenu(for: url, from: surface)
+            let resolved = BrowserAddress.resolveLink(
+                url,
+                workingDirectory: workingDirectory(forPane: surfaceID)
+            )
+            presentLinkMenu(for: resolved, from: surface)
 
         case .cellSizeChanged:
             updateStatusBar()

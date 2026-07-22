@@ -28,6 +28,25 @@ enum BrowserAddress {
         }
         return url
     }
+
+    /// Resolves a link clicked in the terminal: scheme-less paths become
+    /// file URLs, resolving relative paths against the pane's working
+    /// directory. URLs that already have a scheme pass through untouched.
+    static func resolveLink(_ url: URL, workingDirectory: URL?) -> URL {
+        guard url.scheme == nil else { return url }
+
+        let raw = url.absoluteString
+        let decoded = raw.removingPercentEncoding ?? raw
+        let trimmed = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return url }
+
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        if expanded.hasPrefix("/") {
+            return URL(fileURLWithPath: expanded)
+        }
+        guard let base = workingDirectory else { return url }
+        return URL(fileURLWithPath: trimmed, relativeTo: base).standardizedFileURL
+    }
 }
 
 enum BrowserLoadPlan: Equatable {

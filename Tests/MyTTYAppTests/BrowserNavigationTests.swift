@@ -156,6 +156,65 @@ struct BrowserNavigationTests {
         #expect(BrowserAddress.normalize(url) == url)
     }
 
+    @Test("resolves a scheme-less relative link with a trailing encoded space against the pane's working directory")
+    func resolveLinkRelativeWithTrailingSpace() {
+        let base = URL(fileURLWithPath: "/Users/example/project", isDirectory: true)
+        let link = URL(string: "./llmeter-report/index.html%20")!
+
+        let resolved = BrowserAddress.resolveLink(link, workingDirectory: base)
+
+        #expect(
+            resolved.standardizedFileURL
+                == URL(fileURLWithPath: "/Users/example/project/llmeter-report/index.html")
+                    .standardizedFileURL
+        )
+        #expect(resolved.isFileURL)
+        #expect(!resolved.path.hasSuffix(" "))
+        #expect(!resolved.absoluteString.contains("%20"))
+    }
+
+    @Test("leaves a scheme-less relative link unresolved when there is no working directory")
+    func resolveLinkRelativeWithoutWorkingDirectory() {
+        let link = URL(string: "./llmeter-report/index.html%20")!
+
+        let resolved = BrowserAddress.resolveLink(link, workingDirectory: nil)
+
+        #expect(resolved == link)
+    }
+
+    @Test("resolves a scheme-less absolute link regardless of the working directory")
+    func resolveLinkAbsolutePath() {
+        let base = URL(fileURLWithPath: "/Users/example/project", isDirectory: true)
+        let link = URL(string: "/tmp/site/index.html%20")!
+
+        let resolved = BrowserAddress.resolveLink(link, workingDirectory: base)
+
+        #expect(resolved.isFileURL)
+        #expect(resolved.path == "/tmp/site/index.html")
+    }
+
+    @Test("resolves a scheme-less tilde link under the home directory")
+    func resolveLinkTildePath() {
+        let base = URL(fileURLWithPath: "/Users/example/project", isDirectory: true)
+        let link = URL(string: "~/site/index.html")!
+
+        let resolved = BrowserAddress.resolveLink(link, workingDirectory: base)
+
+        let expected = URL(
+            fileURLWithPath: (NSHomeDirectory() as NSString)
+                .appendingPathComponent("site/index.html")
+        )
+        #expect(resolved == expected)
+    }
+
+    @Test("leaves a schemed link unchanged even with a working directory")
+    func resolveLinkPassesThroughSchemedURL() {
+        let base = URL(fileURLWithPath: "/Users/example/project", isDirectory: true)
+        let url = URL(string: "https://example.com/docs")!
+
+        #expect(BrowserAddress.resolveLink(url, workingDirectory: base) == url)
+    }
+
     @Test("claims the Safari that ships with the running macOS")
     func safariApplicationNameForUserAgent() {
         #expect(
