@@ -408,6 +408,8 @@ private struct ShellSettingsView: View {
 
     @ObservedObject var model: SettingsModel
     let localizer: MyTTYLocalizer
+    @State private var availableFontFamilies =
+        NSFontManager.shared.availableFontFamilies
 
     var body: some View {
         Form {
@@ -416,7 +418,10 @@ private struct ShellSettingsView: View {
                     fontFamilyLabel(localizer[.systemDefault], family: "")
                         .tag("")
                     ForEach(
-                        NSFontManager.shared.availableFontFamilies,
+                        FontFamilyPresentation.menuFamilies(
+                            available: availableFontFamilies,
+                            selected: model.terminal.fontFamily
+                        ),
                         id: \.self
                     ) { family in
                         fontFamilyLabel(
@@ -579,6 +584,13 @@ private struct ShellSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(12)
+        .onReceive(NotificationCenter.default.publisher(
+            for: kCTFontManagerRegisteredFontsChangedNotification
+                as NSNotification.Name
+        ).receive(on: DispatchQueue.main)) { _ in
+            availableFontFamilies =
+                NSFontManager.shared.availableFontFamilies
+        }
     }
 
     private func fontFamilyLabel(_ title: String, family: String) -> Text {

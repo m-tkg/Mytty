@@ -75,6 +75,75 @@ struct FontFamilyPresentationTests {
 
         #expect(font == NSFont.systemFont(ofSize: 13))
     }
+
+    @Test("keeps the available families when nothing is selected")
+    func menuFamiliesWithoutSelection() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Menlo", "Monaco"],
+                selected: ""
+            ) == ["Menlo", "Monaco"]
+        )
+    }
+
+    @Test("keeps the available families when the selection is listed")
+    func menuFamiliesWithListedSelection() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Menlo", "Monaco"],
+                selected: "Monaco"
+            ) == ["Menlo", "Monaco"]
+        )
+    }
+
+    @Test("matches a listed selection case-insensitively")
+    func menuFamiliesWithCaseInsensitiveSelection() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Menlo", "Monaco"],
+                selected: "menlo"
+            ) == ["Menlo", "Monaco"]
+        )
+    }
+
+    @Test("inserts an unlisted selection in sort order")
+    func menuFamiliesWithUnlistedSelection() {
+        // Right after a cold boot fontd may not have indexed user fonts
+        // yet; the configured family must still appear in the menu so
+        // the selection never renders as empty.
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Arial", "Menlo"],
+                selected: "JetBrains Mono"
+            ) == ["Arial", "JetBrains Mono", "Menlo"]
+        )
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Arial", "Menlo"],
+                selected: "Zapfino Custom"
+            ) == ["Arial", "Menlo", "Zapfino Custom"]
+        )
+    }
+
+    @Test("sorts the available families before inserting")
+    func menuFamiliesWithUnsortedAvailableList() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Menlo", "Arial"],
+                selected: "JetBrains Mono"
+            ) == ["Arial", "JetBrains Mono", "Menlo"]
+        )
+    }
+
+    @Test("lists only the selection when no families are available")
+    func menuFamiliesWithEmptyAvailableList() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: [],
+                selected: "JetBrains Mono"
+            ) == ["JetBrains Mono"]
+        )
+    }
 }
 
 private struct NameRecord {
