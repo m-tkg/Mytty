@@ -324,6 +324,13 @@ enum MyTTYText: String {
     case unableToReadSettings = "Unable to read settings"
     case unableToSaveSettings = "Unable to save application settings"
     case unableToApplyTerminalSettings = "Unable to apply terminal settings"
+    case development = "Development"
+    case importReleaseSettings = "Import Settings from Mytty"
+    case importReleaseSettingsDescription =
+        "Copy the installed Mytty release's settings into this development build."
+    case releaseSettingsImported = "Settings imported"
+    case releaseSettingsNotFound = "No Mytty release settings were found"
+    case unableToImportReleaseSettings = "Unable to import release settings"
     case hookHelperUnavailable = "Hook helper is unavailable"
     case invalidProviderConfiguration = "Provider configuration is not valid JSON"
     case unableToUpdateIntegration = "Unable to update integration"
@@ -777,6 +784,15 @@ struct MyTTYLocalizer: Equatable {
         case .unableToReadSettings: "設定を読み込めませんでした"
         case .unableToSaveSettings: "アプリ設定を保存できませんでした"
         case .unableToApplyTerminalSettings: "ターミナル設定を適用できませんでした"
+        case .development: "開発"
+        case .importReleaseSettings: "Mytty の設定をインポート"
+        case .importReleaseSettingsDescription:
+            "インストール済みの Mytty (リリース版) の設定をこの開発ビルドにコピーします。"
+        case .releaseSettingsImported: "設定をインポートしました"
+        case .releaseSettingsNotFound:
+            "Mytty リリース版の設定が見つかりませんでした"
+        case .unableToImportReleaseSettings:
+            "リリース版の設定をインポートできませんでした"
         case .hookHelperUnavailable: "フックヘルパーを利用できません"
         case .invalidProviderConfiguration: "プロバイダー設定が正しい JSON ではありません"
         case .unableToUpdateIntegration: "Agent 連携を更新できませんでした"

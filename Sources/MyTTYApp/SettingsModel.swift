@@ -88,6 +88,53 @@ final class SettingsModel: ObservableObject {
         }
     }
 
+    /// Imports the configuration files of another Mytty profile (the
+    /// installed release build) and applies them to this one. Returns
+    /// whether the import succeeded; failures leave the current settings
+    /// files and published values untouched.
+    @discardableResult
+    func importSettings(from source: ApplicationPaths) -> Bool {
+        do {
+            let previousFiles = [
+                paths.appConfiguration,
+                paths.terminalConfiguration,
+                paths.agentConfiguration,
+            ].map { url in
+                (url, try? Data(contentsOf: url))
+            }
+            _ = try ReleaseSettingsImporter().importSettings(
+                from: source,
+                to: paths
+            )
+            do {
+                let importedApplication = try applicationStore.load(
+                    from: paths.appConfiguration
+                )
+                let importedTerminal = try terminalStore.load(
+                    from: paths.terminalConfiguration
+                )
+                try onTerminalConfigurationChanged(importedTerminal)
+                application = importedApplication
+                terminal = importedTerminal
+            } catch {
+                for (url, data) in previousFiles {
+                    guard let data else { continue }
+                    try? data.write(to: url, options: .atomic)
+                }
+                throw error
+            }
+            errorText = nil
+            onApplicationPreferencesChanged(application)
+            return true
+        } catch ReleaseSettingsImporter.ImportError.sourceNotFound {
+            errorText = .releaseSettingsNotFound
+            return false
+        } catch {
+            errorText = .unableToImportReleaseSettings
+            return false
+        }
+    }
+
     func updateTerminal(
         _ update: (inout TerminalPreferences) -> Void
     ) {
