@@ -997,6 +997,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             != applicationPreferences.showStatusBar
         let attentionUnreadOnlyChanged = preferences.attentionUnreadOnly
             != applicationPreferences.attentionUnreadOnly
+        let showTabUptimeChanged = preferences.showTabUptime
+            != applicationPreferences.showTabUptime
         let autocompleteDisabled = applicationPreferences.autocompleteEnabled
             && !preferences.autocompleteEnabled
         let keyToastDisabled = applicationPreferences.showPressedKeyToast
@@ -1037,6 +1039,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             || attentionUnreadOnlyChanged {
             rebuildChrome()
             refreshPresentation(focusTerminal: false)
+        } else if showTabUptimeChanged {
+            refreshSidebarRows()
         }
     }
 
@@ -2110,6 +2114,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 isRecording: recording.isRecording(tabID: tab.id),
                 hasCollapsedPanes: paneLayout.zoomTarget(for: tab) != nil,
                 resourceURL: state?.workingDirectory ?? browser?.url,
+                uptimeOrigin: applicationPreferences.showTabUptime
+                    ? tab.createdAt
+                    : nil,
                 number: offset + 1
             )
         }

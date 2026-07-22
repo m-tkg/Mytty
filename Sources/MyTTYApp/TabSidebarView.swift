@@ -111,6 +111,9 @@ struct TabSidebarRow: Identifiable, Equatable {
     var isRecording = false
     var hasCollapsedPanes = false
     var resourceURL: URL? = nil
+    /// When the tab was opened, driving the elapsed-time indicator. Nil
+    /// hides the indicator (the "show elapsed time" setting is off).
+    var uptimeOrigin: Date? = nil
     /// Position among the tabs, 1-based, top to bottom. `0` means "no
     /// number" and hides the digit under the drag handle.
     var number = 0
@@ -696,6 +699,24 @@ private struct TabStatusIndicators: View {
                 .fixedSize()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(localizer.paneCount(paneCount))
+            }
+            if let uptimeOrigin = row.uptimeOrigin {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let uptime = TabUptimeFormatter.string(
+                        from: context.date.timeIntervalSince(uptimeOrigin)
+                    )
+                    HStack(spacing: 2) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                        Text(uptime)
+                            .font(.caption2.monospacedDigit())
+                    }
+                    .fixedSize()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        "\(localizer[.tabUptime]) \(uptime)"
+                    )
+                }
             }
             if row.hasCollapsedPanes {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
