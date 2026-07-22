@@ -97,6 +97,30 @@ struct TabSessionTests {
         #expect(tab.focusedSurfaceID == second.id)
     }
 
+    @Test("splits without moving focus when focus is false")
+    func splitWithoutFocus() throws {
+        let first = makeSurface(id: 1, path: "/repo")
+        let second = makeSurface(id: 2, path: "/repo")
+        var tab = TabSession(id: makeTabID(1), initialSurface: first)
+
+        try tab.split(
+            surface: first.id,
+            adding: second,
+            direction: .right,
+            focus: false
+        )
+
+        #expect(
+            tab.root == .split(
+                orientation: .horizontal,
+                ratio: 0.5,
+                first: .surface(first),
+                second: .surface(second)
+            )
+        )
+        #expect(tab.focusedSurfaceID == first.id)
+    }
+
     @Test("places left and upper splits before their target")
     func splitBeforeTarget() throws {
         let original = makeSurface(id: 1, path: "/repo")

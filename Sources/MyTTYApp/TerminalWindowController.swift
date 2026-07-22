@@ -457,12 +457,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
             isOrchestrated: orchestrated
         )
+        // Orchestrated tabs (mytty-ctl / agent-created) open in the
+        // background so an agent spawning workers never yanks the user
+        // away from the tab they're typing in — see issue #78.
+        let select = !orchestrated
         do {
             let tab = TabSession(initialSurface: state)
             let surface = try makeSurface(for: state, initialInput: initialInput)
             switch applicationPreferences.newTabPosition {
             case .end:
-                try session.add(tab: tab, select: true)
+                try session.add(tab: tab, select: select)
             case .afterCurrent:
                 if let currentIndex = session.tabs.firstIndex(
                     where: { $0.id == session.selectedTabID }
@@ -470,15 +474,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     try session.insert(
                         tab: tab,
                         at: currentIndex + 1,
-                        select: true
+                        select: select
                     )
                 } else {
-                    try session.add(tab: tab, select: true)
+                    try session.add(tab: tab, select: select)
                 }
             }
             surfaces[state.id] = surface
             sessionDidChange()
-            refreshPresentation(focusTerminal: true)
+            refreshPresentation(focusTerminal: select)
             return state.id
         } catch {
             agentEventServer.revoke(surface: state.id)
@@ -582,12 +586,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ direction: SplitDirection,
         placement: SplitPlacement = .adjacent,
         workingDirectory: URL? = nil,
-        initialInput: String? = nil,
-        orchestrated: Bool = false
+        initialInput: String? = nil
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
-            workingDirectory: workingDirectory ?? currentWorkingDirectory,
-            isOrchestrated: orchestrated
+            workingDirectory: workingDirectory ?? currentWorkingDirectory
         )
         let basePaneSize = session.selectedTab.flatMap { tab -> NSSize? in
             guard let host = paneLayout.host(for: tab.focusedSurfaceID)
@@ -645,8 +647,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     /// Splits a specific pane rather than whatever happens to be focused —
     /// `mytty-ctl split <paneID>` targets a pane by ID, which may not be
-    /// the one the user is currently looking at. Focusing first reuses
-    /// `splitFocusedPane` instead of duplicating its layout math.
+    /// the one the user is currently looking at. Orchestrated splits stay
+    /// in the background (no tab selection, no focus steal — issue #78);
+    /// interactive ones focus first so `splitFocusedPane`'s layout math
+    /// can be reused instead of duplicated.
     @discardableResult
     func splitPane(
         _ paneID: TerminalSurfaceID,
@@ -655,13 +659,76 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         initialInput: String? = nil,
         orchestrated: Bool = false
     ) -> TerminalSurfaceID? {
+        if orchestrated {
+            return splitPaneInBackground(
+                paneID,
+                direction: direction,
+                workingDirectory: workingDirectory,
+                initialInput: initialInput
+            )
+        }
         guard focus(pane: paneID) else { return nil }
         return splitFocusedPane(
             direction,
             workingDirectory: workingDirectory,
-            initialInput: initialInput,
-            orchestrated: orchestrated
+            initialInput: initialInput
         )
+    }
+
+    /// The orchestrated variant of `splitPane`: adds the new pane next to
+    /// `paneID` without selecting its tab, moving pane focus, or making
+    /// the window key, so agent-spawned workers never interrupt whatever
+    /// the user is doing in another tab.
+    private func splitPaneInBackground(
+        _ paneID: TerminalSurfaceID,
+        direction: SplitDirection,
+        workingDirectory: URL?,
+        initialInput: String?
+    ) -> TerminalSurfaceID? {
+        guard session.tabs.contains(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { return nil }
+        let state = TerminalSurfaceState(
+            workingDirectory: workingDirectory ?? currentWorkingDirectory,
+            isOrchestrated: true
+        )
+        let initialSize = paneLayout.host(for: paneID).map {
+            Self.initialSurfaceSize(
+                for: direction,
+                focusedPaneSize: $0.bounds.size
+            )
+        }
+        do {
+            let surface = try makeSurface(
+                for: state,
+                initialSize: initialSize,
+                initialInput: initialInput
+            )
+            do {
+                try session.split(
+                    surface: paneID,
+                    adding: state,
+                    direction: direction
+                )
+            } catch {
+                agentEventServer.revoke(surface: state.id)
+                autocomplete.removeSession(for: state.id)
+                throw error
+            }
+            surfaces[state.id] = surface
+            // Only the selected tab is attached to the view hierarchy, so
+            // a re-render is needed (and focus restore is safe — the tab's
+            // focused pane is unchanged) only when the split lands there.
+            if session.selectedTab?.paneIDs.contains(paneID) == true {
+                renderedTabID = nil
+            }
+            sessionDidChange()
+            refreshPresentation(focusTerminal: false)
+            return state.id
+        } catch {
+            presentActionError(error)
+            return nil
+        }
     }
 
     func closeFocusedPane() {

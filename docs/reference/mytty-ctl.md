@@ -200,7 +200,7 @@ mytty-ctl list
 
 ### new-tab
 
-Creates a new tab in the active window (or the first window found, if none is active). There is no way to target a specific window; split an existing pane in that window instead.
+Creates a new tab in the active window (or the first window found, if none is active). The tab opens in the background — the user's selected tab and keyboard focus stay where they are; use `focus` to bring it forward. There is no way to target a specific window; split an existing pane in that window instead.
 
 ```bash
 mytty-ctl new-tab --cwd /path/to/project
@@ -214,7 +214,7 @@ mytty-ctl new-tab --cwd /path/to/project
 
 ### split
 
-Splits an existing pane in the given direction, focusing the target pane first.
+Splits an existing pane in the given direction. The split happens in the background — the target pane's tab is not selected and keyboard focus does not move; use `focus` on the returned pane ID to bring it forward.
 
 ```bash
 mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
