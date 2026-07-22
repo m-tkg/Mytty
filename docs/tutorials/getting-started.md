@@ -40,6 +40,8 @@ This only works while Mytty is running; quitting the app clears the history.
 
 Once you have a lot of tabs and panes, opening **Show All Panes** lists every pane so you can jump straight to one.
 
+![The Show All Panes panel listing every pane, including a browser pane, with its working directory](../images/show-all-panes.png)
+
 ## Status bar
 
 The status bar follows whichever pane is focused, showing its working directory and, when the directory is under Git, the repository and branch.

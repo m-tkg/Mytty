@@ -29,6 +29,8 @@ Writing the usage into CLAUDE.md or AGENTS.md means you don't have to spell out 
 
 Everything this feature needs is gathered under Settings > Orchestration.
 
+![Settings > Orchestration, with the Install CLI button and the toggle that teaches agents about Mytty orchestration](../images/orchestration-settings.png)
+
 **Put the CLI on PATH** "Install CLI" creates a symlink in `~/.local/bin`.
 
 **Teach agents how to use it** Turning on "Teach agents about Mytty orchestration" writes a short reference into `~/.claude/skills/mytty-panes/SKILL.md` and `~/.codex/AGENTS.md`. The actual usage text lives in `~/Library/Application Support/mytty/mytty-ctl.md`, which Mytty (re)writes on every launch to match `mytty-ctl guide`'s output -- both references just point at that file's absolute path. So when the usage changes in a Mytty update, only the bundled guide gets rewritten; the references themselves never need to change.

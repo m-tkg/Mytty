@@ -28,6 +28,8 @@ CLAUDE.md や AGENTS.md に使い方を書いておくことで、「まず `myt
 
 この機能に関わる設定は 設定 > オーケストレーション に集約されています。
 
+![設定 > オーケストレーション。CLI をインストールするボタンと、Agent に使い方を教えるトグルが並ぶ](../images/orchestration-settings.png)
+
 **CLI に PATH を通す** 「CLI をインストール」で `~/.local/bin` にシンボリックリンクを作成します。
 
 **エージェントに使い方を教える** 「Agent に Mytty オーケストレーションの使い方を教える」をオンにすると、`~/.claude/skills/mytty-panes/SKILL.md` と `~/.codex/AGENTS.md` に短い参照を書き込みます。実際の使い方の本文は、Mytty が起動のたびに書き出す `~/Library/Application Support/mytty/mytty-ctl.md`(`mytty-ctl guide` の出力と同じ内容)にまとまっており、両方の参照先はそのファイルの絶対パスを指すだけです。そのため Mytty がアップデートされて使い方が変わっても、書き直すのは同梱のガイドだけで、参照側は手直し不要です。

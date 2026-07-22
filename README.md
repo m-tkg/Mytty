@@ -1,5 +1,9 @@
 [日本語](README_ja.md)
 
+<p align="center">
+  <img src="Resources/AppIcon.appiconset/1024.png" alt="Mytty app icon" width="256">
+</p>
+
 # Mytty
 
 **New here? Start with the [tutorials](docs/README.md#tutorials).**
@@ -21,6 +25,27 @@ The current release supports macOS 15 or later on Apple Silicon.
 - **Session restoration, local autocomplete, a built-in browser, GIF recording, and an iOS remote app** with APNs push for Attention items.
 
 See the [documentation](docs/README.md) for everything else: tutorials, how-to guides, reference pages, and the design rationale behind each part.
+
+## Screenshots
+
+### Tabs and panes
+
+![Two tabs in the sidebar, with a pane split left and right](docs/images/panes.png)
+
+### AI control with `mytty-ctl`
+
+![`mytty-ctl list | jq .` run from inside a Mytty pane](docs/images/mytty-ctl-list.png)
+
+### GIF recording
+
+![A GIF recorded by Mytty itself, with each pressed key shown below the cursor](docs/images/record-a-gif.gif)
+
+### iOS remote
+
+<p align="center">
+  <img src="docs/images/ios-pane.png" alt="A Mac pane mirrored on an iPhone" width="280">
+  <img src="docs/images/ios-push.png" alt="An Attention push notification on an iPhone" width="280">
+</p>
 
 ## Documentation
 
