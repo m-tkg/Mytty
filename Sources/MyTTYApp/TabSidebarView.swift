@@ -794,6 +794,7 @@ private struct TabStatusIndicators: View {
             .help(localizer[.paneProcesses])
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(localizer.paneCount(paneCount))
+            .accessibilityHint(localizer[.paneProcesses])
             .popover(
                 item: $processPopover,
                 arrowEdge: processPopoverArrowEdge
