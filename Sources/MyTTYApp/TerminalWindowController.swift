@@ -580,6 +580,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     @discardableResult
     func splitFocusedPane(
         _ direction: SplitDirection,
+        placement: SplitPlacement = .adjacent,
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
         orchestrated: Bool = false
@@ -588,10 +589,20 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
             isOrchestrated: orchestrated
         )
-        let focusedPaneSize = session.selectedTab.flatMap {
-            paneLayout.host(for: $0.focusedSurfaceID)?.bounds.size
+        let basePaneSize = session.selectedTab.flatMap { tab -> NSSize? in
+            guard let host = paneLayout.host(for: tab.focusedSurfaceID)
+            else { return nil }
+            switch placement {
+            case .adjacent:
+                return host.bounds.size
+            case .outer:
+                // An outer split halves the whole tab layout, so the new
+                // surface should be sized against the pane tree's root
+                // view rather than the focused pane.
+                return Self.paneTreeRootView(from: host).bounds.size
+            }
         }
-        let initialSize = focusedPaneSize.map {
+        let initialSize = basePaneSize.map {
             Self.initialSurfaceSize(
                 for: direction,
                 focusedPaneSize: $0
@@ -604,10 +615,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 initialInput: initialInput
             )
             do {
-                try session.splitFocusedSurface(
-                    adding: state,
-                    direction: direction
-                )
+                switch placement {
+                case .adjacent:
+                    try session.splitFocusedSurface(
+                        adding: state,
+                        direction: direction
+                    )
+                case .outer:
+                    try session.splitOuterFocusedSurface(
+                        adding: state,
+                        direction: direction
+                    )
+                }
             } catch {
                 agentEventServer.revoke(surface: state.id)
                 autocomplete.removeSession(for: state.id)
@@ -1343,6 +1362,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             )
         }
         return size
+    }
+
+    /// Climbs from a pane host to the top of the pane tree's view
+    /// hierarchy — the outermost `RatioSplitView`, or the host itself
+    /// when the tab holds a single pane.
+    private static func paneTreeRootView(from host: NSView) -> NSView {
+        var view: NSView = host
+        while let split = view.superview as? RatioSplitView {
+            view = split
+        }
+        return view
     }
 
     private static func applyPaneRatios(in view: NSView) {

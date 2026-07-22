@@ -338,6 +338,12 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.showPressedKeyToast)
                 )
                 .toggleStyle(.switch)
+
+                Toggle(
+                    localizer[.holdSplitShortcutForOuterSplit],
+                    isOn: applicationBinding(\.outerSplitOnHold)
+                )
+                .toggleStyle(.switch)
             }
 
             Section(localizer[.window]) {
