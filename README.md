@@ -36,6 +36,10 @@ See the [documentation](docs/README.md) for everything else: tutorials, how-to g
 
 ![`mytty-ctl list | jq .` run from inside a Mytty pane](docs/images/mytty-ctl-list.png)
 
+### GIF recording
+
+![A GIF recorded by Mytty itself, with each pressed key shown below the cursor](docs/images/record-a-gif.gif)
+
 ### iOS remote
 
 <p align="center">

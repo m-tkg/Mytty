@@ -36,6 +36,10 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 
 ![Mytty のペイン内で実行した `mytty-ctl list | jq .`](docs/images/mytty-ctl-list.png)
 
+### GIF 録画
+
+![Mytty 自身で録画した GIF。押したキーがカーソルの下に表示されている](docs/images/record-a-gif.gif)
+
 ### iOS リモート
 
 <p align="center">
