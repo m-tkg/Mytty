@@ -829,6 +829,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onKeyPressed: { [weak self] event in
                     self?.windowSessionCoordinator.activeController?
                         .showPressedKey(event)
+                },
+                holdEligible: { [weak self] command in
+                    guard command.splitDirection != nil else { return false }
+                    return self?.settingsModel?.application
+                        .outerSplitOnHold ?? false
+                },
+                onHold: { [weak self] command in
+                    guard let direction = command.splitDirection
+                    else { return }
+                    self?.windowSessionCoordinator.activeController?
+                        .splitFocusedPane(direction, placement: .outer)
                 }
             )
         }

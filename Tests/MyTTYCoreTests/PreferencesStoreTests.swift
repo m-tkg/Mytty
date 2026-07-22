@@ -39,6 +39,36 @@ struct PreferencesStoreTests {
         #expect(try store.load(from: harness.appConfiguration) == preferences)
     }
 
+    @Test("round trips the outer split on hold setting")
+    func outerSplitOnHoldPreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(!preferences.outerSplitOnHold)
+
+        preferences.outerSplitOnHold = true
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("pane.outer-split-on-hold = \"true\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        pane.outer-split-on-hold = "sideways"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("rejects an unrecognized new tab position")
     func invalidNewTabPosition() throws {
         let harness = try Harness()
@@ -314,6 +344,7 @@ struct PreferencesStoreTests {
         #expect(!preferences.attentionUnreadOnly)
         #expect(!preferences.showTabUptime)
         #expect(preferences.paneTeamPointersEnabled)
+        #expect(!preferences.outerSplitOnHold)
         #expect(preferences.inactivePaneDimming == 0.32)
         #expect(preferences.activePaneBorderEnabled)
         #expect(preferences.activePaneBorderWidth == 2)

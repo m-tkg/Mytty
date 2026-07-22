@@ -262,6 +262,8 @@ enum MyTTYText: String {
     case commandPaletteSearchPlaceholder = "Type a command name"
     case commandPaletteNoResults = "No matching commands"
     case showPressedKeysInPane = "Show pressed keys below cursor"
+    case holdSplitShortcutForOuterSplit
+        = "Hold split shortcut to split the whole tab"
     case inlineSuggestions = "Inline Suggestions"
     case acceptSuggestion = "Accept Suggestion"
     case tabKey = "Tab"
@@ -712,6 +714,8 @@ struct MyTTYLocalizer: Equatable {
         case .commandPaletteSearchPlaceholder: "コマンド名を入力"
         case .commandPaletteNoResults: "一致するコマンドがありません"
         case .showPressedKeysInPane: "押したキーをカーソルの下に表示"
+        case .holdSplitShortcutForOuterSplit:
+            "分割ショートカット長押しでタブ全体を分割"
         case .inlineSuggestions: "インライン候補"
         case .acceptSuggestion: "候補を確定"
         case .tabKey: "Tab"

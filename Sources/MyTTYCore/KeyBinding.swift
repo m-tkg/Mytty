@@ -67,6 +67,19 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         }
     }
 
+    /// The pane split direction a split command maps to, `nil` for every
+    /// other command. Lets the shortcut router treat the four split
+    /// commands uniformly when hold-to-outer-split is enabled.
+    public var splitDirection: SplitDirection? {
+        switch self {
+        case .splitLeft: .left
+        case .splitRight: .right
+        case .splitUp: .up
+        case .splitDown: .down
+        default: nil
+        }
+    }
+
     /// `selectTab1`...`selectTab9`, in order, for building the numbered
     /// "Go to Tab" menu items and key binding rows without repeating the
     /// nine cases at each call site.

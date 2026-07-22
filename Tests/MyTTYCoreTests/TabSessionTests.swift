@@ -419,6 +419,71 @@ struct TabSessionTests {
         #expect(tab.createdAt <= after)
     }
 
+    @Test("outer split wraps the whole tab layout, not the focused pane")
+    func splitOuterWrapsRoot() throws {
+        let top = makeSurface(id: 1, path: "/top")
+        let bottom = makeSurface(id: 2, path: "/bottom")
+        var tab = TabSession(id: makeTabID(1), initialSurface: top)
+        try tab.split(surface: top.id, adding: bottom, direction: .down)
+        try tab.focus(surface: top.id)
+
+        let outer = makeSurface(id: 3, path: "/outer")
+        try tab.splitOuter(adding: outer, direction: .right)
+
+        #expect(
+            tab.root == .split(
+                orientation: .horizontal,
+                ratio: 0.5,
+                first: .split(
+                    orientation: .vertical,
+                    ratio: 0.5,
+                    first: .surface(top),
+                    second: .surface(bottom)
+                ),
+                second: .surface(outer)
+            )
+        )
+        #expect(tab.focusedSurfaceID == outer.id)
+    }
+
+    @Test("outer split places left and upper panes before the layout")
+    func splitOuterBeforeRoot() throws {
+        let first = makeSurface(id: 1, path: "/first")
+        let second = makeSurface(id: 2, path: "/second")
+        var tab = TabSession(id: makeTabID(1), initialSurface: first)
+        try tab.split(surface: first.id, adding: second, direction: .right)
+
+        let upper = makeSurface(id: 3, path: "/upper")
+        try tab.splitOuter(adding: upper, direction: .up)
+
+        #expect(
+            tab.root == .split(
+                orientation: .vertical,
+                ratio: 0.5,
+                first: .surface(upper),
+                second: .split(
+                    orientation: .horizontal,
+                    ratio: 0.5,
+                    first: .surface(first),
+                    second: .surface(second)
+                )
+            )
+        )
+        #expect(tab.focusedSurfaceID == upper.id)
+    }
+
+    @Test("outer split rejects duplicate surface identifiers")
+    func splitOuterRejectsDuplicates() throws {
+        let surface = makeSurface(id: 1, path: "/repo")
+        var tab = TabSession(id: makeTabID(1), initialSurface: surface)
+        let before = tab
+
+        #expect(throws: TabSessionError.duplicateSurface(surface.id)) {
+            try tab.splitOuter(adding: surface, direction: .right)
+        }
+        #expect(tab == before)
+    }
+
     private func makeTabID(_ value: UInt8) -> TabID {
         TabID(rawValue: makeUUID(value))
     }
