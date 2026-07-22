@@ -33,12 +33,15 @@ final class BrowserPaneView: NSView, NSTextFieldDelegate, WKNavigationDelegate,
     private var findRequestID = 0
 
     private(set) var isFindPresented = false
+    private let loadFailureMessage: String
 
     init(
         url: URL,
         closeAccessibilityLabel: String = "Close Browser",
-        findLabels: BrowserFindLabels = BrowserFindLabels()
+        findLabels: BrowserFindLabels = BrowserFindLabels(),
+        loadFailureMessage: String = "Failed to load page"
     ) {
+        self.loadFailureMessage = loadFailureMessage
         currentURL = url
         let configuration = WKWebViewConfiguration()
         configuration.applicationNameForUserAgent =
@@ -389,6 +392,50 @@ final class BrowserPaneView: NSView, NSTextFieldDelegate, WKNavigationDelegate,
         withError error: any Error
     ) {
         updateNavigationButtons()
+        showLoadFailure(error)
+    }
+
+    private func showLoadFailure(_ error: any Error) {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorCancelled {
+            return
+        }
+        let html = """
+        <!doctype html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            :root { color-scheme: light dark; }
+            body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                font-family: -apple-system, system-ui, sans-serif;
+                text-align: center;
+            }
+            .message {
+                padding: 0 24px;
+            }
+            .detail {
+                opacity: 0.6;
+                font-size: 0.9em;
+                margin-top: 8px;
+            }
+        </style>
+        </head>
+        <body>
+        <div class="message">
+            <div>\(loadFailureMessage.htmlEscaped)</div>
+            <div class="detail">\(error.localizedDescription.htmlEscaped)</div>
+        </div>
+        </body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     private func updateNavigationButtons() {
@@ -605,6 +652,16 @@ private final class FocusableWebView: WKWebView {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+}
+
+private extension String {
+    var htmlEscaped: String {
+        replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
     }
 }
 

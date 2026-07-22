@@ -225,7 +225,7 @@ public final class GhosttyRuntime {
                 ),
                 as: UTF8.self
             )
-            guard let url = URL(string: urlString) else { return false }
+            guard let url = resolveOpenURL(urlString) else { return false }
             DispatchQueue.main.async {
                 view.receiveOpenURLRequest(url)
             }
@@ -260,6 +260,13 @@ public final class GhosttyRuntime {
         default:
             return false
         }
+    }
+
+    nonisolated private static func resolveOpenURL(_ urlString: String) -> URL? {
+        if urlString.hasPrefix("/") || urlString.hasPrefix("~") {
+            return URL(fileURLWithPath: (urlString as NSString).expandingTildeInPath)
+        }
+        return URL(string: urlString)
     }
 
     nonisolated private static func readClipboard(

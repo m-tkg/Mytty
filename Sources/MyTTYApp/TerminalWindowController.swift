@@ -1799,7 +1799,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         let browser = BrowserPaneView(
             url: state.url,
             closeAccessibilityLabel: localizer[.closeBrowser],
-            findLabels: makeBrowserFindLabels()
+            findLabels: makeBrowserFindLabels(),
+            loadFailureMessage: localizer[.browserLoadFailed]
         )
         bind(browser: browser, to: state.id)
         return browser

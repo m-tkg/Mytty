@@ -16,6 +16,18 @@ enum BrowserAddress {
         }
         return base.appendingPathComponent(expanded)
     }
+
+    static func normalize(_ url: URL) -> URL {
+        guard url.scheme == nil else { return url }
+
+        let original = url.absoluteString
+        let decoded = original.removingPercentEncoding ?? original
+        let expanded = (decoded as NSString).expandingTildeInPath
+        if expanded.hasPrefix("/") {
+            return URL(fileURLWithPath: expanded)
+        }
+        return url
+    }
 }
 
 enum BrowserLoadPlan: Equatable {
@@ -23,6 +35,7 @@ enum BrowserLoadPlan: Equatable {
     case request(URLRequest)
 
     init(url: URL) {
+        let url = BrowserAddress.normalize(url)
         if url.isFileURL {
             self = .file(
                 url,
