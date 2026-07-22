@@ -94,35 +94,38 @@ final class SettingsModel: ObservableObject {
     /// files and published values untouched.
     @discardableResult
     func importSettings(from source: ApplicationPaths) -> Bool {
-        do {
-            let previousFiles = [
-                paths.appConfiguration,
-                paths.terminalConfiguration,
-                paths.agentConfiguration,
-            ].map { url in
-                (url, try? Data(contentsOf: url))
+        let previousFiles = [
+            paths.appConfiguration,
+            paths.terminalConfiguration,
+            paths.agentConfiguration,
+        ].map { url in
+            (url, try? Data(contentsOf: url))
+        }
+        // Restores every settings file, including after a copy that
+        // failed partway through and left only some files overwritten.
+        func restorePreviousFiles() {
+            for (url, data) in previousFiles {
+                if let data {
+                    try? data.write(to: url, options: .atomic)
+                } else {
+                    try? FileManager.default.removeItem(at: url)
+                }
             }
+        }
+        do {
             _ = try ReleaseSettingsImporter().importSettings(
                 from: source,
                 to: paths
             )
-            do {
-                let importedApplication = try applicationStore.load(
-                    from: paths.appConfiguration
-                )
-                let importedTerminal = try terminalStore.load(
-                    from: paths.terminalConfiguration
-                )
-                try onTerminalConfigurationChanged(importedTerminal)
-                application = importedApplication
-                terminal = importedTerminal
-            } catch {
-                for (url, data) in previousFiles {
-                    guard let data else { continue }
-                    try? data.write(to: url, options: .atomic)
-                }
-                throw error
-            }
+            let importedApplication = try applicationStore.load(
+                from: paths.appConfiguration
+            )
+            let importedTerminal = try terminalStore.load(
+                from: paths.terminalConfiguration
+            )
+            try onTerminalConfigurationChanged(importedTerminal)
+            application = importedApplication
+            terminal = importedTerminal
             errorText = nil
             onApplicationPreferencesChanged(application)
             return true
@@ -130,6 +133,7 @@ final class SettingsModel: ObservableObject {
             errorText = .releaseSettingsNotFound
             return false
         } catch {
+            restorePreviousFiles()
             errorText = .unableToImportReleaseSettings
             return false
         }

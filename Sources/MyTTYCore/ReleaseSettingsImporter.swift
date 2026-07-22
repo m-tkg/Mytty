@@ -40,6 +40,7 @@ public struct ReleaseSettingsImporter {
 
         // Validate before touching the destination so a malformed release
         // configuration never destroys the development settings.
+        // agents.toml has no parser of its own, so it is copied as-is.
         do {
             if fileManager.fileExists(atPath: source.appConfiguration.path) {
                 _ = try ApplicationPreferencesStore(fileManager: fileManager)
