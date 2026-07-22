@@ -71,6 +71,28 @@ final class RemoteAccessCoordinator {
         guard let uuid = UUID(uuidString: paneID) else { return nil }
         return TerminalSurfaceID(rawValue: uuid)
     }
+
+    /// Built fresh per call rather than stored: `paneInputScheduler` is
+    /// assigned onto `windowSessionCoordinator` after this coordinator is
+    /// constructed (see `AppDelegate`), so capturing it once at init would
+    /// permanently see `nil`.
+    private var paneScheduleService: RemotePaneScheduleService {
+        RemotePaneScheduleService(
+            scheduler: windowSessionCoordinator.paneInputScheduler,
+            paneExists: { [weak self] surfaceID in
+                guard let self else { return false }
+                return self.windowSessionCoordinator.controllers.contains {
+                    $0.remotePaneContent(forPane: surfaceID) != nil
+                }
+            },
+            onError: { error in
+                WindowSessionCoordinator.reportPersistenceError(
+                    error,
+                    operation: "remote scheduled input"
+                )
+            }
+        )
+    }
 }
 
 extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
@@ -210,5 +232,28 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         let id = WindowID(rawValue: uuid)
         windowSessionCoordinator.controllers
             .first { $0.session.id == id }?.newTab()
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        schedulesForPaneID paneID: String
+    ) -> [RemotePaneSchedule] {
+        paneScheduleService.schedules(forPaneID: paneID)
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        createSchedule schedule: RemotePaneSchedule,
+        forPaneID paneID: String
+    ) {
+        paneScheduleService.create(schedule, forPaneID: paneID)
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        deleteScheduleID scheduleID: String,
+        forPaneID paneID: String
+    ) {
+        paneScheduleService.delete(scheduleID: scheduleID, forPaneID: paneID)
     }
 }

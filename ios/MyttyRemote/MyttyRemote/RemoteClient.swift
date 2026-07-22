@@ -37,8 +37,14 @@ final class RemoteClient: ObservableObject {
     @Published private(set) var state: ConnectionState = .disconnected
     @Published private(set) var snapshot: RemoteSessionSnapshot?
     @Published private(set) var paneContent: [String: PaneScreen] = [:]
+    @Published private(set) var paneSchedules: [String: [RemotePaneSchedule]] = [:]
 
     var isConnected: Bool { state == .connected }
+
+    /// True once the connected Mac has confirmed it understands the
+    /// pane-schedule messages; older servers close the connection on an
+    /// unknown message type, so callers must gate on this before sending.
+    var supportsPaneSchedules: Bool { serverProtocolVersion >= 4 }
 
     private var transport: RemoteConnectionTransport?
     private var sessionKey: SymmetricKey?
@@ -257,6 +263,7 @@ final class RemoteClient: ObservableObject {
         if state != .disconnected { state = .disconnected }
         snapshot = nil
         paneContent = [:]
+        paneSchedules = [:]
     }
 
     func watchPane(_ paneID: String) {
@@ -283,6 +290,43 @@ final class RemoteClient: ObservableObject {
 
     func newTab(windowID: String) {
         send(.newTab(windowID: windowID))
+    }
+
+    func requestPaneSchedules(paneID: String) {
+        guard state == .connected, supportsPaneSchedules else { return }
+        send(.listPaneSchedules(paneID: paneID))
+    }
+
+    /// Sends a client-generated schedule and returns its ID so the caller
+    /// can recognize it in a later `paneSchedules` reply (or notice its
+    /// absence — the Mac silently drops an unknown pane or a past date
+    /// rather than replying with an error).
+    @discardableResult
+    func createPaneSchedule(
+        paneID: String,
+        fireAt: Date,
+        text: String,
+        pressEnter: Bool
+    ) -> String {
+        let id = UUID().uuidString
+        guard state == .connected, supportsPaneSchedules else { return id }
+        send(
+            .createPaneSchedule(
+                paneID: paneID,
+                schedule: RemotePaneSchedule(
+                    id: id,
+                    fireAt: fireAt,
+                    text: text,
+                    pressEnter: pressEnter
+                )
+            )
+        )
+        return id
+    }
+
+    func deletePaneSchedule(paneID: String, scheduleID: String) {
+        guard state == .connected, supportsPaneSchedules else { return }
+        send(.deletePaneSchedule(paneID: paneID, scheduleID: scheduleID))
     }
 
     private func sendHello(deviceID: String, key: SymmetricKey) {
@@ -322,6 +366,8 @@ final class RemoteClient: ObservableObject {
                 styledLines: styledLines ?? [],
                 altScreen: altScreen ?? false
             )
+        case let .paneSchedules(paneID, schedules):
+            paneSchedules[paneID] = schedules
         default:
             break
         }

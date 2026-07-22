@@ -225,6 +225,70 @@ struct RemoteMessageTests {
     }
 
     @Test
+    func encodesAndDecodesListPaneSchedules() throws {
+        let message = RemoteMessage.listPaneSchedules(paneID: "pane-1")
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
+    func encodesAndDecodesPaneSchedulesWithEmptyList() throws {
+        let message = RemoteMessage.paneSchedules(
+            paneID: "pane-1",
+            schedules: []
+        )
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
+    func encodesAndDecodesPaneSchedulesWithNonIntegerDate() throws {
+        let message = RemoteMessage.paneSchedules(
+            paneID: "pane-1",
+            schedules: [
+                RemotePaneSchedule(
+                    id: UUID().uuidString,
+                    fireAt: Date(timeIntervalSince1970: 1_700_000_000.5),
+                    text: "echo hi",
+                    pressEnter: true
+                ),
+            ]
+        )
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
+    func encodesAndDecodesCreatePaneSchedule() throws {
+        let message = RemoteMessage.createPaneSchedule(
+            paneID: "pane-1",
+            schedule: RemotePaneSchedule(
+                id: UUID().uuidString,
+                fireAt: Date(timeIntervalSince1970: 1_700_000_100),
+                text: "ls -la",
+                pressEnter: false
+            )
+        )
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
+    func encodesAndDecodesDeletePaneSchedule() throws {
+        let message = RemoteMessage.deletePaneSchedule(
+            paneID: "pane-1",
+            scheduleID: UUID().uuidString
+        )
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
     func decodingUnknownTypeThrows() {
         let json = Data(#"{"type":"unknown"}"#.utf8)
         #expect(throws: (any Error).self) {
