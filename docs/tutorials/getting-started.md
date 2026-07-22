@@ -12,7 +12,7 @@ If you want to build it from source instead, see [Build the macOS app from sourc
 
 Double-click the Mytty app to launch it.
 
-Command-Shift-P opens the command palette, from which you can run a wide range of commands. You can also work through keyboard shortcuts or the menu bar.
+Command-Shift-P opens the command palette, from which you can run a wide range of commands. You can also use keyboard shortcuts or the menu bar.
 
 ## Windows, tabs, and panes
 

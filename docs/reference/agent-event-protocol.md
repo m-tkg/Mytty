@@ -4,7 +4,7 @@ The wire protocol coding-agent hooks use to report run state to Mytty. Transport
 
 ## Environment variables
 
-Each mytty terminal surface receives three environment variables:
+Each Mytty terminal surface receives three environment variables:
 
 ```text
 MYTTY_EVENT_SOCKET
@@ -103,7 +103,7 @@ Acknowledged or otherwise resolved items remain visible in the drawer for 24 hou
 | `{"ok": false, "error": "request-too-large"}` | Envelope exceeded the 64 KiB limit |
 | `{"ok": false, "error": "unauthorized"}` | `capability` did not match this surface's `MYTTY_EVENT_CAPABILITY` |
 | `{"ok": false, "error": "invalid-request"}` | Envelope could not be decoded as the expected JSON shape |
-| `{"ok": false, "error": "internal-error"}` | Event storage failed on mytty's side |
+| `{"ok": false, "error": "internal-error"}` | Event storage failed on Mytty's side |
 
 ## See also
 
