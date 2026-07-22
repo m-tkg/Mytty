@@ -25,6 +25,14 @@ struct RepositoryStatusCoordinatorTests {
         GitHubRepositoryLoader(runner: runner)
     }
 
+    /// Same fingerprint for every directory, so these characterization
+    /// tests exercise only the pre-existing directory-changed/force/
+    /// in-flight gating, unaffected by `GitRepositoryFingerprint`
+    /// (covered separately below and in `GitRepositoryFingerprintTests`).
+    private func neutralFingerprint(_ directory: URL) -> GitRepositoryFingerprint {
+        .repository(head: .absent, config: .absent)
+    }
+
     @MainActor
     private func settle(until condition: () async -> Bool) async {
         for _ in 0..<200 {
@@ -46,6 +54,7 @@ struct RepositoryStatusCoordinatorTests {
         var changeCount = 0
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { self.directoryA },
             onStatusChanged: { changeCount += 1 }
         )
@@ -68,6 +77,7 @@ struct RepositoryStatusCoordinatorTests {
         var changeCount = 0
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { nil },
             onStatusChanged: { changeCount += 1 }
         )
@@ -86,6 +96,7 @@ struct RepositoryStatusCoordinatorTests {
         await runner.setStatus(directoryA, branch: "main")
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { self.directoryA },
             onStatusChanged: {}
         )
@@ -106,6 +117,7 @@ struct RepositoryStatusCoordinatorTests {
         await runner.hold(directoryA)
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { self.directoryA },
             onStatusChanged: {}
         )
@@ -131,6 +143,7 @@ struct RepositoryStatusCoordinatorTests {
         await runner.setStatus(directoryA, branch: "main")
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { self.directoryA },
             onStatusChanged: {}
         )
@@ -154,6 +167,7 @@ struct RepositoryStatusCoordinatorTests {
         var changeCount = 0
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { focused },
             onStatusChanged: { changeCount += 1 }
         )
@@ -191,6 +205,7 @@ struct RepositoryStatusCoordinatorTests {
         var changeCount = 0
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
+            fingerprint: neutralFingerprint,
             focusedDirectory: { focused },
             onStatusChanged: { changeCount += 1 }
         )
@@ -207,6 +222,107 @@ struct RepositoryStatusCoordinatorTests {
         // One fire when A's load starts (clearing stale display), one
         // when losing focus clears the request.
         #expect(changeCount == 2)
+    }
+
+    @Test("repeated ticks with an unchanged fingerprint do not re-invoke git")
+    @MainActor
+    func unchangedFingerprintSkipsReload() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: { _ in
+                .repository(head: .present(mtime: .distantPast, size: 1), config: .absent)
+            },
+            focusedDirectory: { self.directoryA },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { coordinator.status(for: self.directoryA) != nil }
+        // Mirrors what `timerDidFire` does every 2s: repeated non-force
+        // calls for the same, unchanged directory.
+        coordinator.refreshIfNeeded()
+        coordinator.refreshIfNeeded()
+        coordinator.refreshIfNeeded()
+        await pause()
+
+        #expect(await runner.callCount(for: directoryA) == 1)
+    }
+
+    @Test("a HEAD rewrite triggers exactly one reload")
+    @MainActor
+    func headRewriteTriggersOneReload() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        var head = GitRepositoryFingerprint.FileState.present(mtime: .distantPast, size: 1)
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: { _ in .repository(head: head, config: .absent) },
+            focusedDirectory: { self.directoryA },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { coordinator.status(for: self.directoryA) != nil }
+
+        // A commit or branch switch changes HEAD's mtime/size.
+        head = .present(mtime: Date(), size: 2)
+        coordinator.refreshIfNeeded()
+        await settle { await runner.callCount(for: self.directoryA) == 2 }
+        coordinator.refreshIfNeeded()
+        coordinator.refreshIfNeeded()
+        await pause()
+
+        #expect(await runner.callCount(for: directoryA) == 2)
+    }
+
+    @Test("a directory with no .git never spawns git")
+    @MainActor
+    func nonRepositorySkipsGit() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        var changeCount = 0
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: { _ in .notARepository },
+            focusedDirectory: { self.directoryA },
+            onStatusChanged: { changeCount += 1 }
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        coordinator.refreshIfNeeded()
+        coordinator.refreshIfNeeded()
+        await pause()
+
+        #expect(coordinator.status(for: directoryA) == nil)
+        #expect(await runner.callCount(for: directoryA) == 0)
+        #expect(changeCount == 0)
+    }
+
+    @Test("clears status without spawning git once a loaded directory stops being a repository")
+    @MainActor
+    func losingRepositoryClearsStatusWithoutSpawningGit() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        var fingerprint: GitRepositoryFingerprint = .repository(head: .absent, config: .absent)
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: { _ in fingerprint },
+            focusedDirectory: { self.directoryA },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { coordinator.status(for: self.directoryA) != nil }
+        let callsBeforeLosingRepo = await runner.callCount(for: directoryA)
+
+        fingerprint = .notARepository
+        coordinator.refreshIfNeeded()
+        await pause()
+
+        #expect(coordinator.status(for: directoryA) == nil)
+        #expect(await runner.callCount(for: directoryA) == callsBeforeLosingRepo)
     }
 }
 
