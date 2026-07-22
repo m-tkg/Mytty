@@ -2,19 +2,19 @@ import AppKit
 import MyTTYCore
 import SwiftUI
 
+/// Styling for the command line tool "installed" indicator, sourced from the
+/// same mapping as the other installed-state badges so they can't drift apart.
+enum CommandLineToolStatusStyle {
+    static let installedSymbolName = AgentIntegrationStatus.installed.symbolName
+    static let installedTint = AgentIntegrationStatus.installed.color
+}
+
 /// Settings > Orchestration. Gathers everything related to letting an
 /// agent running in a Mytty pane drive `mytty-ctl` to run other agents in
 /// other panes as a team: the CLI symlink (moved here from General), the
 /// "teach agents about Mytty orchestration" toggle (moved here from Agents), a
 /// preview of exactly what that toggle writes, and worked examples of how
 /// to actually ask an agent to do this.
-/// Styling for the command line tool "installed" indicator, kept in sync with
-/// the other installed-state badges (e.g. `AgentIntegrationStatus.installed`).
-enum CommandLineToolStatusStyle {
-    static let installedSymbolName = "checkmark.circle.fill"
-    static let installedTint: Color = .green
-}
-
 struct OrchestrationSettingsView: View {
     @ObservedObject var model: AgentIntegrationSettingsModel
     @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
