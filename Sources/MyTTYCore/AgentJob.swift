@@ -44,6 +44,13 @@ public enum AgentWorkerProvider: String, Codable, Equatable, Sendable {
 public enum AgentAccessPolicy: String, Codable, Equatable, Sendable {
     case review
     case workspaceWrite = "workspace-write"
+    /// Copy the lead's own mode flags onto the worker instead of using a
+    /// fixed access-derived flag set — only valid when the worker is the
+    /// same provider as the pane spawning it. `AgentJobCoordinator`
+    /// resolves this to `.workspaceWrite` (with no inherited flags) before
+    /// it ever reaches `AgentLaunchPlan` if the lead is running in its
+    /// default mode; see `AgentModeInheritance`.
+    case inherit
 }
 
 public enum AgentJobState: String, Codable, Equatable, Sendable {

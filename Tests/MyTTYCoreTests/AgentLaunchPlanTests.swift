@@ -194,4 +194,165 @@ struct AgentLaunchPlanTests {
         ))
         #expect(!AgentLaunchPlan.workerContract.lowercased().contains("override"))
     }
+
+    @Test("inherited mode flags replace the access-derived flags for every provider")
+    func inheritedFlagsReplaceAccessFlags() {
+        let cases: [(AgentWorkerProvider, [String], String)] = [
+            (
+                .claude,
+                ["--permission-mode", "acceptEdits"],
+                "command claude '--permission-mode' 'acceptEdits' -- "
+            ),
+            (
+                .claude,
+                ["--dangerously-skip-permissions"],
+                "command claude '--dangerously-skip-permissions' -- "
+            ),
+            (
+                .codex,
+                ["-s", "workspace-write", "-a", "never"],
+                "command codex '-s' 'workspace-write' '-a' 'never' -- "
+            ),
+            (
+                .cursor,
+                ["--force", "--sandbox", "enabled"],
+                "command cursor-agent '--force' '--sandbox' 'enabled' -- "
+            ),
+        ]
+
+        for (provider, inherited, expectedPrefix) in cases {
+            let input = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: .inherit,
+                model: nil,
+                inheritedModeArguments: inherited,
+                task: "do the thing"
+            )
+            #expect(input.hasPrefix(expectedPrefix))
+        }
+    }
+
+    @Test("codex appends -a never only when no inherited flag already governs approvals")
+    func codexApprovalGuardOnlyWhenMissing() {
+        let approvalGoverning: [[String]] = [
+            ["-a", "on-failure"],
+            ["--ask-for-approval", "on-failure"],
+            ["--full-auto"],
+            ["--yolo"],
+            ["--dangerously-bypass-approvals-and-sandbox"],
+        ]
+        for flags in approvalGoverning {
+            let input = AgentLaunchPlan.initialInput(
+                provider: .codex,
+                access: .inherit,
+                model: nil,
+                inheritedModeArguments: flags,
+                task: "task"
+            )
+            #expect(!input.contains("-a never"))
+        }
+
+        let sandboxOnly = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .inherit,
+            model: nil,
+            inheritedModeArguments: ["-s", "workspace-write"],
+            task: "task"
+        )
+        #expect(sandboxOnly.hasPrefix(
+            "command codex '-s' 'workspace-write' -a never -- "
+        ))
+    }
+
+    @Test("each inherited token is quoted individually")
+    func inheritedTokensAreQuotedIndividually() {
+        let input = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .inherit,
+            model: nil,
+            inheritedModeArguments: ["--permission-mode", "weird'mode"],
+            task: "task"
+        )
+        #expect(input.contains(
+            "'--permission-mode' 'weird'\\''mode' -- "
+        ))
+    }
+
+    @Test("model flag still precedes inherited flags")
+    func modelFlagPrecedesInheritedFlags() {
+        let input = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .inherit,
+            model: "sonnet",
+            inheritedModeArguments: ["--permission-mode", "acceptEdits"],
+            task: "task"
+        )
+        #expect(input.hasPrefix(
+            "command claude --model 'sonnet' '--permission-mode' 'acceptEdits' -- "
+        ))
+    }
+
+    @Test("nil inherited flags keep the existing command byte-for-byte")
+    func nilInheritedFlagsKeepCommandUnchanged() {
+        let withNilInherited = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .workspaceWrite,
+            model: nil,
+            inheritedModeArguments: nil,
+            task: "task"
+        )
+        let withoutParameter = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .workspaceWrite,
+            model: nil,
+            task: "task"
+        )
+        #expect(withNilInherited == withoutParameter)
+    }
+
+    @Test("empty inherited flags keep the existing command byte-for-byte")
+    func emptyInheritedFlagsKeepCommandUnchanged() {
+        let withEmptyInherited = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .review,
+            model: nil,
+            inheritedModeArguments: [],
+            task: "task"
+        )
+        let withoutParameter = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .review,
+            model: nil,
+            task: "task"
+        )
+        #expect(withEmptyInherited == withoutParameter)
+    }
+
+    @Test(".inherit with no inherited flags falls back to the workspace-write flag set")
+    func inheritWithNilInheritedFallsBackToWorkspaceWrite() {
+        let cases: [(AgentWorkerProvider, String)] = [
+            (.codex, "command codex -s workspace-write -a never -- "),
+            (.claude, "command claude --permission-mode acceptEdits -- "),
+            (.cursor, "command cursor-agent --force --sandbox enabled -- "),
+        ]
+        for (provider, expectedPrefix) in cases {
+            let withNilInherited = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: .inherit,
+                model: nil,
+                inheritedModeArguments: nil,
+                task: "do the thing"
+            )
+            #expect(withNilInherited.hasPrefix(expectedPrefix))
+
+            let withEmptyInherited = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: .inherit,
+                model: nil,
+                inheritedModeArguments: [],
+                task: "do the thing"
+            )
+            #expect(withEmptyInherited.hasPrefix(expectedPrefix))
+        }
+    }
 }

@@ -79,6 +79,39 @@ final class AgentJobCoordinator {
                     && !CharacterSet.whitespacesAndNewlines.contains($0)
             }
     }
+
+    /// `--access inherit` support: reads the anchor pane's own foreground
+    /// process (the lead agent that's asking to spawn a worker) and, if
+    /// it's the same provider as the requested worker, extracts its mode
+    /// flags to carry onto the worker. Returns `.success(nil-or-flags)` on
+    /// a resolvable lead, `.failure("inherit-unavailable")` when the
+    /// anchor pane's foreground process can't be read at all or is a
+    /// different provider than `requestedProvider` -- inheriting another
+    /// provider's flags onto this worker would be meaningless (they don't
+    /// share a flag vocabulary) and silently ignoring the mismatch would
+    /// launch the worker in a mode the caller never asked for.
+    private func resolveInheritedMode(
+        controller: TerminalWindowController,
+        anchorSurfaceID: TerminalSurfaceID,
+        requestedProvider: AgentWorkerProvider
+    ) -> Result<[String]?, AgentControlFailure> {
+        guard let invocation = controller.foregroundProcessInvocation(
+            forPane: anchorSurfaceID
+        ) else {
+            return .failure(AgentControlFailure("inherit-unavailable"))
+        }
+        guard let leadProvider = TerminalAgentProcessDetector.provider(
+            executablePath: invocation.executablePath,
+            arguments: invocation.arguments
+        ), leadProvider == requestedProvider.agentProvider else {
+            return .failure(AgentControlFailure("inherit-unavailable"))
+        }
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: requestedProvider,
+            leadArguments: invocation.arguments
+        )
+        return .success(arguments)
+    }
 }
 
 extension AgentJobCoordinator: ControlServerAgentDelegate {
@@ -139,12 +172,36 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             ) ?? controller.currentWorkingDirectory
         }
 
+        var resolvedAccess = access
+        var inheritedModeArguments: [String]?
+        if access == .inherit {
+            switch resolveInheritedMode(
+                controller: controller,
+                anchorSurfaceID: anchorSurfaceID,
+                requestedProvider: provider
+            ) {
+            case let .failure(failure):
+                return .failure(failure)
+            case let .success(arguments):
+                if let arguments, !arguments.isEmpty {
+                    inheritedModeArguments = arguments
+                } else {
+                    // The lead is running in its default mode -- nothing
+                    // to inherit, so fall back to the normal
+                    // access-derived flags exactly as if `--access
+                    // workspace-write` had been requested.
+                    resolvedAccess = .workspaceWrite
+                }
+            }
+        }
+
         let splitDirection = SplitDirection(rawValue: direction.rawValue)
             ?? .right
         let initialInput = AgentLaunchPlan.initialInput(
             provider: provider,
-            access: access,
+            access: resolvedAccess,
             model: model,
+            inheritedModeArguments: inheritedModeArguments,
             task: task
         )
 

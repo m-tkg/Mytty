@@ -307,6 +307,29 @@ struct ControlCommandLineParserTests {
         ))
     }
 
+    @Test("agent spawn accepts --access inherit")
+    func agentSpawnAccessInherit() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "claude",
+                "--access", "inherit",
+                "--task", "pair on the fix",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        #expect(request == .spawnAgent(
+            anchorPaneID: "anchor-1",
+            direction: .right,
+            provider: .claude,
+            cwd: nil,
+            access: .inherit,
+            model: nil,
+            task: "pair on the fix",
+            label: nil
+        ))
+    }
+
     @Test("agent spawn --model is optional and defaults to nil")
     func agentSpawnModelDefaultsToNil() throws {
         let request = try ControlCommandLineParser.parse(
