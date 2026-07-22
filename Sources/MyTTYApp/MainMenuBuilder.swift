@@ -62,37 +62,45 @@ enum MainMenuBuilder {
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
 
-        // The Edit menu currently only hosts the on-device one-liner
-        // composer, which needs Foundation Models (macOS 26+) — omit the
-        // whole menu on older systems.
+        // The one-liner composer needs Foundation Models (macOS 26+); the
+        // Edit menu itself and the input composer are available on every
+        // supported system, so only that item is gated below.
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: localizer[.edit])
+        // Standard first-responder edit items. Nil targets keep them
+        // enabled only where the focused view implements the action
+        // (e.g. the composer panels' text fields), so Cmd+C/V still reach
+        // the terminal surface unchanged when it is focused.
+        editMenu.addItem(
+            withTitle: localizer[.cut],
+            action: #selector(NSText.cut(_:)),
+            keyEquivalent: "x"
+        )
+        editMenu.addItem(
+            withTitle: localizer[.copy],
+            action: #selector(NSText.copy(_:)),
+            keyEquivalent: "c"
+        )
+        editMenu.addItem(
+            withTitle: localizer[.paste],
+            action: #selector(NSText.paste(_:)),
+            keyEquivalent: "v"
+        )
+        editMenu.addItem(
+            withTitle: localizer[.selectAll],
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a"
+        )
+        editMenu.addItem(.separator())
+        addCommandItem(
+            to: editMenu,
+            title: localizer.commandTitle(.composeInput),
+            action: #selector(AppDelegate.composeInput(_:)),
+            command: .composeInput,
+            keyBindings: keyBindings,
+            target: target
+        )
         if #available(macOS 26, *) {
-            let editItem = NSMenuItem()
-            let editMenu = NSMenu(title: localizer[.edit])
-            // Standard first-responder edit items. Nil targets keep them
-            // enabled only where the focused view implements the action
-            // (e.g. the one-liner panel's fields), so Cmd+C/V still reach
-            // the terminal surface unchanged when it is focused.
-            editMenu.addItem(
-                withTitle: localizer[.cut],
-                action: #selector(NSText.cut(_:)),
-                keyEquivalent: "x"
-            )
-            editMenu.addItem(
-                withTitle: localizer[.copy],
-                action: #selector(NSText.copy(_:)),
-                keyEquivalent: "c"
-            )
-            editMenu.addItem(
-                withTitle: localizer[.paste],
-                action: #selector(NSText.paste(_:)),
-                keyEquivalent: "v"
-            )
-            editMenu.addItem(
-                withTitle: localizer[.selectAll],
-                action: #selector(NSText.selectAll(_:)),
-                keyEquivalent: "a"
-            )
-            editMenu.addItem(.separator())
             addCommandItem(
                 to: editMenu,
                 title: localizer.commandTitle(.composeOneLiner),
@@ -101,9 +109,9 @@ enum MainMenuBuilder {
                 keyBindings: keyBindings,
                 target: target
             )
-            editItem.submenu = editMenu
-            mainMenu.addItem(editItem)
         }
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
 
         let windowItem = NSMenuItem()
         let windowMenu = NSMenu(title: localizer[.window])
