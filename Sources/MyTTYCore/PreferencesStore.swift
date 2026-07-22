@@ -106,6 +106,12 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var activePaneBorderWidth: Double
     /// `RRGGBB`, or empty to follow the system accent color.
     public var activePaneBorderColorHex: String
+    /// Whether GIF recordings end with extra frames fading to
+    /// `recordingFadeOutColorHex`, marking where the loop restarts.
+    public var recordingFadeOutEnabled: Bool
+    public var recordingFadeOutDuration: Double
+    /// `RRGGBB`; never empty.
+    public var recordingFadeOutColorHex: String
 
     public init(
         tabPlacement: MyTTYTabPlacement = .left,
@@ -132,7 +138,10 @@ public struct ApplicationPreferences: Equatable, Sendable {
         outerSplitOnHold: Bool = false,
         activePaneBorderEnabled: Bool = true,
         activePaneBorderWidth: Double = 2,
-        activePaneBorderColorHex: String = ""
+        activePaneBorderColorHex: String = "",
+        recordingFadeOutEnabled: Bool = true,
+        recordingFadeOutDuration: Double = 0.5,
+        recordingFadeOutColorHex: String = "000000"
     ) {
         self.tabPlacement = tabPlacement
         self.newTabPosition = newTabPosition
@@ -158,6 +167,28 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.activePaneBorderEnabled = activePaneBorderEnabled
         self.activePaneBorderWidth = activePaneBorderWidth
         self.activePaneBorderColorHex = activePaneBorderColorHex
+        self.recordingFadeOutEnabled = recordingFadeOutEnabled
+        self.recordingFadeOutDuration = recordingFadeOutDuration
+        self.recordingFadeOutColorHex = recordingFadeOutColorHex
+    }
+}
+
+/// Validation shared by the preferences store's load and save paths for the
+/// GIF-recording fade-out, so a value rejected on read is also rejected on
+/// write.
+public enum RecordingFadeOut {
+    public static let durationRange: ClosedRange<Double> = 0.1...5
+
+    public static func isValidDuration(_ duration: Double) -> Bool {
+        duration.isFinite && durationRange.contains(duration)
+    }
+
+    /// Normalizes `RRGGBB` to upper case. Unlike the active-pane border
+    /// there is no "follow the accent color" mode, so an empty string is
+    /// rejected too. Returns nil for anything invalid.
+    public static func normalizedColorHex(_ hex: String) -> String? {
+        guard hex.count == 6, hex.allSatisfy(\.isHexDigit) else { return nil }
+        return hex.uppercased()
     }
 }
 
@@ -261,6 +292,9 @@ public struct ApplicationPreferencesStore {
             "pane.active-border",
             "pane.active-border-width",
             "pane.active-border-color",
+            "recording.fade-out",
+            "recording.fade-out-duration",
+            "recording.fade-out-color",
             "keybinding.toggle-attention",
         ] + MyTTYCommand.allCases.map {
             keyBindingKey(for: $0)
@@ -456,6 +490,29 @@ public struct ApplicationPreferencesStore {
             }
             preferences.activePaneBorderColorHex = hex
         }
+        if let value = document.lastValue(for: "recording.fade-out") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "recording.fade-out", value: value)
+            }
+            preferences.recordingFadeOutEnabled = enabled
+        }
+        if let value = document.lastValue(for: "recording.fade-out-duration") {
+            guard let duration = Double(value),
+                  RecordingFadeOut.isValidDuration(duration)
+            else {
+                throw invalid(
+                    key: "recording.fade-out-duration",
+                    value: value
+                )
+            }
+            preferences.recordingFadeOutDuration = duration
+        }
+        if let value = document.lastValue(for: "recording.fade-out-color") {
+            guard let hex = RecordingFadeOut.normalizedColorHex(value) else {
+                throw invalid(key: "recording.fade-out-color", value: value)
+            }
+            preferences.recordingFadeOutColorHex = hex
+        }
 
         for command in MyTTYCommand.allCases {
             let key = Self.keyBindingKey(for: command)
@@ -501,6 +558,22 @@ public struct ApplicationPreferencesStore {
                 value: preferences.activePaneBorderColorHex
             )
         }
+        guard RecordingFadeOut.isValidDuration(
+            preferences.recordingFadeOutDuration
+        ) else {
+            throw invalid(
+                key: "recording.fade-out-duration",
+                value: String(preferences.recordingFadeOutDuration)
+            )
+        }
+        guard let fadeOutColorHex = RecordingFadeOut.normalizedColorHex(
+            preferences.recordingFadeOutColorHex
+        ) else {
+            throw invalid(
+                key: "recording.fade-out-color",
+                value: preferences.recordingFadeOutColorHex
+            )
+        }
         let document = try ConfigurationDocument(
             url: url,
             fileManager: fileManager
@@ -529,6 +602,9 @@ public struct ApplicationPreferencesStore {
             "pane.active-border = \(quoted(String(preferences.activePaneBorderEnabled)))",
             "pane.active-border-width = \(quoted(decimal(preferences.activePaneBorderWidth)))",
             "pane.active-border-color = \(quoted(borderColorHex))",
+            "recording.fade-out = \(quoted(String(preferences.recordingFadeOutEnabled)))",
+            "recording.fade-out-duration = \(quoted(decimal(preferences.recordingFadeOutDuration)))",
+            "recording.fade-out-color = \(quoted(fadeOutColorHex))",
         ]
         managed.append(contentsOf: MyTTYCommand.allCases.map { command in
             let value = preferences.keyBindings[command]?.serialized ?? "none"
