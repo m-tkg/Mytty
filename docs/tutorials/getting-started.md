@@ -26,6 +26,8 @@ The area where a terminal is shown is called a pane. A window can hold multiple 
 
 A tab's panes can be split further, in any of the four directions.
 
+Splits normally divide the active pane. If you turn on **Hold split shortcut to split the whole tab** in Settings, holding a split shortcut instead adds the new pane along the tab's outer edge — for example, a full-height pane to the right of a tab that is already split top and bottom. A quick tap still splits the active pane.
+
 Moving and swapping panes can also be done with keyboard shortcuts. Check Settings to see what's available and try a few out.
 
 ![Two tabs in the sidebar, with a pane split left and right](../images/panes.png)

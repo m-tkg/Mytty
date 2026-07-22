@@ -93,6 +93,25 @@ struct ShortcutHoldRecognizerTests {
         #expect(recognizer.keyUp() == [])
     }
 
+    @Test("cancel abandons the press without tap or hold")
+    func cancelAbandonsPress() {
+        var recognizer = ShortcutHoldRecognizer<Command>()
+
+        _ = recognizer.keyDown(.splitRight, isRepeat: false)
+        recognizer.cancel()
+        #expect(!recognizer.isTracking)
+
+        // Neither the stale timer nor a late key-up may resolve the
+        // abandoned press.
+        #expect(recognizer.timerFired(generation: 1) == [])
+        #expect(recognizer.keyUp() == [])
+
+        // A fresh press afterwards behaves normally.
+        let pressed = recognizer.keyDown(.splitRight, isRepeat: false)
+        #expect(pressed == [.scheduleTimer(generation: 2)])
+        #expect(recognizer.keyUp() == [.performTap(.splitRight)])
+    }
+
     @Test("ignores stray events while idle")
     func ignoresStrayEventsWhileIdle() {
         var recognizer = ShortcutHoldRecognizer<Command>()

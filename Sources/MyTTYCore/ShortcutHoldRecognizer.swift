@@ -80,6 +80,13 @@ public struct ShortcutHoldRecognizer<Command: Hashable & Sendable>: Sendable {
         return [.performTap(held)]
     }
 
+    /// Abandons the tracked press without performing anything, e.g. when
+    /// the app resigns active and the matching key-up will never arrive.
+    /// Any scheduled timer becomes a no-op.
+    public mutating func cancel() {
+        state = .idle
+    }
+
     /// The timer scheduled by `.scheduleTimer` elapsed. Stale generations
     /// are ignored.
     public mutating func timerFired(generation: Int) -> [Action] {

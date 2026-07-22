@@ -12,6 +12,7 @@ final class ApplicationShortcutRouter {
     private var holdRecognizer = ShortcutHoldRecognizer<MyTTYCommand>()
     private var heldKeyCode: UInt16?
     private var eventMonitor: Any?
+    private var resignActiveObserver: (any NSObjectProtocol)?
 
     init(
         bindings: [MyTTYCommand: MyTTYKeyBinding],
@@ -50,6 +51,20 @@ final class ApplicationShortcutRouter {
                 observe: self.onKeyPressed,
                 invoke: self.invoke
             )
+        }
+        // Losing active status means the matching key-up will never reach
+        // the local monitor; abandon the press so the hold timer cannot
+        // split behind the user's back (e.g. after Cmd+Tab away).
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.holdRecognizer.cancel()
+                self.heldKeyCode = nil
+            }
         }
     }
 
@@ -124,6 +139,9 @@ final class ApplicationShortcutRouter {
     isolated deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
+        }
+        if let resignActiveObserver {
+            NotificationCenter.default.removeObserver(resignActiveObserver)
         }
     }
 
