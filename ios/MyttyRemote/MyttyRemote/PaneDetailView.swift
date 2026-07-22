@@ -29,6 +29,7 @@ struct PaneDetailView: View {
     /// Presented with `sheet(item:)` so the sheet is always built from
     /// the snapshot it was opened with, never a stale state value.
     @State private var selectionSnapshot: SelectionSnapshot?
+    @State private var showsSchedules = false
 
     private struct SelectionSnapshot: Identifiable {
         let id = UUID()
@@ -163,6 +164,17 @@ struct PaneDetailView: View {
         .navigationTitle(currentTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if client.supportsPaneSchedules {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsSchedules = true
+                    } label: {
+                        Image(systemName: "clock.badge.plus")
+                    }
+                    .accessibilityLabel("Scheduled input")
+                    .disabled(!isConnected)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     selectionSnapshot = SelectionSnapshot(
@@ -192,6 +204,9 @@ struct PaneDetailView: View {
         }
         .sheet(item: $selectionSnapshot) { snapshot in
             PaneTextSelectionView(text: snapshot.text)
+        }
+        .sheet(isPresented: $showsSchedules) {
+            PaneScheduleView(pane: pane, client: client)
         }
         .onAppear {
             rebuildRenderedChunks()

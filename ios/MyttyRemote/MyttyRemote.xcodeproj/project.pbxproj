@@ -29,6 +29,7 @@
 		A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */; };
 		B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */; };
 		C10E44FAE58110C63FBD03C9 /* PaneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */; };
+		C29F0300B64969A7B72924B0 /* PaneScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 702FB6CE19393065515AC8A3 /* PaneScheduleView.swift */; };
 		EA2984E72181A0DF73569E6D /* DeviceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */; };
 		ECF0DA3877534B2A0E57E6E6 /* NotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1845AA39C4A2E2BE81812C3D /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -64,19 +65,20 @@
 		1845AA39C4A2E2BE81812C3D /* NotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		19F0032493B6608E5D824252 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteClient.swift; sourceTree = "<group>"; };
-		2646F5D89B99D79E5A36E17E /* mytty */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mytty; path = ../..; sourceTree = SOURCE_ROOT; };
 		2EF3755C591827EC66BBDDDB /* ControlKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKey.swift; sourceTree = "<group>"; };
 		2F8455379E84BE5CE9B54CD2 /* SessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionView.swift; sourceTree = "<group>"; };
 		318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacStore.swift; sourceTree = "<group>"; };
 		391900120E29A643CFD654EA /* PairedMacEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacEditView.swift; sourceTree = "<group>"; };
 		43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKeyBarView.swift; sourceTree = "<group>"; };
 		4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionTransport.swift; sourceTree = "<group>"; };
+		5C5DA0187ADF453640C3B7A4 /* cozy-leaping-russell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cozy-leaping-russell"; path = ../..; sourceTree = SOURCE_ROOT; };
 		620711CDAE55208289C2B7D0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTextSelectionView.swift; sourceTree = "<group>"; };
 		65F7A5EEE363CDC0CC9D4F3B /* MyttyRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MyttyRemote.entitlements; sourceTree = "<group>"; };
 		694D7EF0306FAD4398E8B2CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistration.swift; sourceTree = "<group>"; };
 		6FDED8D1B400C193E24439EE /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		702FB6CE19393065515AC8A3 /* PaneScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneScheduleView.swift; sourceTree = "<group>"; };
 		707312338CC10A1193F36F6F /* BrowserPaneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserPaneDetailView.swift; sourceTree = "<group>"; };
 		928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyttyRemoteApp.swift; sourceTree = "<group>"; };
 		9D09CAD07207914BF2366DEE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 				318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */,
 				BA96B610EB4E285CC4503310 /* PairingView.swift */,
 				ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */,
+				702FB6CE19393065515AC8A3 /* PaneScheduleView.swift */,
 				645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */,
 				6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */,
 				1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */,
@@ -160,7 +163,7 @@
 		E2F1F17269A8A55B4129DC37 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				2646F5D89B99D79E5A36E17E /* mytty */,
+				5C5DA0187ADF453640C3B7A4 /* cozy-leaping-russell */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -295,6 +298,7 @@
 				A83FBE84A7FB9C4739A182D9 /* PairedMacStore.swift in Sources */,
 				07B3312067479242F8EC7ABB /* PairingView.swift in Sources */,
 				C10E44FAE58110C63FBD03C9 /* PaneDetailView.swift in Sources */,
+				C29F0300B64969A7B72924B0 /* PaneScheduleView.swift in Sources */,
 				7EA8BB1A4EB1CD2CB1C03FCA /* PaneTextSelectionView.swift in Sources */,
 				7EB1BDBD11C543FFF4A6D6B3 /* PushRegistration.swift in Sources */,
 				B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */,
