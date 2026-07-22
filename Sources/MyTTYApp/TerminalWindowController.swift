@@ -2426,6 +2426,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             )
     }
 
+    /// The display title of the tab containing `surfaceID`, for
+    /// attention notifications to show which tab an agent needs the user
+    /// in. `nil` when this window has no tab for that surface (it belongs
+    /// to another window, or has since closed).
+    func tabTitle(for surfaceID: TerminalSurfaceID) -> String? {
+        guard let tab = session.tabs.first(where: {
+            $0.surfaceIDs.contains(surfaceID)
+        }) else { return nil }
+        return displayTitle(for: tab)
+    }
+
     private func acknowledge(_ item: AttentionItem) {
         do {
             try attentionCenter.acknowledge(item)

@@ -57,6 +57,13 @@ public struct AgentEvent: Codable, Equatable, Sendable {
     /// `postToolUseFailure`). Optional and Codable-default so existing
     /// persisted rows still decode.
     public let toolUseID: String?
+    /// The provider's tool name for this hook delivery, when one exists
+    /// (e.g. Codex/Claude Code's `tool_name` on `PermissionRequest`).
+    /// Kept structured — separate from the synthesized, English-only
+    /// `message` — so notification UIs can build their own localized text
+    /// instead of showing the stored string verbatim. Optional and
+    /// Codable-default so existing persisted rows still decode.
+    public let toolName: String?
 
     public init(
         schemaVersion: Int = AgentEvent.currentSchemaVersion,
@@ -69,7 +76,8 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         occurredAt: Date,
         message: String? = nil,
         hookName: String? = nil,
-        toolUseID: String? = nil
+        toolUseID: String? = nil,
+        toolName: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -82,6 +90,7 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         self.message = message
         self.hookName = hookName
         self.toolUseID = toolUseID
+        self.toolName = toolName
     }
 }
 

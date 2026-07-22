@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import MyTTYCore
 import MyTTYRemoteKit
 import Testing
 
@@ -270,5 +271,201 @@ struct PushRelayClientTests {
             to: Self.makeTarget(),
             collapseID: "c"
         )
+    }
+}
+
+@MainActor
+@Suite("Remote attention push notifier body")
+struct RemoteAttentionPushNotifierTests {
+    private static let surfaceID = TerminalSurfaceID(rawValue: UUID(
+        uuidString: "00000000-0000-0000-0000-000000000301"
+    )!)
+    private static let pairingSecret = Data(repeating: 5, count: 32)
+        .base64EncodedString()
+    private static let relaySecret = Data(repeating: 6, count: 32)
+        .base64EncodedString()
+
+    private static func makeStore() throws -> RemotePairedDeviceStore {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("json")
+        let store = RemotePairedDeviceStore(fileURL: url)
+        try store.add(
+            RemotePairedDevice(
+                id: "device-1",
+                name: "iPhone",
+                secretBase64: pairingSecret,
+                pairedAt: Date(timeIntervalSince1970: 1_000),
+                pushRelayID: "relay-1",
+                pushRelaySecretBase64: relaySecret
+            )
+        )
+        return store
+    }
+
+    private static func makeItem(
+        kind: AgentEventKind,
+        toolName: String?
+    ) -> AttentionItem {
+        let runID = AgentRunID(rawValue: UUID())
+        let started = AgentEvent(
+            runID: runID,
+            surfaceID: surfaceID,
+            provider: .claudeCode,
+            kind: .started,
+            occurredAt: Date(timeIntervalSince1970: 0)
+        )
+        let requestEvent = AgentEvent(
+            runID: runID,
+            surfaceID: surfaceID,
+            provider: .claudeCode,
+            kind: kind,
+            occurredAt: Date(timeIntervalSince1970: 1),
+            toolName: toolName
+        )
+        let items = AttentionReducer.reduce(
+            events: [started, requestEvent],
+            acknowledgements: [],
+            now: Date(timeIntervalSince1970: 2)
+        )
+        return items[0]
+    }
+
+    private static func decodeAlert(
+        from request: URLRequest
+    ) throws -> PushRelayAlert {
+        let body = try #require(request.httpBody)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        let ciphertextBase64 = try #require(object["ciphertext"] as? String)
+        let sealed = try #require(Data(base64Encoded: ciphertextBase64))
+        let pairingKey = SymmetricKey(
+            data: try #require(Data(base64Encoded: pairingSecret))
+        )
+        let opened = try RemoteSecureChannel.open(sealed, using: pairingKey)
+        return try JSONDecoder().decode(PushRelayAlert.self, from: opened)
+    }
+
+    private static func makeNotifier(
+        localizer: MyTTYLocalizer,
+        hostName: @escaping () -> String?,
+        capture: RequestCapture
+    ) throws -> RemoteAttentionPushNotifier {
+        RemoteAttentionPushNotifier(
+            deviceStore: try makeStore(),
+            client: PushRelayClient(transport: { request in
+                await capture.record(request)
+                return (
+                    Data(#"{"ok":true}"#.utf8),
+                    HTTPURLResponse(
+                        url: try #require(request.url),
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: nil
+                    )!
+                )
+            }),
+            localizer: localizer,
+            isEnabled: { true },
+            hostName: hostName,
+            onError: { _ in }
+        )
+    }
+
+    @Test("prefixes the body with a host and tab context line when both are known")
+    func bodyIncludesHostAndTabContext() async throws {
+        let capture = RequestCapture()
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .english),
+            hostName: { "MacBook Pro" },
+            capture: capture
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: "Deploy"
+        )
+
+        let alert = try Self.decodeAlert(from: await capture.waitForRequest())
+        #expect(alert.body == "MacBook Pro · Deploy\nBash requires approval")
+    }
+
+    @Test("shows only the host when no tab title is available")
+    func bodyIsHostOnlyWithoutTabTitle() async throws {
+        let capture = RequestCapture()
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .english),
+            hostName: { "MacBook Pro" },
+            capture: capture
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: nil
+        )
+
+        let alert = try Self.decodeAlert(from: await capture.waitForRequest())
+        #expect(alert.body == "MacBook Pro\nBash requires approval")
+    }
+
+    @Test("drops the context line entirely when neither host nor tab is known")
+    func bodyHasNoContextLineWhenBothAreMissing() async throws {
+        let capture = RequestCapture()
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .english),
+            hostName: { nil },
+            capture: capture
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: nil
+        )
+
+        let alert = try Self.decodeAlert(from: await capture.waitForRequest())
+        #expect(alert.body == "Bash requires approval")
+    }
+
+    @Test("localizes the message body in Japanese")
+    func bodyIsLocalizedInJapanese() async throws {
+        let capture = RequestCapture()
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .japanese),
+            hostName: { nil },
+            capture: capture
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: "デプロイ"
+        )
+
+        let alert = try Self.decodeAlert(from: await capture.waitForRequest())
+        #expect(alert.body == "デプロイ\nBash の承認が必要です")
+    }
+}
+
+/// Captures the single request a `PushRelayClient.send` fires, letting an
+/// `async` test await it instead of racing the fire-and-forget `Task`
+/// inside `RemoteAttentionPushNotifier.notify`.
+private actor RequestCapture {
+    private var continuation: CheckedContinuation<URLRequest, Never>?
+    private var stored: URLRequest?
+
+    func record(_ request: URLRequest) {
+        if let continuation {
+            continuation.resume(returning: request)
+            self.continuation = nil
+        } else {
+            stored = request
+        }
+    }
+
+    func waitForRequest() async -> URLRequest {
+        if let stored {
+            return stored
+        }
+        return await withCheckedContinuation { continuation = $0 }
     }
 }

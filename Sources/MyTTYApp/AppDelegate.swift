@@ -1034,12 +1034,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               })
         else { return inserted }
 
+        let tabTitle = windowSessionCoordinator.controllers.lazy
+            .compactMap { $0.tabTitle(for: event.surfaceID) }
+            .first
+
         // The phone is gated on the Mac being unattended rather than on
         // pane visibility: the case this exists for is walking away from a
         // running agent, where the pane is still focused on screen and the
         // Mac deliberately stays silent.
         if !NSApplication.shared.isActive {
-            remotePushNotifier?.notify(item)
+            remotePushNotifier?.notify(item, tabTitle: tabTitle)
         }
 
         guard !windowSessionCoordinator.controllers.contains(where: {
@@ -1053,7 +1057,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.isSurfaceVisible(event.surfaceID)
         }) else { return inserted }
 
-        attentionNotifier?.notify(item)
+        attentionNotifier?.notify(item, tabTitle: tabTitle)
         return inserted
     }
 

@@ -281,6 +281,20 @@ struct LocalizationTests {
         #expect(english.commandTitle(.previousWindow) == "Previous Window")
         #expect(english.commandTitle(.selectTab3) == "Go to Tab 3")
         #expect(english.commandTitle(.selectTab9) == "Go to Tab 9")
+        #expect(
+            english.toolRequiresApproval("Bash") == "Bash requires approval"
+        )
+        #expect(
+            english.toolRequestsInput("AskUserQuestion")
+                == "AskUserQuestion requests input"
+        )
+        #expect(
+            japanese.toolRequiresApproval("Bash") == "Bash の承認が必要です"
+        )
+        #expect(
+            japanese.toolRequestsInput("AskUserQuestion")
+                == "AskUserQuestion が入力を求めています"
+        )
 
         #expect(japanese[.general] == "一般")
         #expect(japanese[.window] == "ウィンドウ")
