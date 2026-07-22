@@ -54,9 +54,9 @@ enum TerminalPaneCloseAction: Equatable {
 }
 
 /// Routes the Close Tab command (Cmd+W). `activeController` resolves to nil
-/// when the key window is an auxiliary window (Settings, About), so the
-/// command must fall back to closing that window instead of silently doing
-/// nothing.
+/// when the key window is an auxiliary window (Settings, About) or when no
+/// terminal windows exist at all, so the command must fall back to closing
+/// the key window instead of silently doing nothing.
 enum CloseTabCommandRouting: Equatable {
     case closeSelectedTab
     case closeKeyWindow
@@ -66,6 +66,9 @@ enum CloseTabCommandRouting: Equatable {
         hasActiveTerminalController: Bool,
         hasKeyWindow: Bool
     ) -> Self {
+        // With no key window, `activeController` falls back to the first
+        // terminal controller; closing its selected tab preserves the
+        // behavior this command had before auxiliary-window routing.
         if hasActiveTerminalController { return .closeSelectedTab }
         return hasKeyWindow ? .closeKeyWindow : .ignore
     }
