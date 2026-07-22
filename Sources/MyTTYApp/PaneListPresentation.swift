@@ -74,12 +74,19 @@ enum PaneListPresentation {
         browserTitle: String,
         localizer: MyTTYLocalizer
     ) -> [PaneListItem] {
-        items(
-            snapshots: [snapshot],
-            terminalTitle: terminalTitle,
-            browserTitle: browserTitle,
-            localizer: localizer
-        ).filter { $0.tabID == tabID }
+        guard let tab = snapshot.session.tabs.first(where: {
+            $0.id == tabID
+        }) else { return [] }
+        return tab.paneIDs.compactMap { paneID in
+            makeItem(
+                paneID: paneID,
+                tab: tab,
+                snapshot: snapshot,
+                terminalTitle: terminalTitle,
+                browserTitle: browserTitle,
+                localizer: localizer
+            )
+        }
     }
 
     private static func makeItem(
