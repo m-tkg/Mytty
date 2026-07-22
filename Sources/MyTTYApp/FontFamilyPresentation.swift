@@ -26,17 +26,21 @@ enum FontFamilyPresentation {
         available: [String],
         selected: String
     ) -> [String] {
+        var families = available.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        // Equality is locale-independent (family names are canonical,
+        // not localized); only the menu order is locale-aware.
         guard !selected.isEmpty,
-              !available.contains(where: {
+              !families.contains(where: {
                   $0.caseInsensitiveCompare(selected) == .orderedSame
               })
-        else { return available }
+        else { return families }
 
-        let index = available.firstIndex {
+        let index = families.firstIndex {
             $0.localizedCaseInsensitiveCompare(selected)
                 == .orderedDescending
-        } ?? available.endIndex
-        var families = available
+        } ?? families.endIndex
         families.insert(selected, at: index)
         return families
     }

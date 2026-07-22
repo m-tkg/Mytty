@@ -125,6 +125,16 @@ struct FontFamilyPresentationTests {
         )
     }
 
+    @Test("sorts the available families before inserting")
+    func menuFamiliesWithUnsortedAvailableList() {
+        #expect(
+            FontFamilyPresentation.menuFamilies(
+                available: ["Menlo", "Arial"],
+                selected: "JetBrains Mono"
+            ) == ["Arial", "JetBrains Mono", "Menlo"]
+        )
+    }
+
     @Test("lists only the selection when no families are available")
     func menuFamiliesWithEmptyAvailableList() {
         #expect(
