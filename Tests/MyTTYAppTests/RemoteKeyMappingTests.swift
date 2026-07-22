@@ -64,6 +64,18 @@ struct RemoteKeyMappingTests {
         )
     }
 
+    @Test("maps shift+tab so libghostty encodes it as backtab (CSI Z)")
+    func mapsShiftTab() {
+        #expect(
+            RemoteKeyMapping.event(key: "tab", modifiers: ["shift"])
+                == RemoteKeyMapping.KeyEvent(
+                    keyCode: 48,
+                    characters: "\t",
+                    modifierFlags: [.shift]
+                )
+        )
+    }
+
     @Test("returns nil for keys it cannot map")
     func unknownKeysReturnNil() {
         #expect(RemoteKeyMapping.event(key: "hyper", modifiers: []) == nil)

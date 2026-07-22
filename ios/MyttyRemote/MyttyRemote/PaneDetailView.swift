@@ -411,6 +411,18 @@ struct PaneDetailView: View {
             pasteFromClipboard()
             return
         }
+        // Shift+Tab is a single bar key (Claude Code cycles its permission
+        // mode with it), but the wire format only knows "tab" plus a shift
+        // modifier — "shiftTab" is not a named key on the Mac side.
+        if key == .shiftTab {
+            client.sendKey(
+                paneID: pane.id,
+                key: ControlKey.tab.rawValue,
+                modifiers: Set(modifierNames + ["shift"]).sorted()
+            )
+            consumeModifiers()
+            return
+        }
         client.sendKey(
             paneID: pane.id,
             key: key.rawValue,
