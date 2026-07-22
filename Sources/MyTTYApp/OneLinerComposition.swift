@@ -50,17 +50,26 @@ enum OneLinerComposer {
                 language: language.oneLinerLanguage
             )
         )
-        // Greedy sampling keeps this precision task deterministic — the
-        // deprecated `sampling:` label was silently ignored and sampled
-        // randomly; `samplingMode:` is the one that works. The token cap
-        // stops the occasional runaway generation on quoted Japanese
-        // input.
+        // Greedy sampling keeps this precision task deterministic — on the
+        // Xcode 27 toolchain the deprecated `sampling:` label was silently
+        // ignored and sampled randomly, so use `samplingMode:` there; the
+        // Xcode 26 SDK (Swift < 6.4, used by CI) only has `sampling:`. The
+        // token cap stops the occasional runaway generation on quoted
+        // Japanese input.
+        #if compiler(>=6.4)
+        let options = GenerationOptions(
+            samplingMode: .greedy,
+            maximumResponseTokens: 200
+        )
+        #else
+        let options = GenerationOptions(
+            sampling: .greedy,
+            maximumResponseTokens: 200
+        )
+        #endif
         guard let response = try? await session.respond(
             to: OneLinerPrompt.prompt(request: request),
-            options: GenerationOptions(
-                samplingMode: .greedy,
-                maximumResponseTokens: 200
-            )
+            options: options
         ) else { return nil }
         return OneLinerPrompt.sanitize(response.content)
         #else
