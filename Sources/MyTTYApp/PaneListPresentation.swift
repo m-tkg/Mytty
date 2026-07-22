@@ -64,6 +64,24 @@ enum PaneListPresentation {
         }
     }
 
+    /// The panes of a single tab, for the sidebar's pane-icon popover.
+    /// Same rows `items(snapshots:...)` would produce, scoped to `tabID`;
+    /// empty when the tab is not part of the snapshot.
+    static func items(
+        forTab tabID: TabID,
+        snapshot: PaneListWindowSnapshot,
+        terminalTitle: String,
+        browserTitle: String,
+        localizer: MyTTYLocalizer
+    ) -> [PaneListItem] {
+        items(
+            snapshots: [snapshot],
+            terminalTitle: terminalTitle,
+            browserTitle: browserTitle,
+            localizer: localizer
+        ).filter { $0.tabID == tabID }
+    }
+
     private static func makeItem(
         paneID: TerminalSurfaceID,
         tab: TabSession,
