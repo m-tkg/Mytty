@@ -25,7 +25,9 @@ enum AgentResumeLaunchPlan {
         case .cursor:
             command = "command cursor-agent --resume=\(sessionID)"
         }
-        return command + "\n"
+        // Same suppression as spawned worker panes: keep the restored
+        // resume command out of the shell's persisted history.
+        return AgentLaunchPlan.historySuppressionPrefix + command + "\n"
     }
 
     static func kind(

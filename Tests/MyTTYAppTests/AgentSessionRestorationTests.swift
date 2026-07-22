@@ -24,7 +24,7 @@ struct AgentSessionRestorationTests {
                         kind: kind,
                         sessionID: "session id"
                     )
-                ) == command
+                ) == AgentLaunchPlan.historySuppressionPrefix + command
             )
         }
         #expect(AgentResumeLaunchPlan.shellQuote("a'b") == "'a'\\''b'")
@@ -141,6 +141,25 @@ struct TerminalSurfaceLaunchInputTests {
                 sessionID: "session-1"
             )
         )
-        #expect(resolved == "command codex resume -- 'session-1'\n")
+        #expect(
+            resolved
+                == AgentLaunchPlan.historySuppressionPrefix
+                + "command codex resume -- 'session-1'\n"
+        )
+    }
+
+    @Test("a restored resume command stays out of the shell's persisted history")
+    func resumeCommandSuppressesShellHistory() {
+        let resolved = TerminalSurfaceLaunchInput.resolve(
+            spawnInitialInput: nil,
+            agentResume: AgentResumeDescriptor(
+                kind: .claudeCode,
+                sessionID: "session-1"
+            )
+        )
+        #expect(
+            resolved?.hasPrefix(AgentLaunchPlan.historySuppressionPrefix)
+                == true
+        )
     }
 }
