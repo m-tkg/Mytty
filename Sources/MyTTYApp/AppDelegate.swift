@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var terminalHistoryCaptureTimer: Timer?
     private var aboutWindowController: AboutWindowController?
     private var paneListWindowController: PaneListWindowController?
+    private var finderOpenQueue = FinderOpenQueue()
     private lazy var windowSessionCoordinator = WindowSessionCoordinator(
         updateAgentSleepPrevention: { [weak self] in
             self?.updateAgentSleepPrevention()
@@ -114,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             clamshellSleepBlocker.prepare()
             try launchApplication()
+            NSApplication.shared.servicesProvider = self
             startTerminalHistoryCapture()
             if ApplicationIdentity.supportsSelfUpdate {
                 applicationUpdateCoordinator.checkForUpdates(trigger: .launch)
@@ -132,6 +134,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Leaving the app is the natural moment to bank the scrollback the
         // routine saves skip, alongside the periodic capture below.
         windowSessionCoordinator.captureTerminalHistories()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        openFinderRequests(finderOpenQueue.enqueue(urls))
+    }
+
+    /// Handler for the "Open in Mytty" Finder service declared in
+    /// Info.plist (`NSMessage: openFolder`).
+    @objc func openFolder(
+        _ pboard: NSPasteboard,
+        userData: String,
+        error: AutoreleasingUnsafeMutablePointer<NSString>
+    ) {
+        let urls = pboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        openFinderRequests(finderOpenQueue.enqueue(urls))
+    }
+
+    private func openFinderRequests(_ urls: [URL]) {
+        let directories = FinderOpenPolicy.workingDirectories(
+            for: urls,
+            isDirectory: Self.directoryOnDisk
+        )
+        guard !directories.isEmpty else { return }
+        for directory in directories {
+            do {
+                try windowSessionCoordinator.createWindow(
+                    workingDirectory: directory
+                )
+            } catch {
+                presentActionError(error)
+            }
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    private static func directoryOnDisk(_ url: URL) -> Bool? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: url.path,
+            isDirectory: &isDirectory
+        ) else { return nil }
+        return isDirectory.boolValue
     }
 
     /// Keeps the stored scrollback recent enough that a crash (which never
@@ -719,6 +766,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         windowSessionCoordinator.isRestoringSessions = false
+
+        // Folders Finder asked to open before launch finished get their
+        // windows now; when one opens, it also replaces the default window
+        // below.
+        for directory in FinderOpenPolicy.workingDirectories(
+            for: finderOpenQueue.markReady(),
+            isDirectory: Self.directoryOnDisk
+        ) {
+            do {
+                try windowSessionCoordinator.createWindow(
+                    workingDirectory: directory
+                )
+            } catch {
+                presentActionError(error)
+            }
+        }
 
         if windowSessionCoordinator.controllers.isEmpty {
             let processDirectory = URL(
