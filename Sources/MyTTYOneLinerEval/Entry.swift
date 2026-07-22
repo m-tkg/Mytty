@@ -144,8 +144,11 @@ struct Entry {
         do {
             response = try await session.respond(
                 to: OneLinerPrompt.prompt(request: task),
+                // The Xcode 26 SDK on CI only has the `sampling:` label;
+                // Xcode 27 renamed it to `samplingMode:` and keeps `sampling:`
+                // as a deprecated alias, so this spelling builds on both.
                 options: GenerationOptions(
-                    samplingMode: .greedy,
+                    sampling: .greedy,
                     maximumResponseTokens: think ? 600 : 200
                 )
             )
