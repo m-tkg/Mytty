@@ -231,6 +231,18 @@ public struct WindowSession: Codable, Equatable, Sendable {
         tabs[index] = tab
     }
 
+    public mutating func splitOuterFocusedSurface(
+        adding surface: TerminalSurfaceState,
+        direction: SplitDirection
+    ) throws {
+        guard let index = tabs.firstIndex(where: {
+            $0.id == selectedTabID
+        }) else { throw WindowSessionError.tabNotFound(selectedTabID) }
+        var tab = tabs[index]
+        try tab.splitOuter(adding: surface, direction: direction)
+        tabs[index] = tab
+    }
+
     public mutating func splitFocusedBrowser(
         adding browser: BrowserPaneState,
         direction: SplitDirection

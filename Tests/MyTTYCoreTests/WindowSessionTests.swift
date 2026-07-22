@@ -205,6 +205,34 @@ struct WindowSessionTests {
         #expect(window.selectedTab?.focusedSurfaceID == added.id)
     }
 
+    @Test("routes outer splits through the selected tab")
+    func outerSplitMutations() throws {
+        let tab = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let added = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            workingDirectory: URL(fileURLWithPath: "/second", isDirectory: true)
+        )
+        let outer = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(13)),
+            workingDirectory: URL(fileURLWithPath: "/outer", isDirectory: true)
+        )
+        var window = makeWindow(tab: tab)
+        try window.splitFocusedSurface(adding: added, direction: .down)
+
+        try window.splitOuterFocusedSurface(adding: outer, direction: .right)
+
+        #expect(window.selectedTab?.focusedSurfaceID == outer.id)
+        guard case let .split(orientation, _, first, second) =
+            window.selectedTab?.root
+        else {
+            Issue.record("Expected selected tab split")
+            return
+        }
+        #expect(orientation == .horizontal)
+        #expect(first.surfaceIDs == [tab.focusedSurfaceID, added.id])
+        #expect(second == .surface(outer))
+    }
+
     @Test("equalizes panes in a requested tab without selecting it")
     func equalizeRequestedTab() throws {
         var first = makeTab(id: 1, surfaceID: 11, path: "/first")

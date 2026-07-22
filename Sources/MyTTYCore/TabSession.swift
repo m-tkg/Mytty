@@ -126,6 +126,13 @@ public enum SplitDirection: String, Codable, Equatable, Sendable {
     case down
 }
 
+/// Where a split inserts the new pane: next to the target pane, or at the
+/// outer edge of the whole tab layout.
+public enum SplitPlacement: String, Codable, Equatable, Sendable {
+    case adjacent
+    case outer
+}
+
 public enum SplitPathComponent: String, Codable, Equatable, Sendable {
     case first
     case second
@@ -674,6 +681,24 @@ public struct TabSession: Codable, Equatable, Sendable {
         )
     }
 
+    /// Splits at the root of the pane tree instead of inside the focused
+    /// pane: the new surface takes one half of the whole tab, and the
+    /// existing layout is squeezed into the other half.
+    public mutating func splitOuter(
+        adding newSurface: TerminalSurfaceState,
+        direction: SplitDirection
+    ) throws {
+        guard !root.contains(newSurface.id) else {
+            throw TabSessionError.duplicateSurface(newSurface.id)
+        }
+        root = Self.wrapped(
+            root,
+            adding: .surface(newSurface),
+            direction: direction
+        )
+        focusedSurfaceID = newSurface.id
+    }
+
     private mutating func split(
         pane targetID: TerminalSurfaceID,
         adding newNode: SplitNode,
@@ -688,35 +713,7 @@ public struct TabSession: Codable, Equatable, Sendable {
         }
 
         let replacement = root.replacing(pane: targetID) { targetNode in
-            let orientation: SplitOrientation
-            let first: SplitNode
-            let second: SplitNode
-
-            switch direction {
-            case .left:
-                orientation = .horizontal
-                first = newNode
-                second = targetNode
-            case .right:
-                orientation = .horizontal
-                first = targetNode
-                second = newNode
-            case .up:
-                orientation = .vertical
-                first = newNode
-                second = targetNode
-            case .down:
-                orientation = .vertical
-                first = targetNode
-                second = newNode
-            }
-
-            return .split(
-                orientation: orientation,
-                ratio: 0.5,
-                first: first,
-                second: second
-            )
+            Self.wrapped(targetNode, adding: newNode, direction: direction)
         }
 
         guard let replacement else {
@@ -724,6 +721,42 @@ public struct TabSession: Codable, Equatable, Sendable {
         }
         root = replacement
         focusedSurfaceID = newID
+    }
+
+    private static func wrapped(
+        _ targetNode: SplitNode,
+        adding newNode: SplitNode,
+        direction: SplitDirection
+    ) -> SplitNode {
+        let orientation: SplitOrientation
+        let first: SplitNode
+        let second: SplitNode
+
+        switch direction {
+        case .left:
+            orientation = .horizontal
+            first = newNode
+            second = targetNode
+        case .right:
+            orientation = .horizontal
+            first = targetNode
+            second = newNode
+        case .up:
+            orientation = .vertical
+            first = newNode
+            second = targetNode
+        case .down:
+            orientation = .vertical
+            first = targetNode
+            second = newNode
+        }
+
+        return .split(
+            orientation: orientation,
+            ratio: 0.5,
+            first: first,
+            second: second
+        )
     }
 
     public mutating func close(surface id: TerminalSurfaceID) throws {
