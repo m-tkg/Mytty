@@ -141,16 +141,23 @@ struct Entry {
             instructions: instructions
         )
         let response: LanguageModelSession.Response<String>
+        // On Xcode 27 the deprecated `sampling:` label is silently ignored
+        // (random sampling); the Xcode 26 SDK on CI only has `sampling:`.
+        #if compiler(>=6.4)
+        let options = GenerationOptions(
+            samplingMode: .greedy,
+            maximumResponseTokens: think ? 600 : 200
+        )
+        #else
+        let options = GenerationOptions(
+            sampling: .greedy,
+            maximumResponseTokens: think ? 600 : 200
+        )
+        #endif
         do {
             response = try await session.respond(
                 to: OneLinerPrompt.prompt(request: task),
-                // The Xcode 26 SDK on CI only has the `sampling:` label;
-                // Xcode 27 renamed it to `samplingMode:` and keeps `sampling:`
-                // as a deprecated alias, so this spelling builds on both.
-                options: GenerationOptions(
-                    sampling: .greedy,
-                    maximumResponseTokens: think ? 600 : 200
-                )
+                options: options
             )
         } catch {
             print("    respond() threw: \(error)")
