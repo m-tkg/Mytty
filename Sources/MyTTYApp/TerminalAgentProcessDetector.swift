@@ -144,6 +144,31 @@ enum TerminalAgentProcessDetector {
         return (executablePath, arguments(processID: processID))
     }
 
+    /// The current working directory of a running process, resolved via
+    /// `proc_pidinfo(PROC_PIDVNODEPATHINFO)`. Used to prefer a foreground
+    /// agent's own cwd (e.g. `claude --worktree`, which chdirs the agent
+    /// process but not the parent shell) over the shell's OSC 7-reported
+    /// directory.
+    static func workingDirectory(processID: pid_t) -> URL? {
+        guard processID > 0 else { return nil }
+        var info = proc_vnodepathinfo()
+        let size = proc_pidinfo(
+            processID,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            &info,
+            Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        )
+        guard size >= Int32(MemoryLayout<proc_vnodepathinfo>.size) else {
+            return nil
+        }
+        let path = withUnsafeBytes(of: &info.pvi_cdir.vip_path) { raw in
+            String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+        }
+        guard !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
     private static func executablePath(processID: pid_t) -> String? {
         var buffer = [CChar](
             repeating: 0,

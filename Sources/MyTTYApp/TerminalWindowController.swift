@@ -2602,7 +2602,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private var focusedTerminalDirectory: URL? {
         guard let tab = session.selectedTab else { return nil }
-        return tab.root.surfaceState(with: tab.focusedSurfaceID)?
+        let focusedID = tab.focusedSurfaceID
+        if agentStatusPolling.foregroundProvider(for: focusedID) != nil,
+           let processID = surfaces[focusedID]?.foregroundProcessID,
+           let agentDirectory = TerminalAgentProcessDetector.workingDirectory(
+               processID: processID
+           ) {
+            return agentDirectory.standardizedFileURL
+        }
+        return tab.root.surfaceState(with: focusedID)?
             .workingDirectory.standardizedFileURL
     }
 
