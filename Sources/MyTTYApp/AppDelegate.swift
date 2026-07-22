@@ -373,7 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let panel = inputComposerPanel ?? InputComposerPanelController(
             localizer: localizer
         ) { [weak self] text in
-            self?.windowSessionCoordinator.activeController?
+            self?.windowSessionCoordinator.composerTargetController?
                 .sendTextToFocusedPane(text) ?? false
         }
         inputComposerPanel = panel

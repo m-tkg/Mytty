@@ -124,17 +124,15 @@ final class InputComposerPanelController: NSObject {
         panel.makeFirstResponder(textView)
     }
 
-    func close() {
-        panel.close()
-    }
-
     /// Reads the composer's text and sends it to the focused pane. A
     /// successful send clears the draft and closes the panel; a failed
     /// send (no terminal pane focused) keeps the draft and surfaces a
-    /// status message so the user can refocus a pane and retry. No-op on
-    /// an empty draft.
+    /// status message so the user can refocus a pane and retry.
     func sendCurrentText() {
         let text = textView.string
+        // Only a literally empty draft is a no-op — a whitespace-only
+        // draft (e.g. a lone newline) is deliberately sendable, since
+        // agent TUIs treat a bare newline as "submit".
         guard !text.isEmpty else { return }
         if send(text) {
             textView.string = ""
