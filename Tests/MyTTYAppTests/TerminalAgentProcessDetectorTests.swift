@@ -1,3 +1,5 @@
+import Darwin
+import Foundation
 import MyTTYCore
 import Testing
 
@@ -86,6 +88,19 @@ struct TerminalAgentProcessDetectorTests {
             executablePath: "/bin/zsh",
             arguments: ["-zsh"]
         ) == nil)
+    }
+
+    @Test("resolves a running process's current working directory")
+    func processWorkingDirectory() {
+        let expected = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).standardizedFileURL
+        #expect(TerminalAgentProcessDetector.workingDirectory(
+            processID: getpid()
+        )?.standardizedFileURL == expected)
+        #expect(TerminalAgentProcessDetector.workingDirectory(processID: 0) == nil)
+        #expect(TerminalAgentProcessDetector.workingDirectory(processID: -1) == nil)
     }
 
     @Test("shows only the agent running in the foreground")
