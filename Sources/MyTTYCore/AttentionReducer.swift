@@ -36,6 +36,7 @@ public struct AttentionItem: Identifiable, Equatable, Sendable {
     public let kind: AttentionItemKind
     public let createdAt: Date
     public let message: String?
+    public let toolName: String?
     public let resolvedAt: Date?
     public let acknowledgedAt: Date?
 
@@ -105,6 +106,7 @@ public enum AttentionReducer {
                 kind: draft.kind,
                 createdAt: draft.event.occurredAt,
                 message: draft.event.message,
+                toolName: draft.event.toolName,
                 resolvedAt: draft.resolvedAt,
                 acknowledgedAt: acknowledgedAt
             )

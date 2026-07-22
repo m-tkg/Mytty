@@ -72,6 +72,7 @@ struct AgentHookEventAdapterTests {
         )
         #expect(approval?.kind == .approvalRequested)
         #expect(approval?.message == "Bash requires approval")
+        #expect(approval?.toolName == "Bash")
         #expect(succeeded?.kind == .succeeded)
         #expect(started?.runID == approval?.runID)
         #expect(approval?.runID == succeeded?.runID)
@@ -140,6 +141,71 @@ struct AgentHookEventAdapterTests {
         #expect(succeeded?.kind == .succeeded)
         #expect(started?.runID == input?.runID)
         #expect(input?.runID == succeeded?.runID)
+    }
+
+    @Test("captures the tool name on a Claude Code permission request")
+    func claudeCodePermissionRequestCapturesToolName() throws {
+        let approval = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "PermissionRequest",
+              "tool_name": "Bash"
+            }
+            """
+        )
+
+        #expect(approval?.kind == .approvalRequested)
+        #expect(approval?.toolName == "Bash")
+    }
+
+    @Test("has no tool name when the provider does not report one")
+    func toolNameNilWhenAbsent() throws {
+        let event = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "cwd": "/Users/tester/project",
+              "hook_event_name": "Stop"
+            }
+            """
+        )
+
+        #expect(event?.toolName == nil)
+    }
+
+    @Test("strips control characters and clamps an overlong tool name")
+    func toolNameSanitizesControlCharactersAndLength() throws {
+        let overlong = String(repeating: "a", count: 200)
+        let withControlCharacters = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "PermissionRequest",
+              "tool_name": "Ba\\nsh"
+            }
+            """
+        )
+        let clamped = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "PermissionRequest",
+              "tool_name": "\(overlong)"
+            }
+            """
+        )
+
+        #expect(withControlCharacters?.toolName == "Bash")
+        #expect(clamped?.toolName?.utf8.count == 128)
     }
 
     @Test("maps Claude session exit to a disconnected run")
@@ -564,6 +630,7 @@ struct AgentHookEventAdapterTests {
         #expect(preToolUse?.hookName == "preToolUse")
         #expect(preToolUse?.message == "Delete")
         #expect(preToolUse?.toolUseID == "call-1")
+        #expect(preToolUse?.toolName == "Delete")
     }
 
     @Test("maps Cursor postToolUse and postToolUseFailure tool_use_id for pairing")
@@ -668,6 +735,7 @@ struct AgentHookEventAdapterTests {
         #expect(pending.kind == .approvalRequested)
         #expect(pending.runID == preToolUseEvent.runID)
         #expect(pending.message == "Delete requires approval")
+        #expect(pending.toolName == "Delete")
 
         // Re-detecting the same stuck tool call must not produce a second
         // event, so `AttentionCenter` de-duplicates it on append.

@@ -28,6 +28,7 @@ final class RemoteAttentionPushNotifier {
     private let client: PushRelayClient
     private var localizer: MyTTYLocalizer
     private let isEnabled: () -> Bool
+    private let hostName: () -> String?
     private let onError: (Error) -> Void
 
     init(
@@ -35,12 +36,14 @@ final class RemoteAttentionPushNotifier {
         client: PushRelayClient = PushRelayClient(),
         localizer: MyTTYLocalizer,
         isEnabled: @escaping () -> Bool,
+        hostName: @escaping () -> String? = { Host.current().localizedName },
         onError: @escaping (Error) -> Void
     ) {
         self.deviceStore = deviceStore
         self.client = client
         self.localizer = localizer
         self.isEnabled = isEnabled
+        self.hostName = hostName
         self.onError = onError
     }
 
@@ -48,15 +51,28 @@ final class RemoteAttentionPushNotifier {
         self.localizer = localizer
     }
 
-    func notify(_ item: AttentionItem) {
+    func notify(_ item: AttentionItem, tabTitle: String?) {
         guard isEnabled(), let devices = try? deviceStore.load() else { return }
         let targets = devices.compactMap(PushRelayTarget.init(device:))
         guard !targets.isEmpty else { return }
 
+        let localizedBody = item.notificationBody(localizer: localizer)
+        // A phone-side banner has no idea which Mac or which tab an agent
+        // is waiting in, unlike the in-app banner (which the user is
+        // already looking at the window for) — so the push spells both
+        // out as a leading context line, skipping whichever part is
+        // unavailable.
+        let context = [hostName(), tabTitle]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let body = context.isEmpty
+            ? localizedBody
+            : "\(context)\n\(localizedBody)"
+
         let alert = PushRelayAlert(
             title: item.kind.notificationTitle(localizer: localizer),
-            body: item.message
-                ?? item.kind.notificationBody(localizer: localizer),
+            body: body,
             paneID: item.surfaceID.rawValue.uuidString
         )
         // Collapsing per surface keeps a chatty pane to a single banner

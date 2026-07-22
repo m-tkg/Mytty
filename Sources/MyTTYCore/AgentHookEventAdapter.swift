@@ -61,7 +61,8 @@ public enum AgentHookEventAdapter {
             occurredAt: occurredAt,
             message: mapping.message,
             hookName: mapping.hookName,
-            toolUseID: mapping.toolUseID
+            toolUseID: mapping.toolUseID,
+            toolName: mapping.toolName
         )
     }
 
@@ -129,7 +130,8 @@ public enum AgentHookEventAdapter {
                 toolName: toolName,
                 directMessage: nil
             ),
-            hookName: syntheticPendingApprovalHookName
+            hookName: syntheticPendingApprovalHookName,
+            toolName: sanitizedToolName(toolName)
         )
     }
 
@@ -174,7 +176,8 @@ public enum AgentHookEventAdapter {
                 toolName: object.string("tool_name"),
                 directMessage: object.string("message")
             ),
-            hookName: eventName
+            hookName: eventName,
+            toolName: sanitizedToolName(object.string("tool_name"))
         )
     }
 
@@ -228,7 +231,8 @@ public enum AgentHookEventAdapter {
                 directMessage: object.string("message")
                     ?? object.string("error_message")
             ),
-            hookName: eventName
+            hookName: eventName,
+            toolName: sanitizedToolName(object.string("tool_name"))
         )
     }
 
@@ -328,6 +332,7 @@ public enum AgentHookEventAdapter {
         let kind: AgentEventKind
         var directMessage: String?
         var toolUseID: String?
+        var toolName: String?
         switch eventName {
         case "beforeSubmitPrompt":
             kind = .started
@@ -340,9 +345,11 @@ public enum AgentHookEventAdapter {
             kind = .running
             directMessage = object.string("tool_name")
             toolUseID = sanitizedToolUseID(object.string("tool_use_id"))
+            toolName = sanitizedToolName(object.string("tool_name"))
         case "postToolUse", "postToolUseFailure":
             kind = .running
             toolUseID = sanitizedToolUseID(object.string("tool_use_id"))
+            toolName = sanitizedToolName(object.string("tool_name"))
         case "beforeShellExecution", "afterShellExecution":
             // Retained for anyone who installed these hooks by hand
             // before this switch to preToolUse; mytty no longer installs
@@ -380,7 +387,8 @@ public enum AgentHookEventAdapter {
             kind: kind,
             message: directMessage,
             hookName: eventName,
-            toolUseID: toolUseID
+            toolUseID: toolUseID,
+            toolName: toolName
         )
     }
 
@@ -413,13 +421,32 @@ public enum AgentHookEventAdapter {
     /// with embedded newlines (e.g. `"call-…-1\nfc_…_1"`) — it strips
     /// them and clamps the length instead.
     private static func sanitizedToolUseID(_ value: String?) -> String? {
+        sanitizeControlCharactersAndClamp(value, maxUTF8Length: 256)
+    }
+
+    /// Sanitizes a provider-reported tool name the same way
+    /// `sanitizedToolUseID` sanitizes a `tool_use_id`: strips control
+    /// characters and clamps the length, rather than rejecting the whole
+    /// value, since this is only ever displayed, never used as a lookup
+    /// key.
+    private static func sanitizedToolName(_ value: String?) -> String? {
+        sanitizeControlCharactersAndClamp(value, maxUTF8Length: 128)
+    }
+
+    private static func sanitizeControlCharactersAndClamp(
+        _ value: String?,
+        maxUTF8Length: Int
+    ) -> String? {
         guard let value else { return nil }
         let stripped = String(value.unicodeScalars.filter {
             !CharacterSet.controlCharacters.contains($0)
         })
         guard !stripped.isEmpty else { return nil }
-        guard stripped.utf8.count > 256 else { return stripped }
-        return String(decoding: stripped.utf8.prefix(256), as: UTF8.self)
+        guard stripped.utf8.count > maxUTF8Length else { return stripped }
+        return String(
+            decoding: stripped.utf8.prefix(maxUTF8Length),
+            as: UTF8.self
+        )
     }
 
     private static func sessionIdentifier(_ value: String?) -> String? {
@@ -442,6 +469,7 @@ private struct Mapping {
     let message: String?
     let hookName: String?
     let toolUseID: String?
+    let toolName: String?
 
     init(
         runKey: String?,
@@ -449,7 +477,8 @@ private struct Mapping {
         kind: AgentEventKind,
         message: String?,
         hookName: String?,
-        toolUseID: String? = nil
+        toolUseID: String? = nil,
+        toolName: String? = nil
     ) {
         self.runKey = runKey
         self.sessionID = sessionID
@@ -457,6 +486,7 @@ private struct Mapping {
         self.message = message
         self.hookName = hookName
         self.toolUseID = toolUseID
+        self.toolName = toolName
     }
 }
 

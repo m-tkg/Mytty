@@ -467,6 +467,20 @@ struct MyTTYLocalizer: Equatable {
         }
     }
 
+    func toolRequiresApproval(_ toolName: String) -> String {
+        switch language {
+        case .english: "\(toolName) requires approval"
+        case .japanese: "\(toolName) の承認が必要です"
+        }
+    }
+
+    func toolRequestsInput(_ toolName: String) -> String {
+        switch language {
+        case .english: "\(toolName) requests input"
+        case .japanese: "\(toolName) が入力を求めています"
+        }
+    }
+
     private func japanese(_ key: MyTTYText) -> String {
         switch key {
         case .general: "一般"

@@ -24,11 +24,13 @@ final class AttentionNotifier: NSObject {
         center.delegate = self
     }
 
-    func notify(_ item: AttentionItem) {
+    func notify(_ item: AttentionItem, tabTitle: String?) {
         let content = UNMutableNotificationContent()
         content.title = item.kind.notificationTitle(localizer: localizer)
-        content.body = item.message
-            ?? item.kind.notificationBody(localizer: localizer)
+        content.body = item.notificationBody(localizer: localizer)
+        if let tabTitle, !tabTitle.isEmpty {
+            content.subtitle = tabTitle
+        }
         content.sound = .default
         content.userInfo = [
             Self.surfaceIDKey: item.surfaceID.rawValue.uuidString,
@@ -120,5 +122,27 @@ extension AttentionItemKind {
         case .disconnected: localizer[.disconnectedFallback]
         case .completion: localizer[.completionFallback]
         }
+    }
+}
+
+/// Shared with `RemoteAttentionPushNotifier` so a Mac banner and the iOS
+/// push for the same Attention item always read identically.
+extension AttentionItem {
+    /// The notification body for this item, in the app's configured
+    /// language. `approvalRequest`/`inputRequest` events carry a
+    /// structured, provider-reported `toolName` when one exists, so those
+    /// build a fully localized sentence instead of showing the event's
+    /// stored `message` — which providers only ever send in English.
+    /// Every other kind (failure/disconnected/completion) keeps showing
+    /// `message` when present, since that text is real information (an
+    /// error, a summary) rather than a synthesized English phrase.
+    func notificationBody(localizer: MyTTYLocalizer) -> String {
+        if kind == .approvalRequest, let toolName, !toolName.isEmpty {
+            return localizer.toolRequiresApproval(toolName)
+        }
+        if kind == .inputRequest, let toolName, !toolName.isEmpty {
+            return localizer.toolRequestsInput(toolName)
+        }
+        return message ?? kind.notificationBody(localizer: localizer)
     }
 }
