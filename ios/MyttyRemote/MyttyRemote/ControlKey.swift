@@ -1,7 +1,7 @@
 import Foundation
 
 enum ControlKey: String, CaseIterable, Identifiable {
-    case escape, tab, paste, shift, control, option, command
+    case escape, tab, shiftTab, paste, shift, control, option, command
     case `return`, delete
     case up, down, left, right
     case f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12
@@ -26,6 +26,7 @@ enum ControlKey: String, CaseIterable, Identifiable {
         switch self {
         case .escape: "escape"
         case .tab: "arrow.right.to.line"
+        case .shiftTab: "arrow.left.to.line"
         case .paste: "doc.on.clipboard"
         case .shift: "shift"
         case .control: "control"
@@ -65,6 +66,7 @@ enum ControlKey: String, CaseIterable, Identifiable {
         switch self {
         case .escape: "Escape"
         case .tab: "Tab"
+        case .shiftTab: "Shift Tab"
         case .paste: "Paste"
         case .shift: "Shift"
         case .control: "Control"
