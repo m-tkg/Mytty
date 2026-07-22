@@ -169,7 +169,7 @@ struct PaneDetailView: View {
                     Button {
                         showsSchedules = true
                     } label: {
-                        Image(systemName: "clock.badge.plus")
+                        Image(systemName: "calendar.badge.clock")
                     }
                     .accessibilityLabel("Scheduled input")
                     .disabled(!isConnected)
