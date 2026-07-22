@@ -199,6 +199,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         showPressedKeyToast: { [weak self] in
             self?.applicationPreferences.showPressedKeyToast ?? false
         },
+        fadeOut: { [weak self] in
+            guard let preferences = self?.applicationPreferences,
+                  preferences.recordingFadeOutEnabled
+            else { return nil }
+            return TerminalRecordingFadeOut(
+                duration: preferences.recordingFadeOutDuration,
+                colorHex: preferences.recordingFadeOutColorHex
+            )
+        },
         outputPanelTitle: { [weak self] in
             self?.localizer[.terminalRecording] ?? ""
         },

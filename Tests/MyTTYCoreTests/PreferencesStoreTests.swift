@@ -430,6 +430,75 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the recording fade-out and rejects malformed values")
+    func recordingFadeOutPreferences() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+
+        let defaults = ApplicationPreferences()
+        #expect(defaults.recordingFadeOutEnabled)
+        #expect(defaults.recordingFadeOutDuration == 0.5)
+        #expect(defaults.recordingFadeOutColorHex == "000000")
+
+        try """
+        recording.fade-out = "false"
+        recording.fade-out-duration = "1.5"
+        recording.fade-out-color = "ff8800"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(!preferences.recordingFadeOutEnabled)
+        #expect(preferences.recordingFadeOutDuration == 1.5)
+        // Stored lower case, normalized on the way in.
+        #expect(preferences.recordingFadeOutColorHex == "FF8800")
+
+        preferences.recordingFadeOutEnabled = true
+        preferences.recordingFadeOutDuration = 0.8
+        preferences.recordingFadeOutColorHex = "112233"
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("recording.fade-out = \"true\""))
+        #expect(contents.contains("recording.fade-out-duration = \"0.8\""))
+        #expect(contents.contains("recording.fade-out-color = \"112233\""))
+
+        let reloaded = try store.load(from: harness.appConfiguration)
+        #expect(reloaded.recordingFadeOutEnabled)
+        #expect(reloaded.recordingFadeOutDuration == 0.8)
+        #expect(reloaded.recordingFadeOutColorHex == "112233")
+
+        var invalid = ApplicationPreferences()
+        invalid.recordingFadeOutDuration = 100
+        #expect(throws: PreferencesStoreError.self) {
+            try store.save(invalid, to: harness.appConfiguration)
+        }
+        invalid = ApplicationPreferences()
+        invalid.recordingFadeOutColorHex = ""
+        #expect(throws: PreferencesStoreError.self) {
+            try store.save(invalid, to: harness.appConfiguration)
+        }
+
+        for bad in ["recording.fade-out-color = \"zzzzzz\"",
+                    "recording.fade-out-duration = \"0\"",
+                    "recording.fade-out = \"sometimes\""] {
+            try bad.appending("\n").write(
+                to: harness.appConfiguration,
+                atomically: true,
+                encoding: .utf8
+            )
+            #expect(throws: PreferencesStoreError.self) {
+                try store.load(from: harness.appConfiguration)
+            }
+        }
+    }
+
     @Test("loads and saves managed Ghostty settings without replacing unknown keys")
     func terminalPreferences() throws {
         let harness = try Harness()

@@ -23,6 +23,9 @@ final class TerminalRecordingCoordinator {
     private(set) var recorder: TerminalGIFRecorder?
 
     private let showPressedKeyToast: () -> Bool
+    /// Read when a recording stops, so the fade reflects the settings at
+    /// save time; nil disables the fade.
+    private let fadeOut: () -> TerminalRecordingFadeOut?
     private let outputPanelTitle: () -> String
     /// Fired whenever `recorder` starts, stops, or fails — the controller
     /// uses this to refresh the sidebar's recording indicator, mirroring
@@ -32,11 +35,13 @@ final class TerminalRecordingCoordinator {
 
     init(
         showPressedKeyToast: @escaping () -> Bool,
+        fadeOut: @escaping () -> TerminalRecordingFadeOut?,
         outputPanelTitle: @escaping () -> String,
         onRecordingStateChanged: @escaping () -> Void,
         presentError: @escaping (Error) -> Void
     ) {
         self.showPressedKeyToast = showPressedKeyToast
+        self.fadeOut = fadeOut
         self.outputPanelTitle = outputPanelTitle
         self.onRecordingStateChanged = onRecordingStateChanged
         self.presentError = presentError
@@ -114,7 +119,7 @@ final class TerminalRecordingCoordinator {
             recorder.cancel()
             return
         }
-        recorder.finish(to: outputURL) { [weak self] result in
+        recorder.finish(to: outputURL, fadeOut: fadeOut()) { [weak self] result in
             if case let .failure(error) = result {
                 self?.presentError(error)
             }
