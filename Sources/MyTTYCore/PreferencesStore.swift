@@ -97,6 +97,9 @@ public struct ApplicationPreferences: Equatable, Sendable {
     /// access) is still the way a device gets registered.
     public var remotePushNotificationsEnabled: Bool
     public var inactivePaneDimming: Double
+    /// Whether holding a split shortcut past the hold threshold splits at
+    /// the outer edge of the whole tab instead of inside the focused pane.
+    public var outerSplitOnHold: Bool
     /// Whether the focused pane is outlined. Only takes effect in tabs that
     /// are actually split — a lone pane is never outlined.
     public var activePaneBorderEnabled: Bool
@@ -126,6 +129,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
         inactivePaneDimming: Double = 0.32,
+        outerSplitOnHold: Bool = false,
         activePaneBorderEnabled: Bool = true,
         activePaneBorderWidth: Double = 2,
         activePaneBorderColorHex: String = ""
@@ -150,6 +154,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
         self.inactivePaneDimming = inactivePaneDimming
+        self.outerSplitOnHold = outerSplitOnHold
         self.activePaneBorderEnabled = activePaneBorderEnabled
         self.activePaneBorderWidth = activePaneBorderWidth
         self.activePaneBorderColorHex = activePaneBorderColorHex
@@ -252,6 +257,7 @@ public struct ApplicationPreferencesStore {
             "agents.pane-team-pointers",
             "remote.access-enabled",
             "pane.inactive-dimming",
+            "pane.outer-split-on-hold",
             "pane.active-border",
             "pane.active-border-width",
             "pane.active-border-color",
@@ -424,6 +430,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.inactivePaneDimming = dimming
         }
+        if let value = document.lastValue(for: "pane.outer-split-on-hold") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "pane.outer-split-on-hold", value: value)
+            }
+            preferences.outerSplitOnHold = enabled
+        }
         if let value = document.lastValue(for: "pane.active-border") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "pane.active-border", value: value)
@@ -513,6 +525,7 @@ public struct ApplicationPreferencesStore {
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",
             "pane.inactive-dimming = \(quoted(decimal(preferences.inactivePaneDimming)))",
+            "pane.outer-split-on-hold = \(quoted(String(preferences.outerSplitOnHold)))",
             "pane.active-border = \(quoted(String(preferences.activePaneBorderEnabled)))",
             "pane.active-border-width = \(quoted(decimal(preferences.activePaneBorderWidth)))",
             "pane.active-border-color = \(quoted(borderColorHex))",
