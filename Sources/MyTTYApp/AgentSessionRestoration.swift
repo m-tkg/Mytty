@@ -25,7 +25,12 @@ enum AgentResumeLaunchPlan {
         case .cursor:
             command = "command cursor-agent --resume=\(sessionID)"
         }
-        return command + "\n"
+        // Same suppression as spawned worker panes: keep the restored
+        // resume command out of the shell's persisted history. Like those
+        // panes, the unset stops HISTFILE persistence for the pane's whole
+        // lifetime — commands typed after the agent exits stay out of the
+        // history file too, not just the resume line itself.
+        return AgentLaunchPlan.historySuppressionPrefix + command + "\n"
     }
 
     static func kind(
