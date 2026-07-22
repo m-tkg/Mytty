@@ -297,24 +297,31 @@ final class RemoteClient: ObservableObject {
         send(.listPaneSchedules(paneID: paneID))
     }
 
+    /// Sends a client-generated schedule and returns its ID so the caller
+    /// can recognize it in a later `paneSchedules` reply (or notice its
+    /// absence — the Mac silently drops an unknown pane or a past date
+    /// rather than replying with an error).
+    @discardableResult
     func createPaneSchedule(
         paneID: String,
         fireAt: Date,
         text: String,
         pressEnter: Bool
-    ) {
-        guard state == .connected, supportsPaneSchedules else { return }
+    ) -> String {
+        let id = UUID().uuidString
+        guard state == .connected, supportsPaneSchedules else { return id }
         send(
             .createPaneSchedule(
                 paneID: paneID,
                 schedule: RemotePaneSchedule(
-                    id: UUID().uuidString,
+                    id: id,
                     fireAt: fireAt,
                     text: text,
                     pressEnter: pressEnter
                 )
             )
         )
+        return id
     }
 
     func deletePaneSchedule(paneID: String, scheduleID: String) {

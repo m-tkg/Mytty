@@ -71,6 +71,28 @@ final class RemoteAccessCoordinator {
         guard let uuid = UUID(uuidString: paneID) else { return nil }
         return TerminalSurfaceID(rawValue: uuid)
     }
+
+    /// Built fresh per call rather than stored: `paneInputScheduler` is
+    /// assigned onto `windowSessionCoordinator` after this coordinator is
+    /// constructed (see `AppDelegate`), so capturing it once at init would
+    /// permanently see `nil`.
+    private var paneScheduleService: RemotePaneScheduleService {
+        RemotePaneScheduleService(
+            scheduler: windowSessionCoordinator.paneInputScheduler,
+            paneExists: { [weak self] surfaceID in
+                guard let self else { return false }
+                return self.windowSessionCoordinator.controllers.contains {
+                    $0.remotePaneContent(forPane: surfaceID) != nil
+                }
+            },
+            onError: { error in
+                WindowSessionCoordinator.reportPersistenceError(
+                    error,
+                    operation: "remote scheduled input"
+                )
+            }
+        )
+    }
 }
 
 extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
@@ -216,17 +238,7 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         _ server: RemoteAccessServer,
         schedulesForPaneID paneID: String
     ) -> [RemotePaneSchedule] {
-        guard let surfaceID = terminalSurfaceID(from: paneID),
-              let scheduler = windowSessionCoordinator.paneInputScheduler
-        else { return [] }
-        return scheduler.schedules(for: surfaceID).map {
-            RemotePaneSchedule(
-                id: $0.id.rawValue.uuidString,
-                fireAt: $0.fireAt,
-                text: $0.text,
-                pressEnter: $0.appendNewline
-            )
-        }
+        paneScheduleService.schedules(forPaneID: paneID)
     }
 
     func remoteAccessServer(
@@ -234,23 +246,7 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         createSchedule schedule: RemotePaneSchedule,
         forPaneID paneID: String
     ) {
-        guard let surfaceID = terminalSurfaceID(from: paneID),
-              let scheduleUUID = UUID(uuidString: schedule.id),
-              let scheduler = windowSessionCoordinator.paneInputScheduler,
-              windowSessionCoordinator.controllers.contains(where: {
-                  $0.remotePaneContent(forPane: surfaceID) != nil
-              })
-        else { return }
-        let paneInputSchedule = PaneInputSchedule(
-            id: PaneInputScheduleID(rawValue: scheduleUUID),
-            surfaceID: surfaceID,
-            fireAt: schedule.fireAt,
-            text: schedule.text,
-            appendNewline: schedule.pressEnter
-        )
-        // A past `fireAt` throws `PaneInputSchedulerError.pastDate`; that is
-        // silently dropped here, so the reply list just won't contain it.
-        try? scheduler.save(paneInputSchedule)
+        paneScheduleService.create(schedule, forPaneID: paneID)
     }
 
     func remoteAccessServer(
@@ -258,14 +254,6 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         deleteScheduleID scheduleID: String,
         forPaneID paneID: String
     ) {
-        guard let surfaceID = terminalSurfaceID(from: paneID),
-              let scheduleUUID = UUID(uuidString: scheduleID),
-              let scheduler = windowSessionCoordinator.paneInputScheduler
-        else { return }
-        let id = PaneInputScheduleID(rawValue: scheduleUUID)
-        guard scheduler.schedules(for: surfaceID).contains(where: {
-            $0.id == id
-        }) else { return }
-        try? scheduler.delete(id: id)
+        paneScheduleService.delete(scheduleID: scheduleID, forPaneID: paneID)
     }
 }

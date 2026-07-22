@@ -14,6 +14,13 @@ struct PaneScheduleView: View {
     @State private var fireAt = Date.now.addingTimeInterval(60)
     @State private var text = ""
     @State private var pressEnter = true
+    /// The ID of a create still awaiting confirmation. The Mac replies to
+    /// `createPaneSchedule` with the pane's fresh list rather than a
+    /// bespoke ack, and silently drops a request for an unknown pane or a
+    /// past date — so the only way to notice a rejection is to check
+    /// whether this ID shows up in the next `paneSchedules` reply.
+    @State private var pendingCreateID: String?
+    @State private var rejectionMessage: String?
 
     private var schedules: [RemotePaneSchedule] {
         client.paneSchedules[pane.id] ?? []
@@ -22,7 +29,7 @@ struct PaneScheduleView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("New schedule") {
+                Section {
                     DatePicker(
                         "Time",
                         selection: $fireAt,
@@ -32,7 +39,8 @@ struct PaneScheduleView: View {
                     TextField("Text to send", text: $text, axis: .vertical)
                     Toggle("Press Enter", isOn: $pressEnter)
                     Button("Schedule") {
-                        client.createPaneSchedule(
+                        rejectionMessage = nil
+                        pendingCreateID = client.createPaneSchedule(
                             paneID: pane.id,
                             fireAt: fireAt,
                             text: text,
@@ -41,7 +49,14 @@ struct PaneScheduleView: View {
                         text = ""
                         fireAt = Date.now.addingTimeInterval(60)
                     }
-                    .disabled(!client.isConnected)
+                    .disabled(!client.isConnected || !client.supportsPaneSchedules)
+                } header: {
+                    Text("New schedule")
+                } footer: {
+                    if let rejectionMessage {
+                        Text(rejectionMessage)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 Section("Scheduled") {
@@ -74,6 +89,16 @@ struct PaneScheduleView: View {
             }
         }
         .onAppear { client.requestPaneSchedules(paneID: pane.id) }
+        .onChange(of: schedules) {
+            guard let pendingCreateID else { return }
+            if schedules.contains(where: { $0.id == pendingCreateID }) {
+                rejectionMessage = nil
+            } else {
+                rejectionMessage =
+                    "The Mac didn't accept the schedule — check that the time is still in the future."
+            }
+            self.pendingCreateID = nil
+        }
     }
 
     private func scheduleRow(_ schedule: RemotePaneSchedule) -> some View {
