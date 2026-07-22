@@ -182,6 +182,7 @@ struct TabSidebarView: View {
     let onDropTab: (Int) -> Void
     let isTabDragActive: () -> Bool
     let onEqualizePanes: (TabID) -> Void
+    let onPaneProcesses: (TabID) -> [PaneListItem]
     let onFocusAttentionItem: (AttentionItem) -> Void
     let onAcknowledgeAttentionItem: (AttentionItem) -> Void
     let onAcknowledgeAllAttentionItems: () -> Void
@@ -395,7 +396,8 @@ struct TabSidebarView: View {
                         }
                         TabStatusIndicators(
                             row: row,
-                            localizer: localizer
+                            localizer: localizer,
+                            paneProcessProvider: onPaneProcesses
                         )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -482,7 +484,8 @@ struct TabSidebarView: View {
                             .lineLimit(1)
                         TabStatusIndicators(
                             row: row,
-                            localizer: localizer
+                            localizer: localizer,
+                            paneProcessProvider: onPaneProcesses
                         )
                     }
                     if row.attentionCount > 0 {
@@ -686,19 +689,17 @@ private struct TabDragHandleGlyph: View {
 private struct TabStatusIndicators: View {
     let row: TabSidebarRow
     let localizer: MyTTYLocalizer
+    /// Supplies the tab's panes and their foreground commands when the
+    /// pane-count indicator is clicked. Nil renders the indicator as a
+    /// plain, non-interactive glyph (the drag preview).
+    var paneProcessProvider: ((TabID) -> [PaneListItem])? = nil
+    @State private var processItems: [PaneListItem] = []
+    @State private var isProcessListPresented = false
 
     var body: some View {
         HStack(spacing: 6) {
             if let paneCount = row.visiblePaneCount {
-                HStack(spacing: 2) {
-                    Image(systemName: "rectangle.split.2x1")
-                        .font(.system(size: 9))
-                    Text("\(paneCount)")
-                        .font(.caption2.monospacedDigit())
-                }
-                .fixedSize()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(localizer.paneCount(paneCount))
+                paneCountIndicator(paneCount)
             }
             if let uptimeOrigin = row.uptimeOrigin {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -737,6 +738,99 @@ private struct TabStatusIndicators: View {
         }
         .frame(minHeight: 14)
         .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func paneCountIndicator(_ paneCount: Int) -> some View {
+        if let paneProcessProvider {
+            Button {
+                processItems = paneProcessProvider(row.id)
+                isProcessListPresented = true
+            } label: {
+                paneCountLabel(paneCount)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(localizer[.paneProcesses])
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(localizer.paneCount(paneCount))
+            .popover(
+                isPresented: $isProcessListPresented,
+                arrowEdge: .bottom
+            ) {
+                TabPaneProcessListView(
+                    items: processItems,
+                    localizer: localizer
+                )
+            }
+        } else {
+            paneCountLabel(paneCount)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(localizer.paneCount(paneCount))
+        }
+    }
+
+    private func paneCountLabel(_ paneCount: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 9))
+            Text("\(paneCount)")
+                .font(.caption2.monospacedDigit())
+        }
+        .fixedSize()
+    }
+}
+
+/// The popover the sidebar's pane-count indicator opens: one row per pane
+/// in the tab, showing the foreground command and its location.
+struct TabPaneProcessListView: View {
+    let items: [PaneListItem]
+    let localizer: MyTTYLocalizer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(localizer[.paneProcesses])
+                .font(.headline)
+            if items.isEmpty {
+                Text(localizer[.noPanes])
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(items) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(
+                            systemName: item.kind == .terminal
+                                ? "terminal"
+                                : "globe"
+                        )
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 5) {
+                                Text(item.command)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .lineLimit(1)
+                                if item.isActive {
+                                    Image(systemName: "circle.fill")
+                                        .font(.system(size: 5))
+                                        .foregroundStyle(.tint)
+                                }
+                            }
+                            Text(item.location)
+                                .font(
+                                    .system(size: 11, design: .monospaced)
+                                )
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(item.location)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 240, maxWidth: 340, alignment: .leading)
     }
 }
 

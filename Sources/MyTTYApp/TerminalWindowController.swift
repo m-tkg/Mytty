@@ -1126,6 +1126,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    func paneProcessItems(forTab tabID: TabID) -> [PaneListItem] {
+        PaneListPresentation.items(
+            forTab: tabID,
+            snapshot: paneListSnapshot(),
+            terminalTitle: localizer[.terminal],
+            browserTitle: localizer[.browser],
+            localizer: localizer
+        )
+    }
+
     @discardableResult
     func focus(pane paneID: TerminalSurfaceID) -> Bool {
         guard session.tabs.contains(where: {
@@ -1495,6 +1505,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             },
             onEqualizePanes: { [weak self] id in
                 self?.equalizePanes(in: id)
+            },
+            onPaneProcesses: { [weak self] id in
+                self?.paneProcessItems(forTab: id) ?? []
             },
             onFocusAttentionItem: { [weak self] item in
                 self?.onFocusSurfaceRequested(item.surfaceID)
