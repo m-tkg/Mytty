@@ -1,5 +1,9 @@
 [English](README.md)
 
+<p align="center">
+  <img src="Resources/AppIcon.appiconset/1024.png" alt="Mytty のアプリアイコン" width="256">
+</p>
+
 # Mytty
 
 **はじめての方は[チュートリアル](docs/README_ja.md#チュートリアル)から。**
@@ -21,6 +25,23 @@ Codex、Claude Code、OpenCode、Antigravity(スタンドアロンの Gemini CLI
 - **セッション復元、ローカル autocomplete、アプリ内ブラウザ、GIF 録画、iOS リモートアプリ**(Attention 項目の APNs push 通知つき)。
 
 それ以外のすべては[ドキュメント](docs/README_ja.md)にあります。チュートリアル、使い方、リファレンス、各部分の設計判断まで揃っています。
+
+## スクリーンショット
+
+### タブとペイン
+
+![サイドバーに 2 つのタブ、左右に分割されたペイン](docs/images/panes.png)
+
+### `mytty-ctl` による AI からの操作
+
+![Mytty のペイン内で実行した `mytty-ctl list | jq .`](docs/images/mytty-ctl-list.png)
+
+### iOS リモート
+
+<p align="center">
+  <img src="docs/images/ios-pane.png" alt="iPhone に映した Mac のペイン" width="280">
+  <img src="docs/images/ios-push.png" alt="iPhone に届いた Attention のプッシュ通知" width="280">
+</p>
 
 ## ドキュメント
 
