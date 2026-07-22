@@ -211,4 +211,61 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         windowSessionCoordinator.controllers
             .first { $0.session.id == id }?.newTab()
     }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        schedulesForPaneID paneID: String
+    ) -> [RemotePaneSchedule] {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let scheduler = windowSessionCoordinator.paneInputScheduler
+        else { return [] }
+        return scheduler.schedules(for: surfaceID).map {
+            RemotePaneSchedule(
+                id: $0.id.rawValue.uuidString,
+                fireAt: $0.fireAt,
+                text: $0.text,
+                pressEnter: $0.appendNewline
+            )
+        }
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        createSchedule schedule: RemotePaneSchedule,
+        forPaneID paneID: String
+    ) {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let scheduleUUID = UUID(uuidString: schedule.id),
+              let scheduler = windowSessionCoordinator.paneInputScheduler,
+              windowSessionCoordinator.controllers.contains(where: {
+                  $0.remotePaneContent(forPane: surfaceID) != nil
+              })
+        else { return }
+        let paneInputSchedule = PaneInputSchedule(
+            id: PaneInputScheduleID(rawValue: scheduleUUID),
+            surfaceID: surfaceID,
+            fireAt: schedule.fireAt,
+            text: schedule.text,
+            appendNewline: schedule.pressEnter
+        )
+        // A past `fireAt` throws `PaneInputSchedulerError.pastDate`; that is
+        // silently dropped here, so the reply list just won't contain it.
+        try? scheduler.save(paneInputSchedule)
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        deleteScheduleID scheduleID: String,
+        forPaneID paneID: String
+    ) {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let scheduleUUID = UUID(uuidString: scheduleID),
+              let scheduler = windowSessionCoordinator.paneInputScheduler
+        else { return }
+        let id = PaneInputScheduleID(rawValue: scheduleUUID)
+        guard scheduler.schedules(for: surfaceID).contains(where: {
+            $0.id == id
+        }) else { return }
+        try? scheduler.delete(id: id)
+    }
 }

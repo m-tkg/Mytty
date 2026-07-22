@@ -43,6 +43,29 @@ protocol RemoteAccessServerDelegate: AnyObject {
         _ server: RemoteAccessServer,
         createTabInWindowID windowID: String
     )
+
+    /// The pane's currently scheduled inputs, sorted like the Mac's own
+    /// list. Empty (never nil) for an unknown pane.
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        schedulesForPaneID paneID: String
+    ) -> [RemotePaneSchedule]
+
+    /// Saves a client-generated schedule. Silently ignored (the delegate
+    /// itself is responsible for the no-op) when the pane is unknown or
+    /// `schedule.fireAt` is already in the past.
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        createSchedule schedule: RemotePaneSchedule,
+        forPaneID paneID: String
+    )
+
+    /// Deletes a schedule if it currently belongs to this pane.
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        deleteScheduleID scheduleID: String,
+        forPaneID paneID: String
+    )
 }
 
 enum RemoteAccessServerError: Error {
@@ -397,6 +420,49 @@ final class RemoteAccessServer {
                 pushID,
                 relaySecretBase64: relaySecretBase64,
                 connectionID: id
+            )
+
+        case let .listPaneSchedules(paneID):
+            let schedules = delegate?.remoteAccessServer(
+                self,
+                schedulesForPaneID: paneID
+            ) ?? []
+            send(
+                .paneSchedules(paneID: paneID, schedules: schedules),
+                to: id,
+                key: key
+            )
+
+        case let .createPaneSchedule(paneID, schedule):
+            delegate?.remoteAccessServer(
+                self,
+                createSchedule: schedule,
+                forPaneID: paneID
+            )
+            let schedules = delegate?.remoteAccessServer(
+                self,
+                schedulesForPaneID: paneID
+            ) ?? []
+            send(
+                .paneSchedules(paneID: paneID, schedules: schedules),
+                to: id,
+                key: key
+            )
+
+        case let .deletePaneSchedule(paneID, scheduleID):
+            delegate?.remoteAccessServer(
+                self,
+                deleteScheduleID: scheduleID,
+                forPaneID: paneID
+            )
+            let schedules = delegate?.remoteAccessServer(
+                self,
+                schedulesForPaneID: paneID
+            ) ?? []
+            send(
+                .paneSchedules(paneID: paneID, schedules: schedules),
+                to: id,
+                key: key
             )
 
         default:

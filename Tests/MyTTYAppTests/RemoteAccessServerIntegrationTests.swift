@@ -99,6 +99,113 @@ struct RemoteAccessServerIntegrationTests {
         #expect(cursorColumn == 2)
     }
 
+    @Test("lists, creates, and deletes pane schedules through the full pair + hello flow")
+    func listsCreatesAndDeletesPaneSchedules() async throws {
+        let delegate = StubRemoteAccessDelegate()
+        let existing = RemotePaneSchedule(
+            id: UUID().uuidString,
+            fireAt: Date(timeIntervalSinceNow: 3600),
+            text: "echo canned",
+            pressEnter: true
+        )
+        delegate.schedules["pane-1"] = [existing]
+
+        let server = RemoteAccessServer(
+            deviceStore: RemotePairedDeviceStore(fileURL: temporaryStoreURL()),
+            deviceDisplayName: testServiceName(),
+            onError: { error in Issue.record("server error: \(error)") }
+        )
+        server.delegate = delegate
+        try server.start()
+        defer { server.stop() }
+
+        let port = try await step("wait for listening port") {
+            try await self.waitForListeningPort(server)
+        }
+        let code = server.pairingCoordinator.beginPairing()
+
+        let pairConnection = TestRemoteConnection(port: port)
+        try await step("pair connection start") { try await pairConnection.start() }
+        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let approval = try await step("pair exchange") {
+            try await pairConnection.exchange(
+                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                key: pairingKey
+            )
+        }
+        pairConnection.cancel()
+        guard case let .pairApproved(deviceID, secretBase64) = approval else {
+            Issue.record("expected pairApproved, got \(approval)")
+            return
+        }
+
+        let session = TestRemoteConnection(port: port)
+        try await step("session connection start") { try await session.start() }
+        defer { session.cancel() }
+        let sessionKey = SymmetricKey(
+            data: Data(base64Encoded: secretBase64) ?? Data()
+        )
+        let helloResponse = try await step("hello exchange") {
+            try await session.exchange(
+                .hello(
+                    deviceID: deviceID,
+                    protocolVersion: RemoteMessageCodec.protocolVersion
+                ),
+                key: sessionKey
+            )
+        }
+        guard case .snapshot = helloResponse else {
+            Issue.record("expected snapshot after hello, got \(helloResponse)")
+            return
+        }
+
+        let listResponse = try await step("listPaneSchedules exchange") {
+            try await session.exchange(
+                .listPaneSchedules(paneID: "pane-1"),
+                key: sessionKey
+            )
+        }
+        guard case let .paneSchedules(listPaneID, listSchedules) = listResponse
+        else {
+            Issue.record("expected paneSchedules, got \(listResponse)")
+            return
+        }
+        #expect(listPaneID == "pane-1")
+        #expect(listSchedules == [existing])
+
+        let created = RemotePaneSchedule(
+            id: UUID().uuidString,
+            fireAt: Date(timeIntervalSinceNow: 7200),
+            text: "echo new",
+            pressEnter: false
+        )
+        let createResponse = try await step("createPaneSchedule exchange") {
+            try await session.exchange(
+                .createPaneSchedule(paneID: "pane-1", schedule: created),
+                key: sessionKey
+            )
+        }
+        guard case let .paneSchedules(_, afterCreate) = createResponse else {
+            Issue.record("expected paneSchedules, got \(createResponse)")
+            return
+        }
+        #expect(afterCreate.contains(created))
+        #expect(afterCreate.contains(existing))
+
+        let deleteResponse = try await step("deletePaneSchedule exchange") {
+            try await session.exchange(
+                .deletePaneSchedule(paneID: "pane-1", scheduleID: existing.id),
+                key: sessionKey
+            )
+        }
+        guard case let .paneSchedules(_, afterDelete) = deleteResponse else {
+            Issue.record("expected paneSchedules, got \(deleteResponse)")
+            return
+        }
+        #expect(!afterDelete.contains(existing))
+        #expect(afterDelete.contains(created))
+    }
+
     @Test("reports the connected device count as sessions authenticate and disconnect")
     func connectedDeviceCountTracksSessionLifecycle() async throws {
         let delegate = StubRemoteAccessDelegate()
@@ -213,6 +320,7 @@ struct RemoteAccessServerIntegrationTests {
 @MainActor
 private final class StubRemoteAccessDelegate: RemoteAccessServerDelegate {
     var paneText: [String: String] = [:]
+    var schedules: [String: [RemotePaneSchedule]] = [:]
 
     func remoteAccessServerSnapshot(
         _ server: RemoteAccessServer
@@ -253,6 +361,29 @@ private final class StubRemoteAccessDelegate: RemoteAccessServerDelegate {
         _ server: RemoteAccessServer,
         createTabInWindowID windowID: String
     ) {}
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        schedulesForPaneID paneID: String
+    ) -> [RemotePaneSchedule] {
+        schedules[paneID] ?? []
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        createSchedule schedule: RemotePaneSchedule,
+        forPaneID paneID: String
+    ) {
+        schedules[paneID, default: []].append(schedule)
+    }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        deleteScheduleID scheduleID: String,
+        forPaneID paneID: String
+    ) {
+        schedules[paneID]?.removeAll { $0.id == scheduleID }
+    }
 }
 
 /// Minimal NWConnection-based client mirroring the iOS app's
