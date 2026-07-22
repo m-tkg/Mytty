@@ -18,6 +18,29 @@ enum FontFamilyPresentation {
             ?? .systemFont(ofSize: size)
     }
 
+    /// The family list for the Settings picker. Right after a cold boot
+    /// fontd may not have indexed user fonts yet, so the configured
+    /// family can be missing from `availableFontFamilies`; keep it in
+    /// the menu anyway so the current selection never renders as empty.
+    static func menuFamilies(
+        available: [String],
+        selected: String
+    ) -> [String] {
+        guard !selected.isEmpty,
+              !available.contains(where: {
+                  $0.caseInsensitiveCompare(selected) == .orderedSame
+              })
+        else { return available }
+
+        let index = available.firstIndex {
+            $0.localizedCaseInsensitiveCompare(selected)
+                == .orderedDescending
+        } ?? available.endIndex
+        var families = available
+        families.insert(selected, at: index)
+        return families
+    }
+
     static func displayName(
         for family: String,
         language: ResolvedAppLanguage
