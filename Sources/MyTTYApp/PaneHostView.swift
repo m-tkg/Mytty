@@ -28,7 +28,7 @@ struct PaneActiveBorderStyle: Equatable {
 final class PaneHostView: NSView {
     /// Alpha of the red orchestration tint overlay, kept in one place so
     /// the constant and the test expectation can't drift apart.
-    private static let orchestrationTintAlpha: CGFloat = 0.08
+    private static let tintAlpha: CGFloat = 0.08
 
     private let dimmingView = PaneDimmingView()
     private let orchestrationTintView = PaneOrchestrationTintView()
@@ -109,6 +109,13 @@ final class PaneHostView: NSView {
         // `borderColor` is a resolved CGColor, so dynamic colors — the
         // accent color especially — have to be re-resolved by hand.
         updateBorder()
+        updateOrchestrationTintColor()
+    }
+
+    private func updateOrchestrationTintColor() {
+        orchestrationTintView.layer?.backgroundColor = NSColor.systemRed
+            .withAlphaComponent(Self.tintAlpha)
+            .cgColor
     }
 
     var isDimmed: Bool { !dimmingView.isHidden }
@@ -135,9 +142,7 @@ final class PaneHostView: NSView {
         wantsLayer = true
         orchestrationTintView.translatesAutoresizingMaskIntoConstraints = false
         orchestrationTintView.wantsLayer = true
-        orchestrationTintView.layer?.backgroundColor = NSColor.systemRed
-            .withAlphaComponent(Self.orchestrationTintAlpha)
-            .cgColor
+        updateOrchestrationTintColor()
         orchestrationTintView.isHidden = true
         addSubview(orchestrationTintView)
         dimmingView.translatesAutoresizingMaskIntoConstraints = false
