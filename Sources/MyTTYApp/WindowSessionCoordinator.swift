@@ -267,6 +267,19 @@ final class WindowSessionCoordinator {
     }
 
     func removeWindow(id: WindowID) {
+        // A user-closed window takes its panes away for good, so their
+        // unread attention items must not linger in the inbox. During
+        // termination the same callback fires while the session is being
+        // preserved for restore — leave the items unread then.
+        if terminationState.shouldSaveAfterWindowRemoval,
+           let controller = controllers.first(where: { $0.session.id == id }) {
+            let surfaceIDs = controller.session.tabs.flatMap(\.surfaceIDs)
+            do {
+                try attentionCenter?.acknowledgeActionableItems(for: surfaceIDs)
+            } catch {
+                presentActionError(error)
+            }
+        }
         controllers.removeAll { $0.session.id == id }
         closeSettingsIfNeeded(controllers.count)
         updateAgentSleepPrevention()
