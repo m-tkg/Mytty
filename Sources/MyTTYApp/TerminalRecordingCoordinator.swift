@@ -21,6 +21,8 @@ import MyTTYCore
 @MainActor
 final class TerminalRecordingCoordinator {
     private(set) var recorder: TerminalGIFRecorder?
+    private var countdownTask: Task<Void, Never>?
+    private var pendingCountdown: (tabID: TabID, surfaceID: TerminalSurfaceID)?
 
     private let showPressedKeyToast: () -> Bool
     /// Read when a recording stops, so the fade reflects the settings at
@@ -32,29 +34,41 @@ final class TerminalRecordingCoordinator {
     /// the `refreshSidebarRows()` calls in the original methods.
     private let onRecordingStateChanged: () -> Void
     private let presentError: (Error) -> Void
+    private let countdownEnabled: () -> Bool
+    private let showCountdown: (TerminalSurfaceID, Int) -> Void
+    private let hideCountdown: (TerminalSurfaceID) -> Void
+    private let countdownStepDuration: Duration
 
     init(
         showPressedKeyToast: @escaping () -> Bool,
         fadeOut: @escaping () -> TerminalRecordingFadeOut?,
         outputPanelTitle: @escaping () -> String,
         onRecordingStateChanged: @escaping () -> Void,
-        presentError: @escaping (Error) -> Void
+        presentError: @escaping (Error) -> Void,
+        countdownEnabled: @escaping () -> Bool,
+        showCountdown: @escaping (TerminalSurfaceID, Int) -> Void,
+        hideCountdown: @escaping (TerminalSurfaceID) -> Void,
+        countdownStepDuration: Duration = .seconds(1)
     ) {
         self.showPressedKeyToast = showPressedKeyToast
         self.fadeOut = fadeOut
         self.outputPanelTitle = outputPanelTitle
         self.onRecordingStateChanged = onRecordingStateChanged
         self.presentError = presentError
+        self.countdownEnabled = countdownEnabled
+        self.showCountdown = showCountdown
+        self.hideCountdown = hideCountdown
+        self.countdownStepDuration = countdownStepDuration
     }
 
-    var isRecording: Bool { recorder != nil }
+    var isRecording: Bool { recorder != nil || countdownTask != nil }
 
     func isRecording(tabID: TabID) -> Bool {
-        recorder?.tabID == tabID
+        recorder?.tabID == tabID || pendingCountdown?.tabID == tabID
     }
 
     func isRecording(surfaceID: TerminalSurfaceID) -> Bool {
-        recorder?.surfaceID == surfaceID
+        recorder?.surfaceID == surfaceID || pendingCountdown?.surfaceID == surfaceID
     }
 
     func updateShowPressedKeys(_ showPressedKeys: Bool) {
@@ -85,6 +99,41 @@ final class TerminalRecordingCoordinator {
         surfaceID: TerminalSurfaceID,
         surface: GhosttySurfaceView
     ) {
+        guard !isRecording else { return }
+        guard countdownEnabled() else {
+            startRecording(tabID: tabID, surfaceID: surfaceID, surface: surface)
+            return
+        }
+        pendingCountdown = (tabID, surfaceID)
+        onRecordingStateChanged()
+        countdownTask = Task { @MainActor [weak self, weak surface] in
+            for count in [3, 2, 1] {
+                guard let self else { return }
+                self.showCountdown(surfaceID, count)
+                do {
+                    try await Task.sleep(for: self.countdownStepDuration)
+                } catch {
+                    return
+                }
+            }
+            guard let self else { return }
+            self.hideCountdown(surfaceID)
+            self.countdownTask = nil
+            self.pendingCountdown = nil
+            guard let surface else { return }
+            self.startRecording(
+                tabID: tabID,
+                surfaceID: surfaceID,
+                surface: surface
+            )
+        }
+    }
+
+    private func startRecording(
+        tabID: TabID,
+        surfaceID: TerminalSurfaceID,
+        surface: GhosttySurfaceView
+    ) {
         let recorder = TerminalGIFRecorder(
             tabID: tabID,
             surfaceID: surfaceID,
@@ -111,6 +160,14 @@ final class TerminalRecordingCoordinator {
     }
 
     func stop() {
+        if let pendingCountdown {
+            countdownTask?.cancel()
+            countdownTask = nil
+            self.pendingCountdown = nil
+            hideCountdown(pendingCountdown.surfaceID)
+            onRecordingStateChanged()
+            return
+        }
         guard let recorder else { return }
         self.recorder = nil
         recorder.stopCapturing()

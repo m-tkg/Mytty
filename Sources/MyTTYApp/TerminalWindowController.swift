@@ -212,7 +212,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             self?.localizer[.terminalRecording] ?? ""
         },
         onRecordingStateChanged: { [weak self] in self?.refreshSidebarRows() },
-        presentError: { [weak self] error in self?.presentActionError(error) }
+        presentError: { [weak self] error in self?.presentActionError(error) },
+        countdownEnabled: { [weak self] in
+            self?.applicationPreferences.recordingCountdownEnabled ?? true
+        },
+        showCountdown: { [weak self] surfaceID, count in
+            self?.paneLayout.host(for: surfaceID)?.showCountdown(count)
+        },
+        hideCountdown: { [weak self] surfaceID in
+            self?.paneLayout.host(for: surfaceID)?.hideCountdown()
+        }
     )
     private lazy var remotePane = RemotePaneBridge(
         surface: { [weak self] paneID in self?.surfaces[paneID] },
