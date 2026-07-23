@@ -88,6 +88,13 @@ struct LocalizationTests {
         #expect(english[.stopRecording] == "Stop Recording")
         #expect(english[.gifRecording] == "GIF Recording")
         #expect(japanese[.gifRecording] == "GIF 録画")
+        #expect(
+            english[.recordingCountdownEnabled]
+                == "Countdown before recording"
+        )
+        #expect(
+            japanese[.recordingCountdownEnabled] == "録画開始前にカウントダウン"
+        )
         #expect(english[.recordingFadeOutAtEnd] == "Fade out at the end")
         #expect(japanese[.recordingFadeOutAtEnd] == "最後にフェードアウト")
         #expect(english[.recordingFadeOutColor] == "Fade-out color")

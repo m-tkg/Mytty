@@ -499,6 +499,36 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the recording countdown setting")
+    func recordingCountdownPreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.recordingCountdownEnabled)
+
+        preferences.recordingCountdownEnabled = false
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("recording.countdown = \"false\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        recording.countdown = "maybe"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("loads and saves managed Ghostty settings without replacing unknown keys")
     func terminalPreferences() throws {
         let harness = try Harness()
