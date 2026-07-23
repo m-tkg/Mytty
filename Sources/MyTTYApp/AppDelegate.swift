@@ -151,25 +151,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL] ?? []
+        let ready = finderOpenQueue.enqueue(urls)
         // Selected items can vanish between Finder's selection and the
         // service call; reporting through `error` makes macOS surface the
-        // failure instead of the service silently doing nothing.
-        guard !FinderOpenPolicy.workingDirectories(
-            for: urls,
-            isDirectory: Self.directoryOnDisk
-        ).isEmpty else {
+        // failure instead of the service silently doing nothing. Buffered
+        // requests (`ready` empty while launch finishes) are not failures.
+        if !ready.isEmpty, !openFinderRequests(ready) {
             error.pointee = localizer[.finderOpenNothingToOpen] as NSString
-            return
         }
-        openFinderRequests(finderOpenQueue.enqueue(urls))
     }
 
-    private func openFinderRequests(_ urls: [URL]) {
+    @discardableResult
+    private func openFinderRequests(_ urls: [URL]) -> Bool {
         let directories = FinderOpenPolicy.workingDirectories(
             for: urls,
             isDirectory: Self.directoryOnDisk
         )
-        guard !directories.isEmpty else { return }
+        guard !directories.isEmpty else { return false }
         for directory in directories {
             do {
                 try windowSessionCoordinator.createWindow(
@@ -180,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
+        return true
     }
 
     private static func directoryOnDisk(_ url: URL) -> Bool? {
