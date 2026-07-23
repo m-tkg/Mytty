@@ -190,7 +190,8 @@ struct TerminalRecordingTests {
             colorHex: "000000"
         )
         #expect(
-            fadeOut.alphas(frameDelay: 0.125) == [0.25, 0.5, 0.75, 1.0]
+            fadeOut.alphas(frameDelay: 0.125)
+                == [0.15625, 0.5, 0.84375, 1.0]
         )
 
         let short = TerminalRecordingFadeOut(

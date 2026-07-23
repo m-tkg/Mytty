@@ -112,6 +112,9 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var recordingFadeOutDuration: Double
     /// `RRGGBB`; never empty.
     public var recordingFadeOutColorHex: String
+    /// Whether starting a GIF recording counts down (3, 2, 1) before capture
+    /// begins.
+    public var recordingCountdownEnabled: Bool
 
     public init(
         tabPlacement: MyTTYTabPlacement = .left,
@@ -141,7 +144,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         activePaneBorderColorHex: String = "",
         recordingFadeOutEnabled: Bool = true,
         recordingFadeOutDuration: Double = 0.5,
-        recordingFadeOutColorHex: String = "000000"
+        recordingFadeOutColorHex: String = "000000",
+        recordingCountdownEnabled: Bool = true
     ) {
         self.tabPlacement = tabPlacement
         self.newTabPosition = newTabPosition
@@ -170,6 +174,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.recordingFadeOutEnabled = recordingFadeOutEnabled
         self.recordingFadeOutDuration = recordingFadeOutDuration
         self.recordingFadeOutColorHex = recordingFadeOutColorHex
+        self.recordingCountdownEnabled = recordingCountdownEnabled
     }
 }
 
@@ -295,6 +300,7 @@ public struct ApplicationPreferencesStore {
             "recording.fade-out",
             "recording.fade-out-duration",
             "recording.fade-out-color",
+            "recording.countdown",
             "keybinding.toggle-attention",
         ] + MyTTYCommand.allCases.map {
             keyBindingKey(for: $0)
@@ -513,6 +519,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.recordingFadeOutColorHex = hex
         }
+        if let value = document.lastValue(for: "recording.countdown") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "recording.countdown", value: value)
+            }
+            preferences.recordingCountdownEnabled = enabled
+        }
 
         for command in MyTTYCommand.allCases {
             let key = Self.keyBindingKey(for: command)
@@ -605,6 +617,7 @@ public struct ApplicationPreferencesStore {
             "recording.fade-out = \(quoted(String(preferences.recordingFadeOutEnabled)))",
             "recording.fade-out-duration = \(quoted(decimal(preferences.recordingFadeOutDuration)))",
             "recording.fade-out-color = \(quoted(fadeOutColorHex))",
+            "recording.countdown = \(quoted(String(preferences.recordingCountdownEnabled)))",
         ]
         managed.append(contentsOf: MyTTYCommand.allCases.map { command in
             let value = preferences.keyBindings[command]?.serialized ?? "none"

@@ -360,6 +360,12 @@ private struct GeneralSettingsView: View {
 
             Section(localizer[.gifRecording]) {
                 Toggle(
+                    localizer[.recordingCountdownEnabled],
+                    isOn: applicationBinding(\.recordingCountdownEnabled)
+                )
+                .toggleStyle(.switch)
+
+                Toggle(
                     localizer[.recordingFadeOutAtEnd],
                     isOn: applicationBinding(\.recordingFadeOutEnabled)
                 )

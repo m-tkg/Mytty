@@ -270,6 +270,7 @@ enum MyTTYText: String {
     case holdSplitShortcutForOuterSplit
         = "Hold split shortcut to split the whole tab"
     case gifRecording = "GIF Recording"
+    case recordingCountdownEnabled = "Countdown before recording"
     case recordingFadeOutAtEnd = "Fade out at the end"
     case recordingFadeOutColor = "Fade-out color"
     case recordingFadeOutDuration = "Fade-out duration"
@@ -738,6 +739,7 @@ struct MyTTYLocalizer: Equatable {
         case .commandPaletteNoResults: "一致するコマンドがありません"
         case .showPressedKeysInPane: "押したキーをカーソルの下に表示"
         case .gifRecording: "GIF 録画"
+        case .recordingCountdownEnabled: "録画開始前にカウントダウン"
         case .recordingFadeOutAtEnd: "最後にフェードアウト"
         case .recordingFadeOutColor: "フェードアウトの色"
         case .recordingFadeOutDuration: "フェードアウトの時間"
