@@ -1,6 +1,8 @@
 import AppKit
 
-private let application = NSApplication.shared
+ExceptionReporting.install()
+
+private let application = MyttyApplication.shared
 private let delegate = AppDelegate()
 application.setActivationPolicy(.regular)
 application.applicationIconImage = ApplicationIcon.image
