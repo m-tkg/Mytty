@@ -34,6 +34,7 @@ final class PaneHostView: NSView {
     private let orchestrationTintView = PaneOrchestrationTintView()
     private let keyToastView = PaneKeyToastView()
     private let sizeIndicatorView = PaneSizeIndicatorView()
+    private let countdownView = PaneCountdownView()
     private let swapClickCatcher = PaneSwapClickCatcherView()
     private var keyToastHideTask: Task<Void, Never>?
     private var keyToastCursorRect: NSRect?
@@ -135,6 +136,8 @@ final class PaneHostView: NSView {
     var keyToastFrame: NSRect { keyToastView.frame }
     var sizeIndicatorText: String { sizeIndicatorView.stringValue }
     var isSizeIndicatorVisible: Bool { !sizeIndicatorView.isHidden }
+    var countdownText: String { countdownView.stringValue }
+    var isCountdownVisible: Bool { !countdownView.isHidden }
     var isSwapClickCatcherActive: Bool { !swapClickCatcher.isHidden }
 
     init(content: NSView) {
@@ -154,6 +157,9 @@ final class PaneHostView: NSView {
         sizeIndicatorView.translatesAutoresizingMaskIntoConstraints = false
         sizeIndicatorView.isHidden = true
         addSubview(sizeIndicatorView)
+        countdownView.translatesAutoresizingMaskIntoConstraints = false
+        countdownView.isHidden = true
+        addSubview(countdownView)
         attachContent(content)
         swapClickCatcher.translatesAutoresizingMaskIntoConstraints = false
         swapClickCatcher.isHidden = true
@@ -183,6 +189,8 @@ final class PaneHostView: NSView {
             ),
             indicatorWidth,
             sizeIndicatorView.heightAnchor.constraint(equalToConstant: 34),
+            countdownView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            countdownView.centerYAnchor.constraint(equalTo: centerYAnchor),
             swapClickCatcher.leadingAnchor.constraint(equalTo: leadingAnchor),
             swapClickCatcher.trailingAnchor.constraint(equalTo: trailingAnchor),
             swapClickCatcher.topAnchor.constraint(equalTo: topAnchor),
@@ -288,6 +296,15 @@ final class PaneHostView: NSView {
         sizeIndicatorView.isHidden = !visible
     }
 
+    func showCountdown(_ count: Int) {
+        countdownView.stringValue = String(count)
+        countdownView.isHidden = false
+    }
+
+    func hideCountdown() {
+        countdownView.isHidden = true
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
@@ -356,6 +373,49 @@ private final class PaneKeyToastView: NSView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
+/// Large centered digit shown while a recording countdown is in progress.
+/// Styled like `PaneKeyToastView` (translucent black rounded backdrop,
+/// white text, click-transparent) but sized for a single big number.
+@MainActor
+private final class PaneCountdownView: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    var stringValue: String {
+        get { label.stringValue }
+        set { label.stringValue = newValue }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 16
+        layer?.backgroundColor = NSColor.black
+            .withAlphaComponent(0.78)
+            .cgColor
+
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.alignment = .center
+        label.font = .monospacedSystemFont(ofSize: 72, weight: .bold)
+        label.textColor = .white
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
         ])
     }
 

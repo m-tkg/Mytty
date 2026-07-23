@@ -106,6 +106,21 @@ struct PaneHostViewTests {
         #expect(!pane.isKeyToastVisible)
     }
 
+    @Test("shows and hides a large centered recording countdown")
+    @MainActor
+    func recordingCountdown() {
+        let pane = PaneHostView(content: NSView())
+
+        pane.showCountdown(3)
+
+        #expect(pane.countdownText == "3")
+        #expect(pane.isCountdownVisible)
+
+        pane.hideCountdown()
+
+        #expect(!pane.isCountdownVisible)
+    }
+
     @Test("keeps a cursor key toast inside the pane edges")
     @MainActor
     func pressedKeyToastEdgePlacement() {
