@@ -508,6 +508,69 @@ struct TabSessionTests {
         #expect(tab == before)
     }
 
+    @Test("detaches a pane and returns its leaf, refocusing a survivor")
+    func detachPane() throws {
+        let first = makeSurface(id: 1, path: "/first")
+        let second = makeSurface(id: 2, path: "/second")
+        var tab = TabSession(id: makeTabID(1), initialSurface: first)
+        try tab.split(surface: first.id, adding: second, direction: .right)
+        #expect(tab.focusedSurfaceID == second.id)
+
+        let leaf = try tab.detach(pane: second.id)
+
+        #expect(leaf == .surface(second))
+        #expect(tab.root == .surface(first))
+        #expect(tab.paneIDs == [first.id])
+        #expect(tab.focusedSurfaceID == first.id)
+    }
+
+    @Test("detach rejects the last remaining pane and unknown identifiers")
+    func detachRejectsInvalidTargets() throws {
+        let surface = makeSurface(id: 1, path: "/repo")
+        let unknown = makeSurface(id: 9, path: "/unknown")
+        var tab = TabSession(id: makeTabID(1), initialSurface: surface)
+        let original = tab
+
+        #expect(throws: TabSessionError.cannotCloseLastSurface) {
+            _ = try tab.detach(pane: surface.id)
+        }
+        #expect(throws: TabSessionError.surfaceNotFound(unknown.id)) {
+            _ = try tab.detach(pane: unknown.id)
+        }
+        #expect(tab == original)
+    }
+
+    @Test("attaches a pane node at the outer right edge and focuses it")
+    func attachPane() throws {
+        let first = makeSurface(id: 1, path: "/first")
+        let attached = makeSurface(id: 2, path: "/attached")
+        var tab = TabSession(id: makeTabID(1), initialSurface: first)
+
+        try tab.attach(pane: .surface(attached))
+
+        #expect(
+            tab.root == .split(
+                orientation: .horizontal,
+                ratio: 0.5,
+                first: .surface(first),
+                second: .surface(attached)
+            )
+        )
+        #expect(tab.focusedSurfaceID == attached.id)
+    }
+
+    @Test("attach rejects a node whose pane ID already exists in the tab")
+    func attachRejectsDuplicates() throws {
+        let surface = makeSurface(id: 1, path: "/repo")
+        var tab = TabSession(id: makeTabID(1), initialSurface: surface)
+        let before = tab
+
+        #expect(throws: TabSessionError.duplicateSurface(surface.id)) {
+            try tab.attach(pane: .surface(surface))
+        }
+        #expect(tab == before)
+    }
+
     private func makeTabID(_ value: UInt8) -> TabID {
         TabID(rawValue: makeUUID(value))
     }

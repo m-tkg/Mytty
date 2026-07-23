@@ -78,6 +78,7 @@ struct LocalizationTests {
         #expect(english[.searchWithGoogle] == "Search with Google")
         #expect(english[.share] == "Share")
         #expect(english[.services] == "Services")
+        #expect(english[.moveToTab] == "Move to Tab")
         #expect(english[.terminalRecording] == "Recording")
         #expect(english.commandTitle(.toggleRecording) == "Start/Stop Recording")
         #expect(
@@ -406,6 +407,7 @@ struct LocalizationTests {
         #expect(japanese[.searchWithGoogle] == "Google で検索")
         #expect(japanese[.share] == "共有")
         #expect(japanese[.services] == "サービス")
+        #expect(japanese[.moveToTab] == "別のタブへ移動")
         #expect(japanese[.terminalRecording] == "録画")
         #expect(japanese.commandTitle(.toggleRecording) == "録画を開始／停止")
         #expect(
