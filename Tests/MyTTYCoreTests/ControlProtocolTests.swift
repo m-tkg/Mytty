@@ -9,17 +9,29 @@ struct ControlProtocolTests {
     func requestRoundTrip() throws {
         let requests: [ControlRequest] = [
             .list,
-            .newTab(workingDirectory: nil),
-            .newTab(workingDirectory: "/tmp/repo"),
+            .newTab(workingDirectory: nil, command: nil),
+            .newTab(workingDirectory: "/tmp/repo", command: nil),
+            .newTab(
+                workingDirectory: "/tmp/repo",
+                command: "claude --permission-mode acceptEdits -- task"
+            ),
             .split(
                 paneID: "pane-1",
                 direction: .right,
-                workingDirectory: nil
+                workingDirectory: nil,
+                command: nil
             ),
             .split(
                 paneID: "pane-1",
                 direction: .down,
-                workingDirectory: "/tmp/repo"
+                workingDirectory: "/tmp/repo",
+                command: nil
+            ),
+            .split(
+                paneID: "pane-1",
+                direction: .down,
+                workingDirectory: "/tmp/repo",
+                command: "codex -s workspace-write -a never -- task"
             ),
             .send(paneID: "pane-1", text: "hello\n", pressEnter: true),
             .sendKey(
@@ -213,6 +225,33 @@ struct ControlProtocolTests {
             model: nil,
             task: "investigate",
             label: nil
+        ))
+    }
+
+    @Test("decodes a legacy newTab/split payload without a command key")
+    func decodesLegacyNewTabAndSplitWithoutCommand() throws {
+        let legacyNewTab = Data("""
+        {"type":"newTab","workingDirectory":"/tmp/repo"}
+        """.utf8)
+        let decodedNewTab: ControlRequest = try ControlMessageCodec.decode(
+            legacyNewTab
+        )
+        #expect(decodedNewTab == .newTab(
+            workingDirectory: "/tmp/repo",
+            command: nil
+        ))
+
+        let legacySplit = Data("""
+        {"type":"split","paneID":"pane-1","direction":"right"}
+        """.utf8)
+        let decodedSplit: ControlRequest = try ControlMessageCodec.decode(
+            legacySplit
+        )
+        #expect(decodedSplit == .split(
+            paneID: "pane-1",
+            direction: .right,
+            workingDirectory: nil,
+            command: nil
         ))
     }
 

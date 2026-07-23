@@ -58,8 +58,8 @@ mytty-ctl list | jq .
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
 | `guide` | なし | ペインチームの手順書をプレーンテキストで標準出力、ソケット不要 |
 | `list` | なし | `{"type":"list","panes":[...]}` |
-| `new-tab` | `[--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
-| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
+| `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
+| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
@@ -212,6 +212,13 @@ mytty-ctl new-tab --cwd /path/to/project
 
 `--cwd` を省略すると、アクティブウィンドウの現在の作業ディレクトリを継承します。
 
+`--command <text>` を指定すると、ペイン作成と同時に、その1回限りの入力としてテキストが新しいペインに渡されます。`agent spawn` が起動コマンドとタスクを渡すのと同じ仕組み(`AgentLaunchPlan.initialInput(command:)`)で、履歴抑制ガードが先頭に付き、末尾に改行が1つだけ付きます。worker をタスク込みで一気に起動するにはこちらが推奨で、起動後に別途 `send` する必要がないため、worker の TUI がまだ起動中で入力を取りこぼす競合が起きません。`agent spawn` の起動行と同様、ペインのシェル履歴には残らず、セッション状態にも保存されません -- 新しいペインへの打鍵として存在するだけです。明示的に空の `--command ""` を渡すと、CLI が接続を開く前に拒否します。
+
+```bash
+mytty-ctl new-tab --cwd /path/to/project \
+  --command 'claude --permission-mode acceptEdits -- "$(cat /tmp/task.md)"'
+```
+
 ### split
 
 指定ペインを対象方向に分割します。分割対象のペインは、自動でフォーカスしてから分割します。
@@ -223,6 +230,16 @@ mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
 ```json
 { "type": "pane", "paneID": "..." }
 ```
+
+`--command <text>` の挙動は `new-tab` と同じです -- 分割と同時に1回限りの初期入力として渡され、worker の TUI 起動と競合しうる別の `send` を避けられます。タスクをファイルに書いてから `$(cat <task-file>)` で渡せば、複数行のタスクも1つの引数のままです。`--command` のテキスト中の改行は(`send` と同様)ペインに届いた時点で Enter キー入力になるので注意してください。
+
+```bash
+echo "ログイン処理が高負荷時にタイムアウトする原因を調査して。" > /tmp/task-a.md
+mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree \
+  --command 'codex -s workspace-write -a never -- "$(cat /tmp/task-a.md)"'
+```
+
+すでに動いている worker への追加指示には、引き続き `send` を使ってください。
 
 ### send
 

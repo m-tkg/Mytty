@@ -87,11 +87,22 @@ public struct ControlPaneContent: Codable, Equatable, Sendable {
 
 public enum ControlRequest: Equatable, Sendable {
     case list
-    case newTab(workingDirectory: String?)
+    /// `command`, when present, is delivered to the new pane as transient
+    /// initial input the same way `agent spawn` delivers its launch
+    /// command and task: prefixed with
+    /// `AgentLaunchPlan.historySuppressionPrefix` and terminated with a
+    /// single trailing newline, via `AgentLaunchPlan.initialInput(command:)`.
+    /// This lets `new-tab --command` launch a worker with its task inline
+    /// instead of racing a separate `send` against the worker's still-
+    /// initializing TUI.
+    case newTab(workingDirectory: String?, command: String?)
+    /// See `newTab`'s `command` doc — `split --command` gets the identical
+    /// one-shot delivery.
     case split(
         paneID: String,
         direction: ControlSplitDirection,
-        workingDirectory: String?
+        workingDirectory: String?,
+        command: String?
     )
     case send(paneID: String, text: String, pressEnter: Bool)
     case sendKey(paneID: String, key: String, modifiers: [String])
@@ -183,6 +194,7 @@ extension ControlRequest: Codable {
         case task
         case label
         case jobID
+        case command
     }
 
     public init(from decoder: Decoder) throws {
@@ -196,6 +208,10 @@ extension ControlRequest: Codable {
                 workingDirectory: try container.decodeIfPresent(
                     String.self,
                     forKey: .workingDirectory
+                ),
+                command: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .command
                 )
             )
         case .split:
@@ -208,6 +224,10 @@ extension ControlRequest: Codable {
                 workingDirectory: try container.decodeIfPresent(
                     String.self,
                     forKey: .workingDirectory
+                ),
+                command: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .command
                 )
             )
         case .send:
@@ -325,13 +345,14 @@ extension ControlRequest: Codable {
         switch self {
         case .list:
             try container.encode(RequestType.list, forKey: .type)
-        case let .newTab(workingDirectory):
+        case let .newTab(workingDirectory, command):
             try container.encode(RequestType.newTab, forKey: .type)
             try container.encodeIfPresent(
                 workingDirectory,
                 forKey: .workingDirectory
             )
-        case let .split(paneID, direction, workingDirectory):
+            try container.encodeIfPresent(command, forKey: .command)
+        case let .split(paneID, direction, workingDirectory, command):
             try container.encode(RequestType.split, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
             try container.encode(direction, forKey: .direction)
@@ -339,6 +360,7 @@ extension ControlRequest: Codable {
                 workingDirectory,
                 forKey: .workingDirectory
             )
+            try container.encodeIfPresent(command, forKey: .command)
         case let .send(paneID, text, pressEnter):
             try container.encode(RequestType.send, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
