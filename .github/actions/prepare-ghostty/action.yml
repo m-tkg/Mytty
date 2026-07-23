@@ -19,8 +19,13 @@ runs:
           exit 1
         fi
         SCRIPT_HASH="$(shasum -a 256 scripts/build-ghostty.sh | cut -d ' ' -f 1)"
+        PATCH_HASH="$(
+          shasum -a 256 Patches/ghostty-terminal-history.patch \
+            | cut -d ' ' -f 1
+        )"
         CACHE_KEY="libghostty-${RUNNER_OS}-${RUNNER_ARCH}-${REVISION}"
         CACHE_KEY="${CACHE_KEY}-zig-${ZIG_VERSION}-${SCRIPT_HASH}"
+        CACHE_KEY="${CACHE_KEY}-patch-${PATCH_HASH}"
         echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
         echo "zig-version=$ZIG_VERSION" >> "$GITHUB_OUTPUT"
         echo "cache-key=$CACHE_KEY" >> "$GITHUB_OUTPUT"
