@@ -5,10 +5,22 @@ import UserNotifications
 @main
 struct MyttyRemoteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var backgroundKeeper = BackgroundSessionKeeper()
 
     var body: some Scene {
         WindowGroup {
             RootView()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                backgroundKeeper.sceneDidEnterBackground()
+            case .active:
+                backgroundKeeper.sceneDidActivate()
+            default:
+                break
+            }
         }
     }
 }
