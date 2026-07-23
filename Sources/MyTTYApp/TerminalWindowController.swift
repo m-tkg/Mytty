@@ -2064,8 +2064,20 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         guard let destination = session.tabs.first(where: {
             $0.id.rawValue == rawID
         }) else { return }
+        let sourceTabID = session.tabs.first {
+            $0.paneIDs.contains(paneID)
+        }?.id
         do {
             try session.movePane(paneID, toTab: destination.id)
+            // The recorder is bound to the pane's containing tab, so a
+            // moved pane would leave the sidebar indicator on the wrong
+            // tab; stop instead of recording a stale target.
+            recording.stopIfRecording(surfaceID: paneID)
+            if let sourceTabID, !session.tabs.contains(where: {
+                $0.id == sourceTabID
+            }) {
+                paneLayout.removeZoom(tabID: sourceTabID)
+            }
             renderedTabID = nil
             sessionDidChange()
             refreshPresentation(focusTerminal: true)

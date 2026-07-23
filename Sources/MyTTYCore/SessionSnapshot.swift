@@ -313,8 +313,8 @@ public struct WindowSession: Codable, Equatable, Sendable {
     }
 
     /// Moves a pane into another tab of this window. Moving a tab's
-    /// last pane moves that tab's whole layout subtree and removes the
-    /// now-empty tab, reselecting a neighbor when it was selected.
+    /// sole pane removes the now-empty tab; when that tab was selected,
+    /// the selection follows the pane to its destination.
     public mutating func movePane(
         _ paneID: TerminalSurfaceID,
         toTab destinationID: TabID
@@ -333,7 +333,7 @@ public struct WindowSession: Codable, Equatable, Sendable {
             node = tabs[sourceIndex].root
             tabs.remove(at: sourceIndex)
             if selectedTabID == sourceID {
-                selectedTabID = tabs[min(sourceIndex, tabs.count - 1)].id
+                selectedTabID = destinationID
             }
         } else {
             var source = tabs[sourceIndex]
@@ -343,7 +343,7 @@ public struct WindowSession: Codable, Equatable, Sendable {
 
         guard let destinationIndex = tabs.firstIndex(where: {
             $0.id == destinationID
-        }) else { return }
+        }) else { throw WindowSessionError.tabNotFound(destinationID) }
         var destination = tabs[destinationIndex]
         try destination.attach(pane: node)
         tabs[destinationIndex] = destination

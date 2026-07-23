@@ -424,19 +424,22 @@ struct WindowSessionTests {
         #expect(window.selectedTabID == first.id)
     }
 
-    @Test("moving a tab's last pane moves the whole tab and reselects")
+    @Test("moving a tab's last pane removes it and follows the pane")
     func movePaneRemovesEmptySourceTab() throws {
         let source = makeTab(id: 1, surfaceID: 11, path: "/source")
+        let other = makeTab(id: 3, surfaceID: 31, path: "/other")
+        // The destination is deliberately not adjacent to the source so
+        // the selection provably follows the pane rather than falling
+        // back to the neighboring tab.
         let destination = makeTab(id: 2, surfaceID: 21, path: "/destination")
-        let third = makeTab(id: 3, surfaceID: 31, path: "/third")
         var window = makeWindow(tab: source)
+        try window.add(tab: other, select: false)
         try window.add(tab: destination, select: false)
-        try window.add(tab: third, select: false)
         try window.select(tab: source.id)
 
         try window.movePane(source.focusedSurfaceID, toTab: destination.id)
 
-        #expect(window.tabs.map(\.id) == [destination.id, third.id])
+        #expect(window.tabs.map(\.id) == [other.id, destination.id])
         #expect(window.selectedTabID == destination.id)
         let updatedDestination = window.tabs.first { $0.id == destination.id }
         #expect(

@@ -559,6 +559,30 @@ struct TabSessionTests {
         #expect(tab.focusedSurfaceID == attached.id)
     }
 
+    @Test("detaches and reattaches a browser pane")
+    func detachAndAttachBrowserPane() throws {
+        let terminal = makeSurface(id: 1, path: "/repo")
+        let browser = BrowserPaneState(
+            id: TerminalSurfaceID(rawValue: makeUUID(2)),
+            url: URL(string: "https://example.com")!
+        )
+        var source = TabSession(id: makeTabID(1), initialSurface: terminal)
+        try source.split(browser: browser, direction: .right)
+        var destination = TabSession(
+            id: makeTabID(2),
+            initialSurface: makeSurface(id: 3, path: "/destination")
+        )
+
+        let leaf = try source.detach(pane: browser.id)
+        try destination.attach(pane: leaf)
+
+        #expect(leaf == .browser(browser))
+        #expect(source.paneIDs == [terminal.id])
+        #expect(destination.paneIDs.contains(browser.id))
+        #expect(destination.focusedSurfaceID == browser.id)
+        #expect(destination.root.browserState(with: browser.id) == browser)
+    }
+
     @Test("attach rejects a node whose pane ID already exists in the tab")
     func attachRejectsDuplicates() throws {
         let surface = makeSurface(id: 1, path: "/repo")
