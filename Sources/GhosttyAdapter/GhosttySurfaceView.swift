@@ -253,6 +253,14 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         defer {
             releaseEnvironmentStorage(environmentStorage)
         }
+        // End the replay on a fresh line: the capture stops mid-line at
+        // the old prompt, and a shell starting with the cursor mid-line
+        // emits its partial-line mark (zsh's inverse "%" plus a row of
+        // spaces), which re-wraps into artifacts on every restore.
+        let replayHistory: String? = restoredTerminalHistory.flatMap {
+            guard !$0.isEmpty else { return nil }
+            return $0.hasSuffix("\n") ? $0 : $0 + "\r\n"
+        }
         let surface = environmentStorage.withUnsafeMutableBufferPointer {
             environment in
             configuration.env_vars = environment.baseAddress
@@ -261,7 +269,10 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                 configuration.working_directory = path
                 return withOptionalCString(initialInput) { input in
                     configuration.initial_input = input
-                    return ghostty_surface_new(app, &configuration)
+                    return withOptionalCString(replayHistory) { output in
+                        configuration.initial_output = output
+                        return ghostty_surface_new(app, &configuration)
+                    }
                 }
             }
         }
@@ -270,23 +281,6 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
             throw GhosttySurfaceError.creationFailed
         }
         native = surface
-
-        if let restoredTerminalHistory, !restoredTerminalHistory.isEmpty {
-            // End the replay on a fresh line: the capture stops mid-line at
-            // the old prompt, and a shell starting with the cursor mid-line
-            // emits its partial-line mark (zsh's inverse "%" plus a row of
-            // spaces), which re-wraps into artifacts on every restore.
-            let replay = restoredTerminalHistory.hasSuffix("\n")
-                ? restoredTerminalHistory
-                : restoredTerminalHistory + "\r\n"
-            _ = replay.withCString { pointer in
-                ghostty_surface_write_text(
-                    surface,
-                    pointer,
-                    replay.lengthOfBytes(using: .utf8)
-                )
-            }
-        }
 
         addSubview(autocompleteSuggestionLabel)
         configureSearchBar()
