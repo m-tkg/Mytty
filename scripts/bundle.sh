@@ -117,6 +117,14 @@ cp -R "$GHOSTTY_TERMINFO" "$APP/Contents/Resources/terminfo"
 /usr/libexec/PlistBuddy \
   -c "Set :CFBundleVersion $BUILD_NUMBER" \
   "$APP/Contents/Info.plist"
+# The Finder service advertises the app it belongs to: NSPortName must match
+# CFBundleName, and the menu title must distinguish dev from release.
+/usr/libexec/PlistBuddy \
+  -c "Set :NSServices:0:NSPortName $APP_NAME" \
+  "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy \
+  -c "Set :NSServices:0:NSMenuItem:default Open in $APP_NAME" \
+  "$APP/Contents/Info.plist"
 
 ICONSET_SOURCE="$ROOT/Resources/AppIcon.appiconset"
 ICON_SOURCE="$ROOT/Sources/MyTTYApp/Resources/AppIcon.png"

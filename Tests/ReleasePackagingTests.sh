@@ -32,6 +32,15 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")" = "Myt
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$plist")" = "AppIcon"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:0:CFBundleTypeRole' "$plist")" = "Shell"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:0:LSItemContentTypes:0' "$plist")" = "public.unix-executable"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:1:LSItemContentTypes:0' "$plist")" = "public.folder"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:1:CFBundleTypeRole' "$plist")" = "Viewer"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:1:LSHandlerRank' "$plist")" = "Alternate"
+test "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:0:NSMessage' "$plist")" = "openFolder"
+test "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:0:NSPortName' "$plist")" = "Mytty"
+test "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:0:NSSendFileTypes:0' "$plist")" = "public.folder"
+grep -F 'Set :NSServices:0:NSPortName $APP_NAME' "$bundle_script" >/dev/null
+grep -F 'Set :NSServices:0:NSMenuItem:default Open in $APP_NAME' \
+    "$bundle_script" >/dev/null
 grep -F 'tags: ["v*"]' "$workflow" >/dev/null
 grep -F 'actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd' \
     "$workflow" >/dev/null
