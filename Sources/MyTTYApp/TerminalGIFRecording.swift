@@ -90,7 +90,10 @@ struct TerminalRecordingFadeOut: Equatable, Sendable {
     func alphas(frameDelay: TimeInterval) -> [Double] {
         guard duration > 0, frameDelay > 0 else { return [] }
         let count = max(1, Int((duration / frameDelay).rounded()))
-        return (1...count).map { Double($0) / Double(count) }
+        return (1...count).map { step in
+            let t = Double(step) / Double(count)
+            return t * t * (3 - 2 * t)  // smoothstep
+        }
     }
 
     /// `colorHex` parsed as `RRGGBB`; falls back to black when malformed,
