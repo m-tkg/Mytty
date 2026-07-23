@@ -24,8 +24,8 @@ public enum ControlCommandLineParser {
       agent close <job-id>
 
       list
-      new-tab [--cwd <path>]
-      split <pane-id> <left|right|up|down> [--cwd <path>]
+      new-tab [--cwd <path>] [--command <text>]
+      split <pane-id> <left|right|up|down> [--cwd <path>] [--command <text>]
       send <pane-id> <text> [--enter]
       send-key <pane-id> <key> [--modifiers <mod,mod,...>]
       read <pane-id>
@@ -81,9 +81,10 @@ public enum ControlCommandLineParser {
 
     Use these commands to run a team of workers. `agent spawn` creates the
     worker's pane and delivers its launch command and task as one shell
-    input, so there's no race with a still-initializing TUI the way a manual
-    split + send has. Prefer this over the low-level pane commands below for
-    anything shaped like "run N agents and collect their output."
+    input, so there's no race with a still-initializing TUI the way two
+    separate `send` calls after a manual split can have. Prefer this over
+    the low-level pane commands below for anything shaped like "run N
+    agents and collect their output."
 
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
@@ -185,16 +186,26 @@ public enum ControlCommandLineParser {
     For running a team of workers, prefer `agent spawn`/`agent wait`/
     `agent result` above: they solve the exact races described below.
 
-      1. split       "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd <dir>
-         Claim a pane. Give each sub-agent its own directory (ideally a git
-         worktree) so they don't fight over the same files.
-      2. send <launch-command> --enter   start the agent (see the provider
-         table below for the right flags).
-      3. send <instructions> --enter     give it the task.
-      4. wait --until idle               block until the run finishes.
-      5. read                            fetch the pane's screen text.
-      6. close-pane, once done with the pane, or focus to hand control back to
-         a human.
+      1. Write the task to a file, then claim a pane and launch the worker
+         with its task in one shot:
+           echo "<task text>" > /tmp/task-a.md
+           "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd <dir> \\
+             --command 'claude --permission-mode acceptEdits -- "$(cat /tmp/task-a.md)"'
+         Give each sub-agent its own directory (ideally a git worktree) so
+         they don't fight over the same files. --command delivers the
+         launch command and the task as one shell input to the new pane --
+         the same mechanism `agent spawn` uses -- so there's no separate
+         `send` that could race the worker's still-initializing TUI. See
+         the provider table below for the right launch flags; cursor-agent
+         and codex also take the task as a trailing `-- <task>` argument.
+         The `--command` line is prefixed the same way `agent spawn`'s
+         launch line is, so it stays out of the pane's persisted shell
+         history too.
+      2. wait --until idle               block until the run finishes.
+      3. read                            fetch the pane's screen text.
+      4. close-pane, once done with the pane, or focus to hand control back
+         to a human. `send` is still the right tool for a follow-up
+         instruction to an already-running agent.
 
       PROVIDER LAUNCH COMMANDS
 
@@ -227,13 +238,17 @@ public enum ControlCommandLineParser {
         - Cursor never emits an input-requested event. A shell approval instead
           surfaces as `waiting-approval` roughly 10 seconds after the command
           starts, once Mytty's delay-based estimate fires.
-        - Sending the task (step 3) right after the launch command (step 2)
-          can lose it: the agent's TUI may still be initializing and drops
-          input sent before its prompt is drawn. Don't bridge the two with a
-          fixed sleep -- read the pane, and if the prompt isn't on screen
-          yet, wait briefly and read again before sending. `agent spawn`
-          above avoids this race entirely by sending the launch command and
-          the task as one shell input.
+        - Sending a launch command with `send` and then a separate `send`
+          for the task can lose the task: the agent's TUI may still be initializing and drops
+          input sent before its prompt is drawn. `split --command` (step 1
+          above) and `agent spawn` both avoid this race entirely by
+          delivering the launch command and the task as one shell input, so
+          prefer those over two `send` calls. The read-and-retry advice
+          still applies whenever you type into a TUI that might still be
+          initializing -- most commonly a follow-up `send` sent too soon
+          after launch. Don't bridge that gap with a fixed sleep -- read
+          the pane, and if the prompt isn't on screen yet, wait briefly and
+          read again before sending.
 
       INSTRUCTIONS TO GIVE A SUB-AGENT
 
@@ -251,10 +266,13 @@ public enum ControlCommandLineParser {
       RUNNING SEVERAL WORKERS IN PARALLEL
 
       Give each sub-agent its own `git worktree` so their working directories
-      don't collide. `send` has a 64 KiB limit per call, and any newline in the
-      text becomes an Enter keypress -- so a long or multi-line instruction
-      should be written to a file first and the sub-agent told to read that
-      file, rather than passed as one `send` argument.
+      don't collide. `send` and `--command` both have a 64 KiB limit per
+      call, and any newline in the text becomes an Enter keypress -- so a
+      long or multi-line task should be written to a file first. For
+      `--command`, pass it with `$(cat <task-file>)` as in the `split
+      --command` example above, so it arrives as one shell argument instead
+      of one `send` per line. For `send`, tell the sub-agent to read the
+      file rather than pasting the task inline.
     """
 
     /// Everything `agent spawn --task-file <path>` needs to build a
@@ -408,21 +426,28 @@ public enum ControlCommandLineParser {
             let options = try parseOptions(
                 &positional,
                 flags: [],
-                valued: ["--cwd"]
+                valued: ["--cwd", "--command"]
             )
             guard positional.isEmpty else {
                 throw ControlCommandLineError.invalidArguments(
-                    "mytty-ctl new-tab [--cwd <path>]"
+                    "mytty-ctl new-tab [--cwd <path>] [--command <text>]"
                 )
             }
-            return .newTab(workingDirectory: options.values["--cwd"])
+            let command = try nonEmptyCommand(
+                options.values["--command"],
+                usage: "mytty-ctl new-tab [--cwd <path>] [--command <text>]"
+            )
+            return .newTab(
+                workingDirectory: options.values["--cwd"],
+                command: command
+            )
 
         case "split":
             var positional = arguments
             let options = try parseOptions(
                 &positional,
                 flags: [],
-                valued: ["--cwd"]
+                valued: ["--cwd", "--command"]
             )
             guard positional.count == 2,
                   let direction = ControlSplitDirection(
@@ -430,13 +455,20 @@ public enum ControlCommandLineParser {
                   )
             else {
                 throw ControlCommandLineError.invalidArguments(
-                    "mytty-ctl split <pane-id> <left|right|up|down> [--cwd <path>]"
+                    "mytty-ctl split <pane-id> <left|right|up|down> "
+                        + "[--cwd <path>] [--command <text>]"
                 )
             }
+            let command = try nonEmptyCommand(
+                options.values["--command"],
+                usage: "mytty-ctl split <pane-id> <left|right|up|down> "
+                    + "[--cwd <path>] [--command <text>]"
+            )
             return .split(
                 paneID: positional[0],
                 direction: direction,
-                workingDirectory: options.values["--cwd"]
+                workingDirectory: options.values["--cwd"],
+                command: command
             )
 
         case "send":
@@ -794,6 +826,22 @@ public enum ControlCommandLineParser {
             )
         }
         return request
+    }
+
+    /// Validates `new-tab --command`/`split --command`: an explicitly
+    /// passed empty string is rejected outright rather than silently
+    /// treated as "no command" -- an empty launch line would deliver
+    /// nothing but the history-suppression prefix, which is never what a
+    /// caller who wrote `--command ""` meant.
+    private static func nonEmptyCommand(
+        _ value: String?,
+        usage: String
+    ) throws -> String? {
+        guard let value else { return nil }
+        guard !value.isEmpty else {
+            throw ControlCommandLineError.invalidArguments(usage)
+        }
+        return value
     }
 
     private struct ParsedOptions {

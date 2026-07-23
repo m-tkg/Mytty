@@ -58,8 +58,8 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
 | `guide` | none | pane-team playbook as plain text on stdout, no socket needed |
 | `list` | none | `{"type":"list","panes":[...]}` |
-| `new-tab` | `[--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
-| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>]` | `{"type":"pane","paneID":"..."}` |
+| `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
+| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
@@ -212,6 +212,13 @@ mytty-ctl new-tab --cwd /path/to/project
 
 `--cwd` defaults to the active window's current working directory when omitted.
 
+`--command <text>`, when given, is delivered to the new pane as one transient initial input the moment the pane is created — the same mechanism `agent spawn` uses for its launch command and task (`AgentLaunchPlan.initialInput(command:)`): prefixed with the history-suppression guard and terminated with a single trailing newline. This is the recommended way to launch a worker with its task inline, since there is no separate `send` afterwards that could race the worker's still-initializing TUI. Like `agent spawn`'s launch line, it is not persisted into the pane's shell history and is not stored anywhere in session state — it only ever exists as the keystrokes typed into the new pane. An explicitly empty `--command ""` is rejected by the CLI before it opens a connection.
+
+```bash
+mytty-ctl new-tab --cwd /path/to/project \
+  --command 'claude --permission-mode acceptEdits -- "$(cat /tmp/task.md)"'
+```
+
 ### split
 
 Splits an existing pane in the given direction. The split happens in the background — the target pane's tab is not selected and keyboard focus does not move; use `focus` on the returned pane ID to bring it forward.
@@ -223,6 +230,16 @@ mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
 ```json
 { "type": "pane", "paneID": "..." }
 ```
+
+`--command <text>` behaves exactly as it does for `new-tab` above — one transient initial input delivered with the split, avoiding the separate `send` that could otherwise race the worker's TUI startup. Writing the task to a file first and passing it with `$(cat <task-file>)` keeps a multi-line task as one argument, since a newline in `--command`'s text (like `send`'s) becomes an Enter keypress once it reaches the pane:
+
+```bash
+echo "Investigate why login times out under load." > /tmp/task-a.md
+mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /path/to/worktree \
+  --command 'codex -s workspace-write -a never -- "$(cat /tmp/task-a.md)"'
+```
+
+`send` remains the right tool for a follow-up instruction to a worker pane that is already running.
 
 ### send
 

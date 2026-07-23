@@ -65,6 +65,19 @@ struct AgentLaunchPlanTests {
         ))
     }
 
+    @Test("initialInput(command:) prefixes, preserves the command verbatim, and adds one trailing newline")
+    func commandInitialInput() {
+        let command = "claude --permission-mode acceptEdits -- "
+            + "\"$(cat /tmp/task.md)\""
+        let input = AgentLaunchPlan.initialInput(command: command)
+        #expect(input == AgentLaunchPlan.historySuppressionPrefix
+            + command + "\n")
+        #expect(input.hasPrefix(" builtin unset HISTFILE 2>/dev/null; "))
+        #expect(input.contains(command))
+        #expect(input.hasSuffix("\n"))
+        #expect(!input.hasSuffix("\n\n"))
+    }
+
     @Test("ends with exactly one trailing newline")
     func trailingNewline() {
         let input = AgentLaunchPlan.initialInput(

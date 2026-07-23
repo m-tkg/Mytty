@@ -62,6 +62,17 @@ public enum AgentLaunchPlan {
         ) + "\n"
     }
 
+    /// The transient `initialInput` for `mytty-ctl new-tab/split --command`:
+    /// a caller-supplied launch line delivered with the same one-shot,
+    /// history-suppressed treatment `initialInput(provider:...)` gives an
+    /// `agent spawn` launch command, so a hand-assembled launch-command-plus-
+    /// task string (e.g. `claude --permission-mode acceptEdits -- "$(cat
+    /// task.md)"`) reaches the new pane in one shell input instead of racing
+    /// a separate `send` against the pane's still-initializing TUI.
+    public static func initialInput(command: String) -> String {
+        historySuppressionPrefix + command + "\n"
+    }
+
     /// `--model <quoted-model> ` (with a trailing space) for the given
     /// provider, or the empty string when no model was requested — kept
     /// separate from `command(...)` so each provider's flag ordering below

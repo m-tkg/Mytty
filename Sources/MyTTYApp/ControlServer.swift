@@ -11,14 +11,16 @@ protocol ControlServerDelegate: AnyObject {
 
     func controlServer(
         _ server: ControlServer,
-        newTabWithWorkingDirectory workingDirectory: String?
+        newTabWithWorkingDirectory workingDirectory: String?,
+        command: String?
     ) -> String?
 
     func controlServer(
         _ server: ControlServer,
         splitPaneID paneID: String,
         direction: ControlSplitDirection,
-        workingDirectory: String?
+        workingDirectory: String?,
+        command: String?
     ) -> String?
 
     func controlServer(
@@ -197,21 +199,23 @@ final class ControlServer {
         case .list:
             return .list(panes: delegate.controlServerListPanes(self))
 
-        case let .newTab(workingDirectory):
+        case let .newTab(workingDirectory, command):
             guard let paneID = delegate.controlServer(
                 self,
-                newTabWithWorkingDirectory: workingDirectory
+                newTabWithWorkingDirectory: workingDirectory,
+                command: command
             ) else {
                 return .failure(code: "new-tab-failed")
             }
             return .pane(paneID: paneID)
 
-        case let .split(paneID, direction, workingDirectory):
+        case let .split(paneID, direction, workingDirectory, command):
             guard let newPaneID = delegate.controlServer(
                 self,
                 splitPaneID: paneID,
                 direction: direction,
-                workingDirectory: workingDirectory
+                workingDirectory: workingDirectory,
+                command: command
             ) else {
                 return .failure(code: "split-failed")
             }

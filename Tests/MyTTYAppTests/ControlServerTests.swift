@@ -47,17 +47,19 @@ struct ControlServerTests {
         defer { server.stop() }
 
         let newTabResponse = try await perform(
-            .newTab(workingDirectory: "/tmp/repo"),
+            .newTab(workingDirectory: "/tmp/repo", command: nil),
             to: socketURL
         )
         #expect(newTabResponse == .pane(paneID: "new-pane"))
         #expect(delegate.lastNewTabWorkingDirectory == "/tmp/repo")
+        #expect(delegate.lastNewTabCommand == nil)
 
         let splitResponse = try await perform(
             .split(
                 paneID: "pane-1",
                 direction: .right,
-                workingDirectory: "/tmp/other"
+                workingDirectory: "/tmp/other",
+                command: nil
             ),
             to: socketURL
         )
@@ -65,6 +67,43 @@ struct ControlServerTests {
         #expect(delegate.lastSplitPaneID == "pane-1")
         #expect(delegate.lastSplitDirection == .right)
         #expect(delegate.lastSplitWorkingDirectory == "/tmp/other")
+        #expect(delegate.lastSplitCommand == nil)
+    }
+
+    @Test("newTab and split forward --command to the delegate")
+    func newTabAndSplitForwardCommand() async throws {
+        let delegate = StubControlDelegate()
+        delegate.nextPaneID = "new-pane"
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let newTabResponse = try await perform(
+            .newTab(
+                workingDirectory: "/tmp/repo",
+                command: "claude --permission-mode acceptEdits -- task"
+            ),
+            to: socketURL
+        )
+        #expect(newTabResponse == .pane(paneID: "new-pane"))
+        #expect(
+            delegate.lastNewTabCommand
+                == "claude --permission-mode acceptEdits -- task"
+        )
+
+        let splitResponse = try await perform(
+            .split(
+                paneID: "pane-1",
+                direction: .right,
+                workingDirectory: "/tmp/other",
+                command: "codex -s workspace-write -a never -- task"
+            ),
+            to: socketURL
+        )
+        #expect(splitResponse == .pane(paneID: "new-pane"))
+        #expect(
+            delegate.lastSplitCommand
+                == "codex -s workspace-write -a never -- task"
+        )
     }
 
     @Test("send, sendKey, closePane, and focus report failure for an unknown pane")
@@ -728,9 +767,11 @@ private final class StubControlDelegate: ControlServerDelegate {
     var agentStates: [String: AgentRunState] = [:]
 
     var lastNewTabWorkingDirectory: String?
+    var lastNewTabCommand: String?
     var lastSplitPaneID: String?
     var lastSplitDirection: ControlSplitDirection?
     var lastSplitWorkingDirectory: String?
+    var lastSplitCommand: String?
     var sentText: String?
     var sentPressEnter: Bool?
 
@@ -740,9 +781,11 @@ private final class StubControlDelegate: ControlServerDelegate {
 
     func controlServer(
         _ server: ControlServer,
-        newTabWithWorkingDirectory workingDirectory: String?
+        newTabWithWorkingDirectory workingDirectory: String?,
+        command: String?
     ) -> String? {
         lastNewTabWorkingDirectory = workingDirectory
+        lastNewTabCommand = command
         return nextPaneID
     }
 
@@ -750,11 +793,13 @@ private final class StubControlDelegate: ControlServerDelegate {
         _ server: ControlServer,
         splitPaneID paneID: String,
         direction: ControlSplitDirection,
-        workingDirectory: String?
+        workingDirectory: String?,
+        command: String?
     ) -> String? {
         lastSplitPaneID = paneID
         lastSplitDirection = direction
         lastSplitWorkingDirectory = workingDirectory
+        lastSplitCommand = command
         return nextPaneID
     }
 

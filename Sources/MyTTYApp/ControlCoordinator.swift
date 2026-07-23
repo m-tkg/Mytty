@@ -98,7 +98,8 @@ extension ControlCoordinator: ControlServerDelegate {
 
     func controlServer(
         _ server: ControlServer,
-        newTabWithWorkingDirectory workingDirectory: String?
+        newTabWithWorkingDirectory workingDirectory: String?,
+        command: String?
     ) -> String? {
         guard let controller = windowSessionCoordinator.activeController
             ?? windowSessionCoordinator.controllers.first
@@ -106,15 +107,19 @@ extension ControlCoordinator: ControlServerDelegate {
         let url = workingDirectory.map {
             URL(fileURLWithPath: $0, isDirectory: true)
         }
-        return controller.newTab(workingDirectory: url, orchestrated: true)?
-            .rawValue.uuidString
+        return controller.newTab(
+            workingDirectory: url,
+            initialInput: command.map { AgentLaunchPlan.initialInput(command: $0) },
+            orchestrated: true
+        )?.rawValue.uuidString
     }
 
     func controlServer(
         _ server: ControlServer,
         splitPaneID paneID: String,
         direction: ControlSplitDirection,
-        workingDirectory: String?
+        workingDirectory: String?,
+        command: String?
     ) -> String? {
         guard let surfaceID = terminalSurfaceID(from: paneID),
               let controller = controller(owning: surfaceID)
@@ -127,6 +132,7 @@ extension ControlCoordinator: ControlServerDelegate {
             direction: SplitDirection(rawValue: direction.rawValue)
                 ?? .right,
             workingDirectory: url,
+            initialInput: command.map { AgentLaunchPlan.initialInput(command: $0) },
             orchestrated: true
         )?.rawValue.uuidString
     }

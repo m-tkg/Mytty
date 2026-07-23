@@ -10,16 +10,32 @@ struct ControlCommandLineParserTests {
         #expect(try ControlCommandLineParser.parse(["list"]) == .list)
     }
 
-    @Test("new-tab optionally takes --cwd")
+    @Test("new-tab optionally takes --cwd and --command")
     func parsesNewTab() throws {
         #expect(
             try ControlCommandLineParser.parse(["new-tab"])
-                == .newTab(workingDirectory: nil)
+                == .newTab(workingDirectory: nil, command: nil)
         )
         #expect(
             try ControlCommandLineParser.parse(
                 ["new-tab", "--cwd", "/tmp/repo"]
-            ) == .newTab(workingDirectory: "/tmp/repo")
+            ) == .newTab(workingDirectory: "/tmp/repo", command: nil)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["new-tab", "--command", "claude -- task"]
+            ) == .newTab(workingDirectory: nil, command: "claude -- task")
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                [
+                    "new-tab", "--cwd", "/tmp/repo",
+                    "--command", "claude -- task",
+                ]
+            ) == .newTab(
+                workingDirectory: "/tmp/repo",
+                command: "claude -- task"
+            )
         )
     }
 
@@ -30,7 +46,16 @@ struct ControlCommandLineParserTests {
         }
     }
 
-    @Test("split requires a pane id and a direction, --cwd is optional")
+    @Test("new-tab rejects an explicitly empty --command")
+    func rejectsEmptyNewTabCommand() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["new-tab", "--command", ""]
+            )
+        }
+    }
+
+    @Test("split requires a pane id and a direction; --cwd and --command are optional")
     func parsesSplit() throws {
         #expect(
             try ControlCommandLineParser.parse(
@@ -38,7 +63,8 @@ struct ControlCommandLineParserTests {
             ) == .split(
                 paneID: "pane-1",
                 direction: .right,
-                workingDirectory: nil
+                workingDirectory: nil,
+                command: nil
             )
         )
         #expect(
@@ -47,9 +73,32 @@ struct ControlCommandLineParserTests {
             ) == .split(
                 paneID: "pane-1",
                 direction: .down,
-                workingDirectory: "/tmp/repo"
+                workingDirectory: "/tmp/repo",
+                command: nil
             )
         )
+        #expect(
+            try ControlCommandLineParser.parse(
+                [
+                    "split", "pane-1", "down", "--cwd", "/tmp/repo",
+                    "--command", "codex -- task",
+                ]
+            ) == .split(
+                paneID: "pane-1",
+                direction: .down,
+                workingDirectory: "/tmp/repo",
+                command: "codex -- task"
+            )
+        )
+    }
+
+    @Test("split rejects an explicitly empty --command")
+    func rejectsEmptySplitCommand() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["split", "pane-1", "right", "--command", ""]
+            )
+        }
     }
 
     @Test("split rejects an unknown direction")
