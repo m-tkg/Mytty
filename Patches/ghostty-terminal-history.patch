@@ -1,25 +1,58 @@
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 72bbb57..69d00c0 100644
+index 72bbb57..3304606 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
-@@ -1162,6 +1162,12 @@ GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
+@@ -475,6 +475,7 @@ typedef struct {
+   ghostty_env_var_s* env_vars;
+   size_t env_var_count;
+   const char* initial_input;
++  const char* initial_output;
+   bool wait_after_command;
+   ghostty_surface_context_e context;
+ } ghostty_surface_config_s;
+@@ -1161,6 +1162,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
+ GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
                                                ghostty_selection_s,
                                                ghostty_text_s*);
 +GHOSTTY_API bool ghostty_surface_read_text_vt(ghostty_surface_t,
 +                                               ghostty_selection_s,
 +                                               ghostty_text_s*);
  GHOSTTY_API void ghostty_surface_free_text(ghostty_surface_t, ghostty_text_s*);
-+GHOSTTY_API bool ghostty_surface_write_text(ghostty_surface_t,
-+                                             const char*,
-+                                             size_t);
  
  #ifdef __APPLE__
- GHOSTTY_API void ghostty_surface_set_display_id(ghostty_surface_t, uint32_t);
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 7310159..06a0471 100644
+index 7310159..5ba0c61 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
-@@ -1642,6 +1642,62 @@ pub const CAPI = struct {
+@@ -457,6 +457,11 @@ pub const Surface = struct {
+         /// Input to send to the command after it is started.
+         initial_input: ?[*:0]const u8 = null,
+ 
++        /// Terminal output to replay into the terminal parser before the
++        /// command's own output is processed. Used to restore a previous
++        /// session's screen contents.
++        initial_output: ?[*:0]const u8 = null,
++
+         /// Wait after the command exits
+         wait_after_command: bool = false,
+ 
+@@ -570,6 +575,15 @@ pub const Surface = struct {
+             );
+         }
+ 
++        // If we have initial output to replay then we set it.
++        if (opts.initial_output) |c_output| {
++            const output = std.mem.sliceTo(c_output, 0);
++            if (output.len > 0) {
++                config.@"initial-output" =
++                    try config.arenaAlloc().dupeZ(u8, output);
++            }
++        }
++
+         // Wait after command
+         if (opts.wait_after_command) {
+             config.@"wait-after-command" = true;
+@@ -1642,6 +1656,62 @@ pub const CAPI = struct {
          return readTextLocked(surface, core_sel, result);
      }
  
@@ -82,61 +115,78 @@ index 7310159..06a0471 100644
      fn readTextLocked(
          surface: *Surface,
          core_sel: terminal.Selection,
-@@ -1681,6 +1737,25 @@ pub const CAPI = struct {
-         ptr.deinit();
+diff --git a/src/config/Config.zig b/src/config/Config.zig
+index d6a038d..f81d9ad 100644
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -1348,6 +1348,13 @@ env: RepeatableStringMap = .{},
+ /// Available since: 1.2.0
+ input: RepeatableReadableIO = .{},
+ 
++/// Terminal output to replay into the terminal parser before the
++/// command's own output is processed. This is output injection, not
++/// keyboard input: it never reaches the child process. Embedders use
++/// this to restore a previous session's screen contents ahead of the
++/// shell's startup output.
++@"initial-output": ?[:0]const u8 = null,
++
+ /// If true, keep the terminal open after the command exits. Normally, the
+ /// terminal window closes when the running command (such as a shell) exits.
+ /// With this true, the terminal window will stay open until any keypress is
+diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
+index 1b08c5e..21c9c56 100644
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -81,12 +81,18 @@ const ThreadEnterState = struct {
+     /// if it fails, because Exec only starts once.
+     input: configpkg.io.RepeatableReadableIO,
+ 
++    /// Output to replay through the terminal parser before the backend
++    /// starts producing subprocess output.
++    output: ?[]const u8,
++
+     pub fn create(
+         alloc: Allocator,
+         config: *const configpkg.Config,
+     ) !?*ThreadEnterState {
+-        // If we have no input then we have no thread enter state
+-        if (config.input.list.items.len == 0) return null;
++        // If we have no input and no output to replay then we have no
++        // thread enter state
++        if (config.input.list.items.len == 0 and
++            config.@"initial-output" == null) return null;
+ 
+         // Create our arena allocator
+         var arena = ArenaAllocator.init(alloc);
+@@ -99,10 +105,17 @@ const ThreadEnterState = struct {
+         // Copy the input from the config
+         const input = try config.input.cloneParsed(arena_alloc);
+ 
++        // Copy the output to replay from the config
++        const output: ?[]const u8 = if (config.@"initial-output") |v|
++            try arena_alloc.dupe(u8, v)
++        else
++            null;
++
+         // Return the initialized state
+         ptr.* = .{
+             .arena = arena,
+             .input = input,
++            .output = output,
+         };
+         return ptr;
      }
+@@ -352,6 +365,13 @@ pub fn threadEnter(
+         .backend = undefined, // Backend must replace this on threadEnter
+     };
  
-+    /// Replay trusted VT output directly into the terminal parser. This is
-+    /// output injection, not keyboard input, so it does not reach the shell.
-+    export fn ghostty_surface_write_text(
-+        surface: *Surface,
-+        ptr: [*]const u8,
-+        len: usize,
-+    ) bool {
-+        const io = &surface.core_surface.io;
-+        const copy = io.alloc.dupe(u8, ptr[0..len]) catch |err| {
-+            log.warn("error allocating VT replay text err={}", .{err});
-+            return false;
-+        };
-+        io.queueMessage(.{ .inject_output = .{
-+            .ptr = copy.ptr,
-+            .len = copy.len,
-+        } }, .unlocked);
-+        return true;
-+    }
++    // Replay restored output before the backend starts the subprocess
++    // and its pty reader, so restored history always precedes live
++    // output.
++    if (self.thread_enter_state) |v| if (v.output) |output| {
++        self.processOutput(output);
++    };
 +
-     /// Tell the surface that it needs to schedule a render
-     export fn ghostty_surface_refresh(surface: *Surface) void {
-         surface.refresh();
-diff --git a/src/termio/Thread.zig b/src/termio/Thread.zig
-index 13ee9cb..3da9ee5 100644
---- a/src/termio/Thread.zig
-+++ b/src/termio/Thread.zig
-@@ -333,6 +333,10 @@ fn drainMailbox(self: *Thread, cb: *xev.Completion) !void {
-             .start_synchronized_output => self.startSynchronizedOutput(cb),
-             .linefeed_mode => |v| self.flags.linefeed_mode = v,
-             .focused => |v| try io.focusGained(data, v),
-+            .inject_output => |v| {
-+                defer io.alloc.free(v.ptr[0..v.len]);
-+                io.processOutput(v.ptr[0..v.len]);
-+            },
-             .write_small => |v| try io.queueWrite(
-                 data,
-                 v.data[0..v.len],
-diff --git a/src/termio/message.zig b/src/termio/message.zig
-index 1cd4681..540dc30 100644
---- a/src/termio/message.zig
-+++ b/src/termio/message.zig
-@@ -73,6 +73,12 @@ pub const Message = union(enum) {
-     /// The surface gained or lost focus.
-     focused: bool,
- 
-+    /// Allocated output to replay through the terminal parser on the IO thread.
-+    inject_output: struct {
-+        ptr: [*]u8,
-+        len: usize,
-+    },
-+
-     /// Write where the data fits in the union.
-     write_small: WriteReq.Small,
- 
+     // Setup our backend
+     try self.backend.threadEnter(self.alloc, self, data);
+     errdefer self.backend.threadExit(data);
