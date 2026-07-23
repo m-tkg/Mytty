@@ -39,6 +39,10 @@ final class BackgroundSessionKeeper {
                     self?.deadlineExpired()
                 }
             }
+            // No assertion was granted, so there is nothing to release on
+            // a deadline; the guard in RemoteBackgroundGrace still absorbs
+            // repeated background events.
+            guard taskID != .invalid else { return }
             deadline = Task { [weak self] in
                 try? await Task.sleep(
                     for: .seconds(RemoteBackgroundGrace.graceDuration)
