@@ -84,7 +84,8 @@ struct TerminalRecordingFadeOut: Equatable, Sendable {
     var duration: TimeInterval
     var colorHex: String
 
-    /// The per-frame overlay opacities, ramping evenly up to fully opaque.
+    /// The per-frame overlay opacities, easing (smoothstep) up to fully
+    /// opaque so the ramp starts and ends gradually instead of linearly.
     /// Empty when the duration or frame delay is not positive; otherwise at
     /// least one frame, even for durations shorter than a single frame.
     func alphas(frameDelay: TimeInterval) -> [Double] {

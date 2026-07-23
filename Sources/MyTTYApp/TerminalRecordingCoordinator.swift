@@ -108,7 +108,7 @@ final class TerminalRecordingCoordinator {
         onRecordingStateChanged()
         countdownTask = Task { @MainActor [weak self, weak surface] in
             for count in [3, 2, 1] {
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 self.showCountdown(surfaceID, count)
                 do {
                     try await Task.sleep(for: self.countdownStepDuration)
@@ -120,7 +120,10 @@ final class TerminalRecordingCoordinator {
             self.hideCountdown(surfaceID)
             self.countdownTask = nil
             self.pendingCountdown = nil
-            guard let surface else { return }
+            guard let surface else {
+                self.onRecordingStateChanged()
+                return
+            }
             self.startRecording(
                 tabID: tabID,
                 surfaceID: surfaceID,
