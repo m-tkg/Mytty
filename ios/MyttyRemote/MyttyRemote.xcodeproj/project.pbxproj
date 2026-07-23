@@ -18,6 +18,7 @@
 		5277ABFABD30B9995CF78F24 /* TerminalKeyInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */; };
 		52B66DCD48CF4D1EA252BF22 /* ControlKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF3755C591827EC66BBDDDB /* ControlKey.swift */; };
 		5DCF79438D6DE91716AE61A7 /* MacDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED23B73DC454862E82D06F36 /* MacDiscovery.swift */; };
+		71C6EF099AFEA0890AA4E1A3 /* BackgroundSessionKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4299AF5CC64F8A362BCDE43F /* BackgroundSessionKeeper.swift */; };
 		76ABD08D9E4826505375B62E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CED5F80CB9270934F11FC2B1 /* HomeView.swift */; };
 		76C5ED65FF3F36F8C8C9345D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19F0032493B6608E5D824252 /* Assets.xcassets */; };
 		7EA8BB1A4EB1CD2CB1C03FCA /* PaneTextSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */; };
@@ -69,9 +70,9 @@
 		2F8455379E84BE5CE9B54CD2 /* SessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionView.swift; sourceTree = "<group>"; };
 		318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacStore.swift; sourceTree = "<group>"; };
 		391900120E29A643CFD654EA /* PairedMacEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacEditView.swift; sourceTree = "<group>"; };
+		4299AF5CC64F8A362BCDE43F /* BackgroundSessionKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionKeeper.swift; sourceTree = "<group>"; };
 		43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKeyBarView.swift; sourceTree = "<group>"; };
 		4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionTransport.swift; sourceTree = "<group>"; };
-		5C5DA0187ADF453640C3B7A4 /* cozy-leaping-russell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "cozy-leaping-russell"; path = ../..; sourceTree = SOURCE_ROOT; };
 		620711CDAE55208289C2B7D0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTextSelectionView.swift; sourceTree = "<group>"; };
 		65F7A5EEE363CDC0CC9D4F3B /* MyttyRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MyttyRemote.entitlements; sourceTree = "<group>"; };
@@ -88,6 +89,7 @@
 		CED5F80CB9270934F11FC2B1 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyInputView.swift; sourceTree = "<group>"; };
 		ED23B73DC454862E82D06F36 /* MacDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDiscovery.swift; sourceTree = "<group>"; };
+		F762E12D2D740B80D4E075DD /* twinkling-napping-iverson */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "twinkling-napping-iverson"; path = ../..; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,6 +126,7 @@
 			isa = PBXGroup;
 			children = (
 				19F0032493B6608E5D824252 /* Assets.xcassets */,
+				4299AF5CC64F8A362BCDE43F /* BackgroundSessionKeeper.swift */,
 				707312338CC10A1193F36F6F /* BrowserPaneDetailView.swift */,
 				2EF3755C591827EC66BBDDDB /* ControlKey.swift */,
 				43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */,
@@ -163,7 +166,7 @@
 		E2F1F17269A8A55B4129DC37 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				5C5DA0187ADF453640C3B7A4 /* cozy-leaping-russell */,
+				F762E12D2D740B80D4E075DD /* twinkling-napping-iverson */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -287,6 +290,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				71C6EF099AFEA0890AA4E1A3 /* BackgroundSessionKeeper.swift in Sources */,
 				8D512BAD77D592E549D4A23B /* BrowserPaneDetailView.swift in Sources */,
 				52B66DCD48CF4D1EA252BF22 /* ControlKey.swift in Sources */,
 				A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */,
