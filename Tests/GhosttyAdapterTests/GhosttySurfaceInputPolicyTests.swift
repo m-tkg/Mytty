@@ -70,7 +70,10 @@ struct GhosttySurfaceInputPolicyTests {
     @Test("offers standard text actions for a terminal selection")
     func contextMenuActions() {
         #expect(
-            GhosttySurfaceView.contextMenuActions(selectionText: "hello")
+            GhosttySurfaceView.contextMenuActions(
+                selectionText: "hello",
+                hasMoveTargets: false
+            )
                 == [
                     .lookUp,
                     .searchWeb,
@@ -87,16 +90,38 @@ struct GhosttySurfaceInputPolicyTests {
                 ]
         )
         #expect(
-            GhosttySurfaceView.contextMenuActions(selectionText: nil)
+            GhosttySurfaceView.contextMenuActions(
+                selectionText: nil,
+                hasMoveTargets: false
+            )
                 == [.paste, .separator, .selectAll, .separator, .closePane]
         )
         #expect(
-            GhosttySurfaceView.contextMenuActions(selectionText: " \n")
+            GhosttySurfaceView.contextMenuActions(
+                selectionText: " \n",
+                hasMoveTargets: false
+            )
                 == [
                     .copy, .paste, .separator, .selectAll,
                     .separator, .closePane,
                 ]
         )
+    }
+
+    @Test("inserts Move to Tab immediately before Close Pane when targets exist")
+    func contextMenuActionsWithMoveTargets() {
+        for selectionText in ["hello", nil, " \n"] {
+            let actions = GhosttySurfaceView.contextMenuActions(
+                selectionText: selectionText,
+                hasMoveTargets: true
+            )
+            guard let closeIndex = actions.firstIndex(of: .closePane) else {
+                Issue.record("Expected .closePane in \(actions)")
+                continue
+            }
+            #expect(closeIndex > 0)
+            #expect(actions[closeIndex - 1] == .moveToTab)
+        }
     }
 
     @Test("formats selected terminal text for native menu titles")

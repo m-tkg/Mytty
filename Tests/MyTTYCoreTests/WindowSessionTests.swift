@@ -394,6 +394,95 @@ struct WindowSessionTests {
         #expect(window == original)
     }
 
+    @Test("moves a pane from a multi-pane tab into another tab")
+    func movePaneFromMultiPaneTab() throws {
+        var first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let firstPaneID = first.focusedSurfaceID
+        let secondPane = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            workingDirectory: URL(fileURLWithPath: "/second", isDirectory: true)
+        )
+        try first.split(
+            surface: first.focusedSurfaceID,
+            adding: secondPane,
+            direction: .right
+        )
+        let destination = makeTab(id: 2, surfaceID: 21, path: "/destination")
+        var window = makeWindow(tab: first)
+        try window.add(tab: destination, select: false)
+
+        try window.movePane(secondPane.id, toTab: destination.id)
+
+        let updatedSource = window.tabs.first { $0.id == first.id }
+        #expect(updatedSource?.paneIDs == [firstPaneID])
+        let updatedDestination = window.tabs.first { $0.id == destination.id }
+        #expect(
+            updatedDestination?.paneIDs
+                == [destination.focusedSurfaceID, secondPane.id]
+        )
+        #expect(updatedDestination?.focusedSurfaceID == secondPane.id)
+        #expect(window.selectedTabID == first.id)
+    }
+
+    @Test("moving a tab's last pane removes it and follows the pane")
+    func movePaneRemovesEmptySourceTab() throws {
+        let source = makeTab(id: 1, surfaceID: 11, path: "/source")
+        let other = makeTab(id: 3, surfaceID: 31, path: "/other")
+        // The destination is deliberately not adjacent to the source so
+        // the selection provably follows the pane rather than falling
+        // back to the neighboring tab.
+        let destination = makeTab(id: 2, surfaceID: 21, path: "/destination")
+        var window = makeWindow(tab: source)
+        try window.add(tab: other, select: false)
+        try window.add(tab: destination, select: false)
+        try window.select(tab: source.id)
+
+        try window.movePane(source.focusedSurfaceID, toTab: destination.id)
+
+        #expect(window.tabs.map(\.id) == [other.id, destination.id])
+        #expect(window.selectedTabID == destination.id)
+        let updatedDestination = window.tabs.first { $0.id == destination.id }
+        #expect(
+            updatedDestination?.paneIDs
+                == [destination.focusedSurfaceID, source.focusedSurfaceID]
+        )
+        #expect(
+            updatedDestination?.focusedSurfaceID == source.focusedSurfaceID
+        )
+    }
+
+    @Test("movePane rejects unknown panes and destinations")
+    func movePaneRejectsUnknownTargets() throws {
+        let first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let second = makeTab(id: 2, surfaceID: 21, path: "/second")
+        var window = makeWindow(tab: first)
+        try window.add(tab: second, select: false)
+        let unknownSurface = TerminalSurfaceID(rawValue: makeUUID(99))
+        let unknownTab = TabID(rawValue: makeUUID(98))
+        let original = window
+
+        #expect(throws: WindowSessionError.surfaceNotFound(unknownSurface)) {
+            try window.movePane(unknownSurface, toTab: second.id)
+        }
+        #expect(throws: WindowSessionError.tabNotFound(unknownTab)) {
+            try window.movePane(first.focusedSurfaceID, toTab: unknownTab)
+        }
+        #expect(window == original)
+    }
+
+    @Test("moving a pane to its own tab is a no-op")
+    func movePaneToOwnTabIsNoOp() throws {
+        let first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let second = makeTab(id: 2, surfaceID: 21, path: "/second")
+        var window = makeWindow(tab: first)
+        try window.add(tab: second, select: false)
+        let original = window
+
+        try window.movePane(first.focusedSurfaceID, toTab: first.id)
+
+        #expect(window == original)
+    }
+
     private func makeWindow(tab: TabSession) -> WindowSession {
         WindowSession(
             id: WindowID(rawValue: makeUUID(20)),

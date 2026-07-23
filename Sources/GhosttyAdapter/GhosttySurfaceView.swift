@@ -14,6 +14,9 @@ public enum GhosttySurfaceEvent: Equatable, Sendable {
     /// `closeRequested`, this is an explicit command that must close a
     /// pane whose process is still alive (after the app's confirmation).
     case closePaneRequested
+    /// The user chose "Move to Tab" from the context menu, picking one
+    /// of the window's other tabs as the destination.
+    case movePaneRequested(destinationTab: UUID)
     case newTabRequested
     case closeTabRequested
     case newWindowRequested
@@ -73,6 +76,7 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
     public var searchWithGoogle: String
     public var share: String
     public var services: String
+    public var moveToTab: String
     public var closePane: String
 
     public init(
@@ -83,6 +87,7 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
         searchWithGoogle: String = "Search with Google",
         share: String = "Share",
         services: String = "Services",
+        moveToTab: String = "Move to Tab",
         closePane: String = "Close Pane"
     ) {
         self.copy = copy
@@ -92,7 +97,20 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
         self.searchWithGoogle = searchWithGoogle
         self.share = share
         self.services = services
+        self.moveToTab = moveToTab
         self.closePane = closePane
+    }
+}
+
+/// A tab a pane can be moved into from the context menu's "Move to Tab"
+/// submenu.
+public struct GhosttyContextMenuMoveTarget: Equatable, Sendable {
+    public let id: UUID
+    public let title: String
+
+    public init(id: UUID, title: String) {
+        self.id = id
+        self.title = title
     }
 }
 
@@ -105,6 +123,7 @@ enum GhosttyContextMenuAction: Equatable, Sendable {
     case selectAll
     case share
     case services
+    case moveToTab
     case closePane
 }
 
@@ -123,6 +142,9 @@ struct GhosttyTextCommitPlan: Equatable, Sendable {
 public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient {
     public var onEvent: ((GhosttySurfaceEvent) -> Void)?
     public var onKeyIntercept: ((NSEvent) -> Bool)?
+    /// Supplies the "Move to Tab" submenu contents on demand; empty (or
+    /// nil) hides the submenu entirely.
+    public var contextMenuMoveTargets: (() -> [GhosttyContextMenuMoveTarget])?
 
     public private(set) var terminalTitle = ""
     public private(set) var workingDirectory: URL?
@@ -803,7 +825,11 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         contextMenuLocation = location
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for action in Self.contextMenuActions(selectionText: selectionText) {
+        let moveTargets = contextMenuMoveTargets?() ?? []
+        for action in Self.contextMenuActions(
+            selectionText: selectionText,
+            hasMoveTargets: !moveTargets.isEmpty
+        ) {
             switch action {
             case .lookUp:
                 guard let selectionText else { continue }
@@ -871,6 +897,25 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                 )
                 NSApplication.shared.servicesMenu = servicesMenu
                 menu.addItem(item)
+            case .moveToTab:
+                let item = NSMenuItem(
+                    title: contextMenuLabels.moveToTab,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                item.isEnabled = true
+                let submenu = NSMenu(title: contextMenuLabels.moveToTab)
+                submenu.autoenablesItems = false
+                for target in moveTargets {
+                    let targetItem = contextMenuItem(
+                        title: target.title,
+                        action: #selector(movePaneToTabFromMenu(_:))
+                    )
+                    targetItem.representedObject = target.id
+                    submenu.addItem(targetItem)
+                }
+                item.submenu = submenu
+                menu.addItem(item)
             case .closePane:
                 menu.addItem(contextMenuItem(
                     title: contextMenuLabels.closePane,
@@ -883,6 +928,13 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     @objc private func closePaneFromMenu(_ sender: Any?) {
         onEvent?(.closePaneRequested)
+    }
+
+    @objc private func movePaneToTabFromMenu(_ sender: NSMenuItem) {
+        guard let destination = sender.representedObject as? UUID else {
+            return
+        }
+        onEvent?(.movePaneRequested(destinationTab: destination))
     }
 
     private func contextMenuItem(
@@ -920,18 +972,21 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     }
 
     nonisolated static func contextMenuActions(
-        selectionText: String?
+        selectionText: String?,
+        hasMoveTargets: Bool
     ) -> [GhosttyContextMenuAction] {
+        let trailing: [GhosttyContextMenuAction] =
+            (hasMoveTargets ? [.moveToTab] : []) + [.closePane]
+
         guard let selectionText, !selectionText.isEmpty else {
-            return [.paste, .separator, .selectAll, .separator, .closePane]
+            return [.paste, .separator, .selectAll, .separator] + trailing
         }
         guard !selectionText.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).isEmpty else {
             return [
-                .copy, .paste, .separator, .selectAll,
-                .separator, .closePane,
-            ]
+                .copy, .paste, .separator, .selectAll, .separator,
+            ] + trailing
         }
         return [
             .lookUp,
@@ -945,8 +1000,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
             .share,
             .services,
             .separator,
-            .closePane,
-        ]
+        ] + trailing
     }
 
     nonisolated static func contextMenuSelectionPreview(

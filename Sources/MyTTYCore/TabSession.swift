@@ -788,6 +788,31 @@ public struct TabSession: Codable, Equatable, Sendable {
         }
     }
 
+    /// Removes the pane's leaf node and returns it so it can be
+    /// reinserted into another tab. Same constraints and focus fixup
+    /// as `close(pane:)`.
+    public mutating func detach(
+        pane id: TerminalSurfaceID
+    ) throws -> SplitNode {
+        guard let leaf = root.leaf(for: id) else {
+            throw TabSessionError.surfaceNotFound(id)
+        }
+        try close(pane: id)
+        return leaf
+    }
+
+    /// Inserts an existing pane subtree at the right-hand outer edge of
+    /// the layout and focuses its first pane.
+    public mutating func attach(pane node: SplitNode) throws {
+        for id in node.paneIDs where root.contains(id) {
+            throw TabSessionError.duplicateSurface(id)
+        }
+        root = Self.wrapped(root, adding: node, direction: .right)
+        if let first = node.paneIDs.first {
+            focusedSurfaceID = first
+        }
+    }
+
     public mutating func swapPanes(
         _ firstID: TerminalSurfaceID,
         _ secondID: TerminalSurfaceID

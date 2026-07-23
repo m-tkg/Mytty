@@ -1964,6 +1964,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         surface.onKeyIntercept = { [weak self] event in
             self?.autocomplete.handleKey(event, for: surfaceID) ?? false
         }
+        surface.contextMenuMoveTargets = { [weak self] in
+            self?.movePaneTargets(for: surfaceID) ?? []
+        }
         autocomplete.bind(surfaceID: surfaceID)
     }
 
@@ -2021,6 +2024,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             searchWithGoogle: localizer[.searchWithGoogle],
             share: localizer[.share],
             services: localizer[.services],
+            moveToTab: localizer[.moveToTab],
             closePane: localizer[.closePane]
         )
     }
@@ -2038,6 +2042,48 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private func closeBrowserPane(_ paneID: TerminalSurfaceID) {
         closePaneOrContainingTab(paneID)
+    }
+
+    private func movePaneTargets(
+        for paneID: TerminalSurfaceID
+    ) -> [GhosttyContextMenuMoveTarget] {
+        guard let sourceTab = session.tabs.first(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { return [] }
+        return session.tabs
+            .filter { $0.id != sourceTab.id }
+            .map {
+                GhosttyContextMenuMoveTarget(
+                    id: $0.id.rawValue,
+                    title: displayTitle(for: $0)
+                )
+            }
+    }
+
+    private func movePane(_ paneID: TerminalSurfaceID, toTab rawID: UUID) {
+        guard let destination = session.tabs.first(where: {
+            $0.id.rawValue == rawID
+        }) else { return }
+        let sourceTabID = session.tabs.first {
+            $0.paneIDs.contains(paneID)
+        }?.id
+        do {
+            try session.movePane(paneID, toTab: destination.id)
+            // The recorder is bound to the pane's containing tab, so a
+            // moved pane would leave the sidebar indicator on the wrong
+            // tab; stop instead of recording a stale target.
+            recording.stopIfRecording(surfaceID: paneID)
+            if let sourceTabID, !session.tabs.contains(where: {
+                $0.id == sourceTabID
+            }) {
+                paneLayout.removeZoom(tabID: sourceTabID)
+            }
+            renderedTabID = nil
+            sessionDidChange()
+            refreshPresentation(focusTerminal: true)
+        } catch {
+            presentActionError(error)
+        }
     }
 
     private func closePaneOrContainingTab(
@@ -2100,6 +2146,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             // Context-menu close: same flow as the Close Pane command
             // (confirmation included), aimed at the clicked pane.
             closePaneOrContainingTab(surfaceID)
+
+        case let .movePaneRequested(destinationTab):
+            movePane(surfaceID, toTab: destinationTab)
 
         case let .closeRequested(processAlive):
             guard let tab = session.tabs.first(where: {

@@ -312,6 +312,43 @@ public struct WindowSession: Codable, Equatable, Sendable {
         tabs[index] = tab
     }
 
+    /// Moves a pane into another tab of this window. Moving a tab's
+    /// sole pane removes the now-empty tab; when that tab was selected,
+    /// the selection follows the pane to its destination.
+    public mutating func movePane(
+        _ paneID: TerminalSurfaceID,
+        toTab destinationID: TabID
+    ) throws {
+        guard let sourceIndex = tabs.firstIndex(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { throw WindowSessionError.surfaceNotFound(paneID) }
+        guard tabs.contains(where: { $0.id == destinationID }) else {
+            throw WindowSessionError.tabNotFound(destinationID)
+        }
+        let sourceID = tabs[sourceIndex].id
+        guard sourceID != destinationID else { return }
+
+        let node: SplitNode
+        if tabs[sourceIndex].paneIDs.count == 1 {
+            node = tabs[sourceIndex].root
+            tabs.remove(at: sourceIndex)
+            if selectedTabID == sourceID {
+                selectedTabID = destinationID
+            }
+        } else {
+            var source = tabs[sourceIndex]
+            node = try source.detach(pane: paneID)
+            tabs[sourceIndex] = source
+        }
+
+        guard let destinationIndex = tabs.firstIndex(where: {
+            $0.id == destinationID
+        }) else { throw WindowSessionError.tabNotFound(destinationID) }
+        var destination = tabs[destinationIndex]
+        try destination.attach(pane: node)
+        tabs[destinationIndex] = destination
+    }
+
     public mutating func updateBrowserURL(
         _ url: URL,
         for paneID: TerminalSurfaceID
