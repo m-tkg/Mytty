@@ -151,6 +151,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL] ?? []
+        // Selected items can vanish between Finder's selection and the
+        // service call; reporting through `error` makes macOS surface the
+        // failure instead of the service silently doing nothing.
+        guard !FinderOpenPolicy.workingDirectories(
+            for: urls,
+            isDirectory: Self.directoryOnDisk
+        ).isEmpty else {
+            error.pointee = localizer[.finderOpenNothingToOpen] as NSString
+            return
+        }
         openFinderRequests(finderOpenQueue.enqueue(urls))
     }
 

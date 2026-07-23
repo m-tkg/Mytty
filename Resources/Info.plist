@@ -61,8 +61,6 @@
             <string>openFolder</string>
             <key>NSPortName</key>
             <string>Mytty</string>
-            <key>NSRequiredContext</key>
-            <dict/>
             <key>NSSendFileTypes</key>
             <array>
                 <string>public.folder</string>

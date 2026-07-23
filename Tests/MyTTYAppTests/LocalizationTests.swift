@@ -497,4 +497,19 @@ struct LocalizationTests {
         #expect(japanese.commandTitle(.selectTab3) == "タブ 3 に移動")
         #expect(japanese.commandTitle(.selectTab9) == "タブ 9 に移動")
     }
+
+    @Test("localizes the Finder service failure message")
+    func finderServiceText() {
+        let english = MyTTYLocalizer(language: .english)
+        let japanese = MyTTYLocalizer(language: .japanese)
+
+        #expect(
+            english[.finderOpenNothingToOpen]
+                == "No folder was available to open."
+        )
+        #expect(
+            japanese[.finderOpenNothingToOpen]
+                == "開けるフォルダがありませんでした"
+        )
+    }
 }
