@@ -206,6 +206,127 @@ struct RemoteAccessServerIntegrationTests {
         #expect(afterDelete.contains(created))
     }
 
+    @Test("wrong-code guesses invalidate the active pairing code after enough attempts, defeating online brute force")
+    func wrongCodeGuessesInvalidateActiveCode() async throws {
+        let delegate = StubRemoteAccessDelegate()
+        let server = RemoteAccessServer(
+            deviceStore: RemotePairedDeviceStore(fileURL: temporaryStoreURL()),
+            deviceDisplayName: testServiceName(),
+            onError: { error in Issue.record("server error: \(error)") }
+        )
+        server.delegate = delegate
+        try server.start()
+        defer { server.stop() }
+
+        let port = try await step("wait for listening port") {
+            try await self.waitForListeningPort(server)
+        }
+        let code = server.pairingCoordinator.beginPairing()
+        let wrongGuess = code.value == "000001" ? "000002" : "000001"
+        let wrongKey = RemotePairing.derivePresharedKey(code: wrongGuess)
+
+        // Exhaust the failed-attempt budget with wrong guesses. Each one
+        // fails to open the frame against the real code's key, so the
+        // server drops the connection without ever responding.
+        for attempt in 0..<RemotePairingCoordinator.maxFailedAttempts {
+            let connection = TestRemoteConnection(port: port)
+            try await step("wrong guess #\(attempt) connection start") {
+                try await connection.start()
+            }
+            do {
+                _ = try await step("wrong guess #\(attempt) exchange", seconds: 2) {
+                    try await connection.exchange(
+                        .pairRequest(deviceName: "Attacker", code: wrongGuess),
+                        key: wrongKey
+                    )
+                }
+                Issue.record("expected the connection to be dropped without a response")
+            } catch {
+                // expected: the server closes the connection instead of
+                // responding to a guess it can't open.
+            }
+            connection.cancel()
+        }
+
+        // The failed-attempt threshold must have invalidated the code.
+        #expect(server.pairingCoordinator.activeCode == nil)
+
+        // So even the correct code no longer pairs: there is no active
+        // code left to derive a key from, and the frame matches no
+        // paired device either.
+        let correctKey = RemotePairing.derivePresharedKey(code: code.value)
+        let finalConnection = TestRemoteConnection(port: port)
+        try await step("final connection start") { try await finalConnection.start() }
+        defer { finalConnection.cancel() }
+        do {
+            _ = try await step("final exchange", seconds: 2) {
+                try await finalConnection.exchange(
+                    .pairRequest(deviceName: "iPhone", code: code.value),
+                    key: correctKey
+                )
+            }
+            Issue.record("expected the now-invalidated code to no longer pair")
+        } catch {
+            // expected
+        }
+    }
+
+    @Test("a correct guess within the failed-attempt threshold still pairs over the wire")
+    func correctGuessWithinThresholdStillPairsOverTheWire() async throws {
+        let delegate = StubRemoteAccessDelegate()
+        let server = RemoteAccessServer(
+            deviceStore: RemotePairedDeviceStore(fileURL: temporaryStoreURL()),
+            deviceDisplayName: testServiceName(),
+            onError: { error in Issue.record("server error: \(error)") }
+        )
+        server.delegate = delegate
+        try server.start()
+        defer { server.stop() }
+
+        let port = try await step("wait for listening port") {
+            try await self.waitForListeningPort(server)
+        }
+        let code = server.pairingCoordinator.beginPairing()
+        let wrongGuess = code.value == "000001" ? "000002" : "000001"
+        let wrongKey = RemotePairing.derivePresharedKey(code: wrongGuess)
+
+        // A couple of wrong guesses, but fewer than the threshold.
+        for attempt in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            let connection = TestRemoteConnection(port: port)
+            try await step("wrong guess #\(attempt) connection start") {
+                try await connection.start()
+            }
+            do {
+                _ = try await step("wrong guess #\(attempt) exchange", seconds: 2) {
+                    try await connection.exchange(
+                        .pairRequest(deviceName: "Attacker", code: wrongGuess),
+                        key: wrongKey
+                    )
+                }
+                Issue.record("expected the connection to be dropped without a response")
+            } catch {
+                // expected
+            }
+            connection.cancel()
+        }
+        #expect(server.pairingCoordinator.activeCode != nil)
+
+        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let pairConnection = TestRemoteConnection(port: port)
+        try await step("pair connection start") { try await pairConnection.start() }
+        let approval = try await step("pair exchange") {
+            try await pairConnection.exchange(
+                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                key: pairingKey
+            )
+        }
+        pairConnection.cancel()
+        guard case .pairApproved = approval else {
+            Issue.record("expected pairApproved, got \(approval)")
+            return
+        }
+    }
+
     @Test("reports the connected device count as sessions authenticate and disconnect")
     func connectedDeviceCountTracksSessionLifecycle() async throws {
         let delegate = StubRemoteAccessDelegate()
@@ -486,10 +607,24 @@ private final class TestRemoteConnection: @unchecked Sendable {
             if let error {
                 self.pendingFrame?.resume(throwing: error)
                 self.pendingFrame = nil
+            } else if isComplete {
+                // The server closed the connection (e.g. it rejected the
+                // handshake and dropped us) without ever sending a
+                // response frame. Without this, an in-flight `exchange`
+                // would await its continuation forever, since a graceful
+                // close reports `isComplete` with no `error`.
+                self.pendingFrame?.resume(throwing: TestRemoteConnectionClosedError())
+                self.pendingFrame = nil
             }
             if !isComplete && error == nil {
                 self.receiveLoop()
             }
         }
     }
+}
+
+/// Thrown when the server closes a `TestRemoteConnection` (e.g. rejecting
+/// a handshake) before ever sending a response frame back.
+private struct TestRemoteConnectionClosedError: Error, CustomStringConvertible {
+    var description: String { "connection closed without a response" }
 }
