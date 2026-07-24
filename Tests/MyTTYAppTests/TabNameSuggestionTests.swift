@@ -25,6 +25,46 @@ struct TabNameSuggestionTests {
         #expect(!prompt.contains("  swift build"))
     }
 
+    @Test("user prompts to an AI agent lead the prompt when present")
+    func promptIncludesUserPrompts() {
+        let prompt = TabNameSuggestionPrompt.prompt(
+            buffer: "some terminal output",
+            userPrompts: ["fix the login bug", "add a regression test"]
+        )
+        #expect(prompt.contains("fix the login bug"))
+        #expect(prompt.contains("add a regression test"))
+        #expect(prompt.contains("some terminal output"))
+        // The user's requests are the primary material, so they must come
+        // before the terminal output.
+        let promptIndex = prompt.range(of: "fix the login bug")!.lowerBound
+        let bufferIndex = prompt.range(of: "some terminal output")!.lowerBound
+        #expect(promptIndex < bufferIndex)
+    }
+
+    @Test("without user prompts the prompt matches the buffer-only form")
+    func promptWithoutUserPrompts() {
+        #expect(
+            TabNameSuggestionPrompt.prompt(buffer: "ls", userPrompts: [])
+                == TabNameSuggestionPrompt.prompt(buffer: "ls")
+        )
+    }
+
+    @Test("only the most recent user prompts are included")
+    func promptClampsUserPromptCount() {
+        let prompts = (1...10).map { "request number \($0)" }
+        let prompt = TabNameSuggestionPrompt.prompt(
+            buffer: "output",
+            userPrompts: prompts
+        )
+        #expect(!prompt.contains("request number 1\n"))
+        #expect(prompt.contains("request number 10"))
+        #expect(
+            prompt.contains(
+                "request number \(11 - TabNameSuggestionPrompt.maxUserPrompts)"
+            )
+        )
+    }
+
     @Test("instructions pin the answer language")
     func instructionsLanguage() {
         #expect(

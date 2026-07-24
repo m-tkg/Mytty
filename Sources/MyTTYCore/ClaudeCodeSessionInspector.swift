@@ -154,6 +154,76 @@ public enum ClaudeCodeSessionInspector {
         return interruption
     }
 
+    /// Reads the tail of a session transcript and returns the user's most
+    /// recent prompts, oldest first — material for inferring what the user
+    /// is trying to accomplish (e.g. when naming the tab).
+    public static func recentUserPrompts(
+        contentsOf url: URL,
+        limit: Int
+    ) -> [String] {
+        guard let data = readTail(from: url) else { return [] }
+        return recentUserPrompts(from: data, limit: limit)
+    }
+
+    static func recentUserPrompts(from data: Data, limit: Int) -> [String] {
+        guard limit > 0 else { return [] }
+        var prompts: [String] = []
+
+        for line in data.split(separator: 0x0A) {
+            guard let object = try? JSONSerialization.jsonObject(
+                with: Data(line)
+            ) as? [String: Any],
+                  object["type"] as? String == "user",
+                  (object["isSidechain"] as? Bool) != true,
+                  (object["isMeta"] as? Bool) != true,
+                  (object["interruptedMessageId"] as? String) == nil,
+                  let message = object["message"] as? [String: Any],
+                  let text = promptText(fromContent: message["content"]),
+                  let prompt = AgentSessionValidation.promptText(text)
+            else { continue }
+            prompts.append(prompt)
+        }
+
+        return Array(prompts.suffix(limit))
+    }
+
+    /// Extracts what the user actually typed from a transcript `content`
+    /// value: either a plain string or the `text` blocks of an array,
+    /// skipping tool results and content the CLI injects around prompts
+    /// (command wrappers, system reminders, interrupt markers).
+    private static func promptText(fromContent content: Any?) -> String? {
+        let texts: [String]
+        if let string = content as? String {
+            texts = [string]
+        } else if let blocks = content as? [[String: Any]] {
+            texts = blocks.compactMap { block in
+                guard block["type"] as? String == "text" else { return nil }
+                return block["text"] as? String
+            }
+        } else {
+            return nil
+        }
+
+        let kept = texts.filter { !isInjectedText($0) }
+        guard !kept.isEmpty else { return nil }
+        return kept.joined(separator: " ")
+    }
+
+    private static let injectedTextPrefixes = [
+        "<command-name>",
+        "<command-message>",
+        "<local-command-stdout>",
+        "<local-command-caveat>",
+        "<system-reminder>",
+        "[Request interrupted",
+        "Caveat: The messages below",
+    ]
+
+    private static func isInjectedText(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return injectedTextPrefixes.contains { trimmed.hasPrefix($0) }
+    }
+
     static func status(from data: Data) -> AgentSessionStatus? {
         var sessionID: String?
         var modelName: String?
@@ -247,16 +317,7 @@ public enum ClaudeCodeSessionInspector {
     }
 
     private static func readTail(from url: URL) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
-        defer { try? handle.close() }
-        guard let end = try? handle.seekToEnd() else { return nil }
-        let tailSize = min(UInt64(maximumStatusTailBytes), end)
-        guard (try? handle.seek(toOffset: end - tailSize)) != nil else {
-            return nil
-        }
-        return try? handle.readToEnd()
+        FileTailReader.tail(of: url, maximumBytes: maximumStatusTailBytes)
     }
 
     private static func modificationDate(_ url: URL) -> Date {

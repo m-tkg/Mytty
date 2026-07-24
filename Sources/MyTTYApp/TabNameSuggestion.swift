@@ -1,7 +1,50 @@
 import AppKit
+import MyTTYCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
+
+/// Builds the closure that reads the user's recent prompts to the pane's
+/// AI agent. Everything main-thread-bound (provider, session ID, working
+/// directory, foreground process) is captured up front; the returned
+/// closure only does file reads, so it can run inside the detached
+/// suggestion task. Providers whose local data does not reliably record
+/// prompt text (OpenCode, Cursor, Antigravity) return nil and the tab
+/// name falls back to buffer-only material.
+enum AgentTabNamePromptSource {
+    static func loader(
+        provider: AgentProvider,
+        sessionID: String?,
+        workingDirectory: URL?,
+        processID: pid_t
+    ) -> (@Sendable () -> [String])? {
+        let limit = TabNameSuggestionPrompt.maxUserPrompts
+        switch provider {
+        case .claudeCode:
+            return {
+                guard let transcript = ClaudeCodeSessionInspector
+                    .transcriptURL(
+                        sessionID: sessionID,
+                        workingDirectory: workingDirectory
+                    )
+                else { return [] }
+                return ClaudeCodeSessionInspector.recentUserPrompts(
+                    contentsOf: transcript,
+                    limit: limit
+                )
+            }
+        case .codex:
+            return {
+                CodexSessionInspector.recentUserPrompts(
+                    processID: processID,
+                    limit: limit
+                )
+            }
+        default:
+            return nil
+        }
+    }
+}
 
 /// Prompt construction and output cleanup for the on-device tab-name
 /// suggestion. Kept separate from the model call so the text handling is
@@ -12,6 +55,8 @@ enum TabNameSuggestionPrompt {
     /// tail is sent.
     static let maxBufferCharacters = 3000
     static let maxNameCharacters = 30
+    /// How many of the user's recent agent prompts are sent as material.
+    static let maxUserPrompts = 5
 
     static func instructions(language: ResolvedAppLanguage) -> String {
         let languageLine =
@@ -20,23 +65,49 @@ enum TabNameSuggestionPrompt {
             case .japanese: "Answer in Japanese."
             }
         return """
-        You name terminal tabs. Given the recent output of a terminal, \
-        answer with a short name (at most four words) describing what the \
-        user is doing in it, such as the project, tool, or task. Answer \
-        with the name only — no quotes, no punctuation around it, no \
-        explanation. \(languageLine)
+        You name terminal tabs. Given the recent output of a terminal — \
+        and, when an AI agent runs in it, the user's recent requests to \
+        that agent — answer with a short name (at most four words) \
+        describing what the user is trying to accomplish, such as the \
+        project, tool, or task. Answer with the name only — no quotes, no \
+        punctuation around it, no explanation. \(languageLine)
         """
     }
 
     static func prompt(buffer: String) -> String {
+        prompt(buffer: buffer, userPrompts: [])
+    }
+
+    /// When an AI agent runs in the pane, the user's recent prompts to it
+    /// say what the user is trying to accomplish far better than the
+    /// terminal output does, so they lead the prompt and the output only
+    /// supplies surrounding context.
+    static func prompt(buffer: String, userPrompts: [String]) -> String {
         let tail = String(buffer.suffix(maxBufferCharacters))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !userPrompts.isEmpty else {
+            return """
+            Recent terminal output:
+
+            \(tail)
+
+            Name this tab.
+            """
+        }
+        let requests = userPrompts.suffix(maxUserPrompts)
+            .map { "- \($0)" }
+            .joined(separator: "\n")
         return """
+        The user's recent requests to the AI agent in this terminal, \
+        oldest first:
+
+        \(requests)
+
         Recent terminal output:
 
         \(tail)
 
-        Name this tab.
+        Name this tab after what the user is trying to accomplish.
         """
     }
 
@@ -85,6 +156,7 @@ enum TabNameSuggester {
 
     static func suggest(
         buffer: String,
+        userPrompts: [String] = [],
         language: ResolvedAppLanguage
     ) async -> String? {
         #if canImport(FoundationModels)
@@ -95,7 +167,10 @@ enum TabNameSuggester {
             )
         )
         guard let response = try? await session.respond(
-            to: TabNameSuggestionPrompt.prompt(buffer: buffer)
+            to: TabNameSuggestionPrompt.prompt(
+                buffer: buffer,
+                userPrompts: userPrompts
+            )
         ) else { return nil }
         return TabNameSuggestionPrompt.sanitize(response.content)
         #else

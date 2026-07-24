@@ -2548,14 +2548,36 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
               let surface = surfaces[tab.focusedSurfaceID]
         else { return nil }
         let language = applicationPreferences.language.resolved()
+        let loadUserPrompts = agentUserPromptLoader(
+            for: tab.focusedSurfaceID,
+            surface: surface
+        )
         return TabNameSuggestionRequest(
             captureBuffer: { [weak surface] in surface?.screenText() },
             suggest: { buffer in
                 await TabNameSuggester.suggest(
                     buffer: buffer,
+                    userPrompts: loadUserPrompts?() ?? [],
                     language: language
                 )
             }
+        )
+    }
+
+    /// When an AI agent runs in the pane, the user's recent prompts to it
+    /// carry what the user is trying to accomplish, so they become naming
+    /// material alongside the terminal output.
+    private func agentUserPromptLoader(
+        for surfaceID: TerminalSurfaceID,
+        surface: GhosttySurfaceView
+    ) -> (@Sendable () -> [String])? {
+        guard let provider = agentStatusPolling.providersBySurface[surfaceID]
+        else { return nil }
+        return AgentTabNamePromptSource.loader(
+            provider: provider,
+            sessionID: agentStatusPolling.sessionIDsBySurface[surfaceID],
+            workingDirectory: surfaceWorkingDirectory(for: surfaceID),
+            processID: surface.foregroundProcessID
         )
     }
 

@@ -28,4 +28,23 @@ enum AgentSessionValidation {
         else { return nil }
         return trimmed
     }
+
+    static let maximumPromptCharacters = 400
+
+    /// Prompt text pulled from a provider transcript, reduced to a single
+    /// line of material for the tab-name model: control characters and
+    /// newlines collapse into single spaces, and the result is clamped —
+    /// prompts can be arbitrarily long, but only their beginning is needed
+    /// to tell what the user asked for.
+    static func promptText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        var separators = CharacterSet.whitespacesAndNewlines
+        separators.formUnion(.controlCharacters)
+        let collapsed = value.unicodeScalars
+            .split(whereSeparator: { separators.contains($0) })
+            .map(String.init)
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        return String(collapsed.prefix(maximumPromptCharacters))
+    }
 }
