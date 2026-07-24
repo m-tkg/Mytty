@@ -57,6 +57,7 @@ struct TerminalStatusBarViewTests {
             content.visibleAgentUsageLimits.map(\.title)
                 == ["Context", "5h"]
         )
+        #expect(content.visibleAgentUsageLimits.allSatisfy { !$0.isLow })
         #expect(content.canScheduleInput)
         #expect(content.scheduledInputCount == 2)
         #expect(
@@ -74,6 +75,29 @@ struct TerminalStatusBarViewTests {
         #expect(inactive.agentDescription == nil)
         #expect(inactive.copyableAgentSessionID == nil)
         #expect(inactive.visibleAgentUsageLimits.isEmpty)
+    }
+
+    @Test("carries the low context warning on the context meter only")
+    func statusBarLowContextMeter() {
+        let content = TerminalStatusBarContent(
+            agentName: "Claude Code",
+            agentUsage: AgentUsageStatusContent(
+                costDescription: nil,
+                limits: [
+                    AgentUsageMeterContent(
+                        title: "5h",
+                        remainingPercent: 12
+                    ),
+                ]
+            ),
+            agentContext: AgentUsageMeterContent(
+                title: "Context",
+                remainingPercent: 18,
+                lowThresholdPercent: 30
+            )
+        )
+
+        #expect(content.visibleAgentUsageLimits.map(\.isLow) == [true, false])
     }
 
     @Test("orders agent controls before sleep and scheduled input")

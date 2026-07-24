@@ -1133,6 +1133,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             && !preferences.showPressedKeyToast
         let inactiveDimmingChanged = applicationPreferences.inactivePaneDimming
             != preferences.inactivePaneDimming
+        let contextWarningChanged = lowContextWarningThreshold
+            != Self.lowContextWarningThreshold(for: preferences)
         let activeBorderChanged = activePaneBorderStyle
             != Self.activePaneBorderStyle(for: preferences)
         applicationPreferences = preferences
@@ -1164,6 +1166,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
         if activeBorderChanged {
             paneLayout.updateActiveBorder()
+        }
+        if contextWarningChanged {
+            updateStatusBar()
         }
         if languageChanged || placementChanged || statusBarChanged
             || attentionUnreadOnlyChanged {
@@ -2868,7 +2873,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             agentContext: agentSessionStatus?.contextRemainingPercent.map {
                 AgentUsageMeterContent(
                     title: localizer[.context],
-                    remainingPercent: $0
+                    remainingPercent: $0,
+                    lowThresholdPercent: lowContextWarningThreshold
                 )
             },
             sleepStatus: agentSleepStatus
@@ -2878,6 +2884,19 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             focusedSurfaceID: focusedID,
             isTerminalPane: surfaces[focusedID] != nil
         )
+    }
+
+    /// Percentage below which the status bar's context meter warns, or nil
+    /// when the warning is turned off.
+    private var lowContextWarningThreshold: Double? {
+        Self.lowContextWarningThreshold(for: applicationPreferences)
+    }
+
+    private static func lowContextWarningThreshold(
+        for preferences: ApplicationPreferences
+    ) -> Double? {
+        guard preferences.agentContextWarningEnabled else { return nil }
+        return preferences.agentContextWarningThreshold
     }
 
     private func agentSessionID(

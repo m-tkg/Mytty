@@ -356,13 +356,17 @@ private struct AgentUsageMeterView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: 76)
+                .foregroundStyle(content.isLow ? Color.red : Color.secondary)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.16))
 
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.accentColor.opacity(0.55))
+                    .fill(
+                        (content.isLow ? Color.red : Color.accentColor)
+                            .opacity(0.55)
+                    )
                     .frame(width: 44 * content.progress, height: 14)
                     .frame(width: 44, alignment: .leading)
 
@@ -374,7 +378,7 @@ private struct AgentUsageMeterView: View {
                             design: .monospaced
                         )
                     )
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(content.isLow ? Color.red : .primary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
