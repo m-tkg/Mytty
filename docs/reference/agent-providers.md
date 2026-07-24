@@ -79,6 +79,8 @@ The status bar's model name and, where available, remaining-context meter come f
 | Cursor | `CursorSessionInspector` | Chat directory under `~/.cursor/chats/<workspace-hash>/<session-id>/` (by hook session ID, or newest `meta.json` whose `cwd` matches the pane); `store.db`'s `blobs` table, newest row first, text-scanned for `providerOptions.cursor.modelName` | not exposed locally |
 | Antigravity | `AntigravitySessionInspector` | Globally selected `model` in `~/.gemini/antigravity-cli/settings.json`; requires a hook session ID first, since the setting isn't scoped to a session | not exposed locally (conversation DB is protobuf-encoded with no stable schema) |
 
+The context meter turns red once the remaining context falls below a threshold, so a pane that is about to run out stands out without a notification. **Settings > Agents > Warn on low context** turns the warning off or moves the threshold (default 30%); the comparison uses the rounded percentage the meter displays.
+
 `<slug>` for Claude Code replaces every non-alphanumeric character in the working directory path with `-`. To keep the 0.5-second foreground poll cheap, Claude Code transcript reads are skipped unless the tracked `(mtime, size)` fingerprint changed; the OpenCode, Cursor, and Antigravity lookups share a per-pane cache throttled to once every 5 seconds, invalidated immediately if the hook session ID changes.
 
 ## Session restoration (resume commands)
