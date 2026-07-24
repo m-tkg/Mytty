@@ -161,9 +161,9 @@ struct RemoteAccessSettingsView: View {
                     Int(code.expiresAt.timeIntervalSince(context.date).rounded(.up))
                 )
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(formattedCode(code.value))
-                        .font(.system(size: 32, weight: .bold, design: .monospaced))
-                        .monospacedDigit()
+                    RemotePairingQRCodeView(
+                        payload: RemotePairingPayload(token: code.value).urlString()
+                    )
                     if remaining > 0 {
                         Text(localizer.pairingCodeExpiresIn(seconds: remaining))
                             .font(.caption)
@@ -229,11 +229,5 @@ struct RemoteAccessSettingsView: View {
             .foregroundStyle(.red)
         }
         .padding(.vertical, 2)
-    }
-
-    private func formattedCode(_ value: String) -> String {
-        guard value.count == 6 else { return value }
-        let midpoint = value.index(value.startIndex, offsetBy: 3)
-        return "\(value[..<midpoint]) \(value[midpoint...])"
     }
 }

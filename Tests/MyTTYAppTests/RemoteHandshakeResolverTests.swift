@@ -9,9 +9,9 @@ import Testing
 struct RemoteHandshakeResolverTests {
     @Test("resolves a pairing request encrypted with the code's derived key")
     func resolvesPairRequest() throws {
-        let key = RemotePairing.derivePresharedKey(code: "123456")
+        let key = RemotePairing.derivePresharedKey(token: "test-pairing-token")
         let payload = try RemoteMessageCodec.encode(
-            .pairRequest(deviceName: "iPhone", code: "123456")
+            .pairRequest(deviceName: "iPhone", token: "test-pairing-token")
         )
         let sealed = try RemoteSecureChannel.seal(payload, using: key)
 
@@ -25,7 +25,10 @@ struct RemoteHandshakeResolverTests {
             Issue.record("expected a resolved handshake, got \(resolution)")
             return
         }
-        #expect(message == .pairRequest(deviceName: "iPhone", code: "123456"))
+        #expect(
+            message
+                == .pairRequest(deviceName: "iPhone", token: "test-pairing-token")
+        )
     }
 
     @Test("resolves hello for a known device using its stored secret")
@@ -126,10 +129,10 @@ struct RemoteHandshakeResolverTests {
 
     @Test("a bad pairing-code guess is rejected as pairingKeyRejected, not unresolved")
     func badPairingGuessIsRejected() throws {
-        let realKey = RemotePairing.derivePresharedKey(code: "123456")
-        let guessedKey = RemotePairing.derivePresharedKey(code: "654321")
+        let realKey = RemotePairing.derivePresharedKey(token: "123456")
+        let guessedKey = RemotePairing.derivePresharedKey(token: "654321")
         let payload = try RemoteMessageCodec.encode(
-            .pairRequest(deviceName: "iPhone", code: "654321")
+            .pairRequest(deviceName: "iPhone", token: "654321")
         )
         // The attacker only knows their own guess, so they can only seal
         // the frame with the key derived from that guess — not the real
@@ -150,8 +153,8 @@ struct RemoteHandshakeResolverTests {
 
     @Test("a bad pairing guess that also fails to match any paired device is still pairingKeyRejected, not unresolved")
     func badPairingGuessWithPairedDevicesPresentIsStillRejected() throws {
-        let realKey = RemotePairing.derivePresharedKey(code: "123456")
-        let guessedKey = RemotePairing.derivePresharedKey(code: "654321")
+        let realKey = RemotePairing.derivePresharedKey(token: "123456")
+        let guessedKey = RemotePairing.derivePresharedKey(token: "654321")
         let secret = SymmetricKey(size: .bits256)
         let device = RemotePairedDevice(
             id: "device-1",
@@ -160,7 +163,7 @@ struct RemoteHandshakeResolverTests {
             pairedAt: Date()
         )
         let payload = try RemoteMessageCodec.encode(
-            .pairRequest(deviceName: "iPhone", code: "654321")
+            .pairRequest(deviceName: "iPhone", token: "654321")
         )
         let sealed = try RemoteSecureChannel.seal(payload, using: guessedKey)
 
@@ -178,7 +181,7 @@ struct RemoteHandshakeResolverTests {
 
     @Test("a paired device's hello still resolves while a pairing code happens to be active")
     func pairedDeviceHelloResolvesWhilePairingActive() throws {
-        let realKey = RemotePairing.derivePresharedKey(code: "123456")
+        let realKey = RemotePairing.derivePresharedKey(token: "123456")
         let secret = SymmetricKey(size: .bits256)
         let device = RemotePairedDevice(
             id: "device-1",

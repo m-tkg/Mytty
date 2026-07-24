@@ -554,4 +554,31 @@ struct LocalizationTests {
                 == "このテキストには複数行または制御文字が含まれており、ペーストすると自動的にコマンドが実行される可能性があります。"
         )
     }
+
+    @Test("localizes the QR-only remote pairing text")
+    func remotePairingQRText() {
+        let english = MyTTYLocalizer(language: .english)
+        let japanese = MyTTYLocalizer(language: .japanese)
+
+        #expect(english[.generatePairingCode] == "Generate Pairing QR Code")
+        #expect(english[.pairingCode] == "Pair a Device")
+        #expect(
+            english[.pairingCodeInstructions]
+                == "Scan this QR code with the Mytty iOS app within 2 minutes."
+        )
+        #expect(
+            english[.pairingCodeExpired]
+                == "This QR code has expired. Generate a new one."
+        )
+        #expect(japanese[.generatePairingCode] == "ペアリング用 QR コードを生成")
+        #expect(japanese[.pairingCode] == "デバイスをペアリング")
+        #expect(
+            japanese[.pairingCodeInstructions]
+                == "この QR コードを2分以内に Mytty iOS アプリでスキャンしてください。"
+        )
+        #expect(
+            japanese[.pairingCodeExpired]
+                == "この QR コードは失効しました。新しいものを生成してください。"
+        )
+    }
 }

@@ -37,10 +37,10 @@ struct RemoteAccessServerIntegrationTests {
         let pairConnection = TestRemoteConnection(port: port)
         try await step("pair connection start") { try await pairConnection.start() }
         log("pair connection ready")
-        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let pairingKey = RemotePairing.derivePresharedKey(token: code.value)
         let approval = try await step("pair exchange") {
             try await pairConnection.exchange(
-                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                .pairRequest(deviceName: "Integration iPhone", token: code.value),
                 key: pairingKey
             )
         }
@@ -126,10 +126,10 @@ struct RemoteAccessServerIntegrationTests {
 
         let pairConnection = TestRemoteConnection(port: port)
         try await step("pair connection start") { try await pairConnection.start() }
-        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let pairingKey = RemotePairing.derivePresharedKey(token: code.value)
         let approval = try await step("pair exchange") {
             try await pairConnection.exchange(
-                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                .pairRequest(deviceName: "Integration iPhone", token: code.value),
                 key: pairingKey
             )
         }
@@ -222,11 +222,11 @@ struct RemoteAccessServerIntegrationTests {
             try await self.waitForListeningPort(server)
         }
         let code = server.pairingCoordinator.beginPairing()
-        let wrongGuess = code.value == "000001" ? "000002" : "000001"
-        let wrongKey = RemotePairing.derivePresharedKey(code: wrongGuess)
+        let wrongGuess = code.value + "-wrong"
+        let wrongKey = RemotePairing.derivePresharedKey(token: wrongGuess)
 
         // Exhaust the failed-attempt budget with wrong guesses. Each one
-        // fails to open the frame against the real code's key, so the
+        // fails to open the frame against the real token's key, so the
         // server drops the connection without ever responding.
         for attempt in 0..<RemotePairingCoordinator.maxFailedAttempts {
             let connection = TestRemoteConnection(port: port)
@@ -236,7 +236,7 @@ struct RemoteAccessServerIntegrationTests {
             do {
                 _ = try await step("wrong guess #\(attempt) exchange", seconds: 2) {
                     try await connection.exchange(
-                        .pairRequest(deviceName: "Attacker", code: wrongGuess),
+                        .pairRequest(deviceName: "Attacker", token: wrongGuess),
                         key: wrongKey
                     )
                 }
@@ -254,14 +254,14 @@ struct RemoteAccessServerIntegrationTests {
         // So even the correct code no longer pairs: there is no active
         // code left to derive a key from, and the frame matches no
         // paired device either.
-        let correctKey = RemotePairing.derivePresharedKey(code: code.value)
+        let correctKey = RemotePairing.derivePresharedKey(token: code.value)
         let finalConnection = TestRemoteConnection(port: port)
         try await step("final connection start") { try await finalConnection.start() }
         defer { finalConnection.cancel() }
         do {
             _ = try await step("final exchange", seconds: 2) {
                 try await finalConnection.exchange(
-                    .pairRequest(deviceName: "iPhone", code: code.value),
+                    .pairRequest(deviceName: "iPhone", token: code.value),
                     key: correctKey
                 )
             }
@@ -287,8 +287,8 @@ struct RemoteAccessServerIntegrationTests {
             try await self.waitForListeningPort(server)
         }
         let code = server.pairingCoordinator.beginPairing()
-        let wrongGuess = code.value == "000001" ? "000002" : "000001"
-        let wrongKey = RemotePairing.derivePresharedKey(code: wrongGuess)
+        let wrongGuess = code.value + "-wrong"
+        let wrongKey = RemotePairing.derivePresharedKey(token: wrongGuess)
 
         // A couple of wrong guesses, but fewer than the threshold.
         for attempt in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
@@ -299,7 +299,7 @@ struct RemoteAccessServerIntegrationTests {
             do {
                 _ = try await step("wrong guess #\(attempt) exchange", seconds: 2) {
                     try await connection.exchange(
-                        .pairRequest(deviceName: "Attacker", code: wrongGuess),
+                        .pairRequest(deviceName: "Attacker", token: wrongGuess),
                         key: wrongKey
                     )
                 }
@@ -311,12 +311,12 @@ struct RemoteAccessServerIntegrationTests {
         }
         #expect(server.pairingCoordinator.activeCode != nil)
 
-        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let pairingKey = RemotePairing.derivePresharedKey(token: code.value)
         let pairConnection = TestRemoteConnection(port: port)
         try await step("pair connection start") { try await pairConnection.start() }
         let approval = try await step("pair exchange") {
             try await pairConnection.exchange(
-                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                .pairRequest(deviceName: "Integration iPhone", token: code.value),
                 key: pairingKey
             )
         }
@@ -350,10 +350,10 @@ struct RemoteAccessServerIntegrationTests {
 
         let pairConnection = TestRemoteConnection(port: port)
         try await step("pair connection start") { try await pairConnection.start() }
-        let pairingKey = RemotePairing.derivePresharedKey(code: code.value)
+        let pairingKey = RemotePairing.derivePresharedKey(token: code.value)
         let approval = try await step("pair exchange") {
             try await pairConnection.exchange(
-                .pairRequest(deviceName: "Integration iPhone", code: code.value),
+                .pairRequest(deviceName: "Integration iPhone", token: code.value),
                 key: pairingKey
             )
         }

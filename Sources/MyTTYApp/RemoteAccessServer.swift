@@ -280,7 +280,7 @@ final class RemoteAccessServer {
         let pairingKey = pairingCoordinator.activeCode.flatMap {
             code -> SymmetricKey? in
             code.isExpired() ? nil : RemotePairing.derivePresharedKey(
-                code: code.value
+                token: code.value
             )
         }
         let message: RemoteMessage
@@ -313,9 +313,9 @@ final class RemoteAccessServer {
         }
 
         switch message {
-        case let .pairRequest(deviceName, code):
+        case let .pairRequest(deviceName, token):
             guard let result = try? pairingCoordinator.attempt(
-                code: code,
+                token: token,
                 deviceName: deviceName
             ), case let .approved(device) = result else {
                 connectionStates.removeValue(forKey: id)

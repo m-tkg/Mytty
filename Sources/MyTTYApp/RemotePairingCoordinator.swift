@@ -12,17 +12,17 @@ enum RemotePairingAttemptResult: Equatable {
     case rejected(RemotePairingRejection)
 }
 
-/// Owns the lifecycle of the six digit pairing code shown in Settings.
-/// A code is single-use once a guess actually reaches `attempt()`: that
-/// only happens after the guess's derived key has already opened the
-/// handshake frame, and `attempt()` consumes the code on that first call
-/// whether the code value inside the frame turns out to match or not. A
-/// wrong-code online guess never gets that far — the frame fails to open
-/// with the real code's key before `attempt()` is reached — so those are
-/// tracked separately via `recordFailedAttempt()`, which invalidates the
-/// active code after `maxFailedAttempts` such guesses. Together this means
-/// an online guesser gets at most a handful of tries before the code dies
-/// and the user has to generate a new one.
+/// Owns the lifecycle of the high-entropy pairing token shown as a QR code
+/// in Settings. A token is single-use once a guess actually reaches
+/// `attempt()`: that only happens after the guess's derived key has already
+/// opened the handshake frame, and `attempt()` consumes the token on that
+/// first call whether the value inside the frame turns out to match or not.
+/// A wrong-token guess never gets that far — the frame fails to open with
+/// the real token's key before `attempt()` is reached — so those are tracked
+/// separately via `recordFailedAttempt()`, which invalidates the active
+/// token after `maxFailedAttempts` such guesses. Together this means a
+/// guesser gets at most a handful of tries before the token dies and the
+/// user has to generate a new one.
 @MainActor
 final class RemotePairingCoordinator {
     /// Number of failed online guesses (frames that couldn't be opened
@@ -72,7 +72,7 @@ final class RemotePairingCoordinator {
 
     @discardableResult
     func attempt(
-        code: String,
+        token: String,
         deviceName: String
     ) throws -> RemotePairingAttemptResult {
         guard let active = activeCode else {
@@ -83,7 +83,7 @@ final class RemotePairingCoordinator {
         guard !active.isExpired(at: now()) else {
             return .rejected(.codeExpired)
         }
-        guard active.value == code else {
+        guard active.value == token else {
             return .rejected(.codeMismatch)
         }
 
