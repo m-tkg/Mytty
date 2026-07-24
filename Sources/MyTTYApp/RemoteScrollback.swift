@@ -231,12 +231,19 @@ enum RemoteScrollback {
         line.reduce(0) { $0 + displayWidth(of: $1) }
     }
 
-    /// Simplified wcwidth: 2 cells for East Asian wide/fullwidth ranges
-    /// and emoji, 1 otherwise. Close enough to libghostty's own width
-    /// tables for cursor placement in everyday CJK/emoji content.
+    /// Simplified wcwidth: 2 cells for East Asian wide/fullwidth ranges and
+    /// emoji-default-presentation characters, 1 otherwise. A variation
+    /// selector elsewhere in the cluster overrides that default (VS16 forces
+    /// 2, VS15 forces 1). Close enough to libghostty's own uucode-backed
+    /// width tables for cursor placement in everyday CJK/emoji content.
     private static func displayWidth(of character: Character) -> Int {
-        guard let scalar = character.unicodeScalars.first else { return 1 }
-        switch scalar.value {
+        guard let base = character.unicodeScalars.first else { return 1 }
+        for scalar in character.unicodeScalars.dropFirst() {
+            if scalar.value == 0xFE0F, base.properties.isEmoji { return 2 }
+            if scalar.value == 0xFE0E, base.properties.isEmoji { return 1 }
+        }
+        if base.properties.isEmojiPresentation { return 2 }
+        switch base.value {
         case 0x1100...0x115F,
              0x2E80...0x303E,
              0x3041...0x33FF,
@@ -248,7 +255,7 @@ enum RemoteScrollback {
              0xFE30...0xFE4F,
              0xFF00...0xFF60,
              0xFFE0...0xFFE6,
-             0x1F300...0x1FAFF,
+             0x1F200...0x1F265,
              0x20000...0x3FFFD:
             return 2
         default:
