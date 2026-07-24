@@ -22,6 +22,12 @@ final class AgentStatusPollingCoordinator: NSObject {
     private(set) var providersBySurface: [TerminalSurfaceID: AgentProvider] = [:]
     private(set) var sessionIDsBySurface: [TerminalSurfaceID: String] = [:]
     private(set) var statusBySurface: [TerminalSurfaceID: AgentSessionStatus] = [:]
+    /// The foreground agent process's own working directory (e.g.
+    /// `claude --worktree`, which chdirs the agent but not the shell that
+    /// launched it), keyed by surface. Only populated for surfaces with a
+    /// resolved provider — a surface running no agent has no entry here,
+    /// and the controller falls back to the shell's OSC 7-reported cwd.
+    private(set) var workingDirectoriesBySurface: [TerminalSurfaceID: URL] = [:]
 
     private let throttle = AgentSessionThrottleCache()
     private let processProviderCache = AgentProcessProviderCache()
@@ -34,7 +40,9 @@ final class AgentStatusPollingCoordinator: NSObject {
     /// `pollForegroundAgentProcess`. The controller decides what a changed
     /// provider/session-ID set implies (sidebar/status bar refresh, usage
     /// refresh, `onAgentActivityChanged`) — this coordinator only reports
-    /// what changed.
+    /// what changed. `providersChanged` covers both a changed foreground
+    /// provider set *and* a changed agent working-directory set, since both
+    /// affect the status bar/window-metadata presentation the same way.
     private let onPoll: (_ providersChanged: Bool, _ sessionIDsChanged: Bool) -> Void
     /// Reports a run the user interrupted without the provider firing a
     /// completion hook, so the controller can end it. Fired once per
@@ -97,6 +105,11 @@ final class AgentStatusPollingCoordinator: NSObject {
         return providersBySurface[surfaceID]
     }
 
+    func workingDirectory(for surfaceID: TerminalSurfaceID?) -> URL? {
+        guard let surfaceID else { return nil }
+        return workingDirectoriesBySurface[surfaceID]
+    }
+
     private func poll() {
         let providersChanged = refreshProviders()
         let sessionIDsChanged = refreshSessionIDs()
@@ -121,17 +134,25 @@ final class AgentStatusPollingCoordinator: NSObject {
     func refreshProviders() -> Bool {
         let currentSurfaces = surfaces()
         processProviderCache.purge(activeSurfaceIDs: currentSurfaces.keys)
-        let providers = currentSurfaces.reduce(
-            into: [TerminalSurfaceID: AgentProvider]()
-        ) { result, entry in
+        var providers: [TerminalSurfaceID: AgentProvider] = [:]
+        var workingDirectories: [TerminalSurfaceID: URL] = [:]
+        for (surfaceID, surface) in currentSurfaces {
             guard let provider = processProviderCache.provider(
-                surfaceID: entry.key,
-                processID: entry.value.foregroundProcessID
-            ) else { return }
-            result[entry.key] = provider
+                surfaceID: surfaceID,
+                processID: surface.foregroundProcessID
+            ) else { continue }
+            providers[surfaceID] = provider
+            if let agentDirectory = TerminalAgentProcessDetector.workingDirectory(
+                processID: surface.foregroundProcessID
+            ) {
+                workingDirectories[surfaceID] = agentDirectory.standardizedFileURL
+            }
         }
-        guard providers != providersBySurface else { return false }
+        let providersChanged = providers != providersBySurface
+        let workingDirectoriesChanged = workingDirectories != workingDirectoriesBySurface
+        guard providersChanged || workingDirectoriesChanged else { return false }
         providersBySurface = providers
+        workingDirectoriesBySurface = workingDirectories
         return true
     }
 

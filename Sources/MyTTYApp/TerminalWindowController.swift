@@ -2748,8 +2748,25 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    /// The directory that best represents `surfaceID` right now: a
+    /// foreground agent's own cwd when one is running there (see
+    /// `TerminalWorkingDirectorySelection`), otherwise the shell's OSC
+    /// 7-reported cwd. Backs both the status-bar path/GitHub link
+    /// (`resourceURL(for:)`) and the branch-name lookup
+    /// (`focusedTerminalDirectory`) so the two stay in agreement.
+    private func effectiveWorkingDirectory(
+        for surfaceID: TerminalSurfaceID,
+        in tab: TabSession
+    ) -> URL? {
+        TerminalWorkingDirectorySelection.resolve(
+            agentDirectory: agentStatusPolling.workingDirectory(for: surfaceID),
+            shellDirectory: tab.root.surfaceState(with: surfaceID)?
+                .workingDirectory.standardizedFileURL
+        )
+    }
+
     private func resourceURL(for tab: TabSession) -> URL? {
-        tab.root.surfaceState(with: tab.focusedSurfaceID)?.workingDirectory
+        effectiveWorkingDirectory(for: tab.focusedSurfaceID, in: tab)
             ?? tab.root.browserState(with: tab.focusedSurfaceID)?.url
     }
 
@@ -2922,16 +2939,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private var focusedTerminalDirectory: URL? {
         guard let tab = session.selectedTab else { return nil }
-        let focusedID = tab.focusedSurfaceID
-        if agentStatusPolling.foregroundProvider(for: focusedID) != nil,
-           let processID = surfaces[focusedID]?.foregroundProcessID,
-           let agentDirectory = TerminalAgentProcessDetector.workingDirectory(
-               processID: processID
-           ) {
-            return agentDirectory.standardizedFileURL
-        }
-        return tab.root.surfaceState(with: focusedID)?
-            .workingDirectory.standardizedFileURL
+        return effectiveWorkingDirectory(for: tab.focusedSurfaceID, in: tab)
     }
 
     private func openFocusedRepository() {

@@ -31,6 +31,19 @@ struct TerminalAgentPollActions: Equatable {
     }
 }
 
+/// Picks which directory represents "where this pane is" for the status
+/// bar path and window `representedURL`. `claude --worktree` chdirs only
+/// the agent process into the worktree — the shell that launched it never
+/// moves, so its OSC 7-reported cwd still points at the main checkout.
+/// Since the agent's own cwd is what the user is actually looking at
+/// while an agent is in the foreground, prefer it over the shell's cwd
+/// whenever it's available.
+enum TerminalWorkingDirectorySelection {
+    static func resolve(agentDirectory: URL?, shellDirectory: URL?) -> URL? {
+        agentDirectory ?? shellDirectory
+    }
+}
+
 enum TerminalTabAgentActivity {
     static func isProcessing(
         surfaceIDs: [TerminalSurfaceID],
