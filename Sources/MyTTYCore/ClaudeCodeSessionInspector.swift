@@ -176,7 +176,7 @@ public enum ClaudeCodeSessionInspector {
                   object["type"] as? String == "user",
                   (object["isSidechain"] as? Bool) != true,
                   (object["isMeta"] as? Bool) != true,
-                  object["interruptedMessageId"] == nil,
+                  (object["interruptedMessageId"] as? String) == nil,
                   let message = object["message"] as? [String: Any],
                   let text = promptText(fromContent: message["content"]),
                   let prompt = AgentSessionValidation.promptText(text)
@@ -317,16 +317,7 @@ public enum ClaudeCodeSessionInspector {
     }
 
     private static func readTail(from url: URL) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
-        defer { try? handle.close() }
-        guard let end = try? handle.seekToEnd() else { return nil }
-        let tailSize = min(UInt64(maximumStatusTailBytes), end)
-        guard (try? handle.seek(toOffset: end - tailSize)) != nil else {
-            return nil
-        }
-        return try? handle.readToEnd()
+        FileTailReader.tail(of: url, maximumBytes: maximumStatusTailBytes)
     }
 
     private static func modificationDate(_ url: URL) -> Date {

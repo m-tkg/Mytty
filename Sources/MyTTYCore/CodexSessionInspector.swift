@@ -325,37 +325,22 @@ public enum CodexSessionInspector {
     }
 
     private static func readTailData(from url: URL) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
-        defer { try? handle.close() }
-        guard let end = try? handle.seekToEnd() else { return nil }
-        let tailSize = min(UInt64(maximumStatusTailBytes), end)
-        guard (try? handle.seek(toOffset: end - tailSize)) != nil else {
-            return nil
-        }
-        return try? handle.readToEnd()
+        FileTailReader.tail(of: url, maximumBytes: maximumStatusTailBytes)
     }
 
     private static func readStatus(from url: URL) -> AgentSessionStatus? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
-        defer { try? handle.close() }
-        guard let end = try? handle.seekToEnd() else { return nil }
-        let tailSize = min(UInt64(maximumStatusTailBytes), end)
-        guard let _ = try? handle.seek(toOffset: end - tailSize),
-              let data = try? handle.readToEnd()
-        else { return nil }
+        guard let data = readTailData(from: url) else { return nil }
 
         if let status = status(from: data), status.sessionID != nil {
             return status
         }
-        guard let _ = try? handle.seek(toOffset: 0),
-              let metadata = try? handle.read(
-                  upToCount: maximumMetadataBytes
-              )
-        else { return status(from: data) }
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return status(from: data)
+        }
+        defer { try? handle.close() }
+        guard let metadata = try? handle.read(
+            upToCount: maximumMetadataBytes
+        ) else { return status(from: data) }
         var combined = metadata
         combined.append(0x0A)
         combined.append(data)
