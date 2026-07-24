@@ -50,15 +50,23 @@ final class RemotePaneBridge {
 
     func content(forPane paneID: TerminalSurfaceID) -> RemotePaneContent? {
         guard let surface = surface(paneID) else { return nil }
-        let cursor = surface.terminalCursorPosition
         let gridSize = surface.terminalGridSize
+        let screenText = surface.screenText()
+        let viewportText = surface.visibleText()
+        let styledLines = RemoteVTStyledParser.parse(surface.screenVTText())
+        // Read the cursor last: if ghostty's IO thread processes more
+        // output between these reads, an earlier cursor read would pair
+        // stale (behind-by-one) coordinates with the newer text above,
+        // which renders as the cursor sitting one cell behind where it
+        // should be right after a keystroke.
+        let cursor = surface.terminalCursorPosition
         return RemoteScrollback.content(
-            screenText: surface.screenText(),
-            viewportText: surface.visibleText(),
+            screenText: screenText,
+            viewportText: viewportText,
             viewportCursor: cursor.map { ($0.row, $0.column) },
             gridColumns: gridSize.columns,
             gridRows: gridSize.rows,
-            styledLines: RemoteVTStyledParser.parse(surface.screenVTText())
+            styledLines: styledLines
         )
     }
 

@@ -243,6 +243,45 @@ struct RemoteScrollbackTests {
         #expect(content.cursorColumn == 0)
     }
 
+    @Test("a text-presentation emoji without VS16 counts as a single cell")
+    func textPresentationEmojiIsNarrow() {
+        // U+1F587 (🖇) has Emoji=Yes but Emoji_Presentation=No, so without
+        // a following VS16 it renders (and should count) as narrow text,
+        // matching ghostty's uucode-backed wcwidth.
+        let line = "[app] \u{1F587} (main)$ aaa"
+        #expect(RemoteScrollback.displayCells(of: line) == line.count)
+
+        let cellOffset = line.count - 1 // cell just after the last "a"
+        #expect(
+            RemoteScrollback.characterIndex(
+                forCellOffset: cellOffset,
+                in: line
+            ) == cellOffset
+        )
+    }
+
+    @Test("VS16 forces an emoji-presentation cluster to double width")
+    func variationSelector16WidensCluster() {
+        let clipEmoji = "\u{1F587}\u{FE0F}" // 🖇️
+        #expect(RemoteScrollback.displayCells(of: clipEmoji) == 2)
+    }
+
+    @Test("an emoji-default-presentation character is double width")
+    func emojiPresentationDefaultIsWide() {
+        #expect(RemoteScrollback.displayCells(of: "\u{231A}") == 2) // ⌚
+    }
+
+    @Test("VS15 forces an emoji-presentation cluster to single width")
+    func variationSelector15NarrowsCluster() {
+        let textScissors = "\u{2702}\u{FE0E}" // ✂ with VS15
+        #expect(RemoteScrollback.displayCells(of: textScissors) == 1)
+    }
+
+    @Test("a CJK character stays double width")
+    func cjkCharacterStaysWide() {
+        #expect(RemoteScrollback.displayCells(of: "あ") == 2)
+    }
+
     @Test("caps the text to the newest lines and shifts the cursor row")
     func capsToNewestLines() {
         let lines = (1...10).map { "line-\($0)" }
