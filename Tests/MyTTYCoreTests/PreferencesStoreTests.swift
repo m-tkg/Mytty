@@ -99,6 +99,36 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the command result badge setting")
+    func showCommandResultBadgePreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.showCommandResultBadge)
+
+        preferences.showCommandResultBadge = false
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("command.show-result-badge = \"false\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        command.show-result-badge = "sideways"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("rejects an unrecognized new tab position")
     func invalidNewTabPosition() throws {
         let harness = try Harness()

@@ -81,6 +81,10 @@ public struct ApplicationPreferences: Equatable, Sendable {
     /// source to ASCII/alphanumeric, but only when the focused pane's
     /// foreground process is just the shell (no other process running).
     public var forceASCIIInputOnFocus: Bool
+    /// Whether a badge showing the exit code and elapsed time appears,
+    /// anchored on the cursor, when shell integration reports a command
+    /// finished.
+    public var showCommandResultBadge: Bool
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
     public var attentionUnreadOnly: Bool
@@ -135,6 +139,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         showStatusBar: Bool = true,
         showPressedKeyToast: Bool = false,
         forceASCIIInputOnFocus: Bool = false,
+        showCommandResultBadge: Bool = true,
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         attentionUnreadOnly: Bool = false,
@@ -165,6 +170,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.showStatusBar = showStatusBar
         self.showPressedKeyToast = showPressedKeyToast
         self.forceASCIIInputOnFocus = forceASCIIInputOnFocus
+        self.showCommandResultBadge = showCommandResultBadge
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.attentionUnreadOnly = attentionUnreadOnly
@@ -293,6 +299,7 @@ public struct ApplicationPreferencesStore {
             "recording.show-keys",
             "input.show-key-toast",
             "input.force-ascii-on-focus",
+            "command.show-result-badge",
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
             "attention.unread-only",
@@ -422,6 +429,12 @@ public struct ApplicationPreferencesStore {
                 )
             }
             preferences.forceASCIIInputOnFocus = enabled
+        }
+        if let value = document.lastValue(for: "command.show-result-badge") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "command.show-result-badge", value: value)
+            }
+            preferences.showCommandResultBadge = enabled
         }
         if let value = document.lastValue(for: "autocomplete.enabled") {
             guard let enabled = Bool(value) else {
@@ -619,6 +632,7 @@ public struct ApplicationPreferencesStore {
             "show-status-bar = \(quoted(String(preferences.showStatusBar)))",
             "input.show-key-toast = \(quoted(String(preferences.showPressedKeyToast)))",
             "input.force-ascii-on-focus = \(quoted(String(preferences.forceASCIIInputOnFocus)))",
+            "command.show-result-badge = \(quoted(String(preferences.showCommandResultBadge)))",
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
