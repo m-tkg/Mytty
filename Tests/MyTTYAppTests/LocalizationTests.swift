@@ -386,7 +386,7 @@ struct LocalizationTests {
         #expect(japanese[.noItemsNeedAttention] == "通知はありません")
         #expect(japanese[.resolved] == "確認済")
         #expect(japanese[.closeAttention] == "通知パネルを閉じる")
-        #expect(japanese[.input] == "入力待ち")
+        #expect(japanese[.input] == "入力")
         #expect(japanese[.updates] == "アップデート")
         #expect(japanese[.defaultTerminal] == "デフォルトターミナル")
         #expect(japanese[.makeDefaultTerminal] == "Mytty をデフォルトにする")
@@ -423,8 +423,12 @@ struct LocalizationTests {
         )
         #expect(
             japanese[.forceASCIIInputOnFocus]
-                == "フォーカス復帰時、シェル待機中なら英数入力に切り替える"
+                == "フォーカス復帰時、英数入力に切り替える"
         )
+        #expect(
+            japanese[.forceASCIIInputScopeShellIdleOnly] == "シェル待機中のみ"
+        )
+        #expect(japanese[.forceASCIIInputScopeAlways] == "常に")
         #expect(japanese[.stopRecording] == "録画を停止")
         #expect(japanese[.aboutMyTTY] == "Mytty について")
         #expect(japanese[.checkForUpdates] == "アップデートを確認")
