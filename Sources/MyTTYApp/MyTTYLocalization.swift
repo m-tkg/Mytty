@@ -267,6 +267,7 @@ enum MyTTYText: String {
     case commandPaletteSearchPlaceholder = "Type a command name"
     case commandPaletteNoResults = "No matching commands"
     case showPressedKeysInPane = "Show pressed keys below cursor"
+    case forceASCIIInputOnFocus = "Switch to ASCII input when focus returns at a shell prompt"
     case holdSplitShortcutForOuterSplit
         = "Hold split shortcut to split the whole tab"
     case gifRecording = "GIF Recording"
@@ -738,6 +739,7 @@ struct MyTTYLocalizer: Equatable {
         case .commandPaletteSearchPlaceholder: "コマンド名を入力"
         case .commandPaletteNoResults: "一致するコマンドがありません"
         case .showPressedKeysInPane: "押したキーをカーソルの下に表示"
+        case .forceASCIIInputOnFocus: "フォーカス復帰時、シェル待機中なら英数入力に切り替える"
         case .gifRecording: "GIF 録画"
         case .recordingCountdownEnabled: "録画開始前にカウントダウン"
         case .recordingFadeOutAtEnd: "最後にフェードアウト"

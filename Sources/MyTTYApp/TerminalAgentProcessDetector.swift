@@ -61,6 +61,22 @@ enum TerminalAgentProcessDetector {
         return name.isEmpty ? nil : name
     }
 
+    /// Shells for which a bare prompt (no foreground process beyond the
+    /// shell itself) means it's safe to force the input source, since
+    /// there's no agent or other program that might expect non-ASCII text.
+    private static let shellCommandNames: Set<String> = [
+        "zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu",
+        "pwsh",
+    ]
+
+    /// True when `name` (after stripping a single leading `-` used for
+    /// login shells, e.g. `-zsh`) names a recognized shell.
+    static func isShellCommandName(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        let stripped = name.hasPrefix("-") ? String(name.dropFirst()) : name
+        return shellCommandNames.contains(stripped)
+    }
+
     static func provider(processID: pid_t) -> AgentProvider? {
         guard processID > 0,
               let executablePath = executablePath(processID: processID)

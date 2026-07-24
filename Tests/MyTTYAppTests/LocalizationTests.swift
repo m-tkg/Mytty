@@ -421,6 +421,10 @@ struct LocalizationTests {
             japanese[.showPressedKeysInPane]
                 == "押したキーをカーソルの下に表示"
         )
+        #expect(
+            japanese[.forceASCIIInputOnFocus]
+                == "フォーカス復帰時、シェル待機中なら英数入力に切り替える"
+        )
         #expect(japanese[.stopRecording] == "録画を停止")
         #expect(japanese[.aboutMyTTY] == "Mytty について")
         #expect(japanese[.checkForUpdates] == "アップデートを確認")

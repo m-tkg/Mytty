@@ -356,6 +356,12 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.outerSplitOnHold)
                 )
                 .toggleStyle(.switch)
+
+                Toggle(
+                    localizer[.forceASCIIInputOnFocus],
+                    isOn: applicationBinding(\.forceASCIIInputOnFocus)
+                )
+                .toggleStyle(.switch)
             }
 
             Section(localizer[.gifRecording]) {
