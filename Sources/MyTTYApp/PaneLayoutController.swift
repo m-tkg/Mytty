@@ -304,4 +304,9 @@ final class PaneLayoutController {
         paneHosts.values.forEach { $0.hideKeyToast() }
         zoomPresentation.zoomedHost?.hideKeyToast()
     }
+
+    func hideCommandResultBadges() {
+        paneHosts.values.forEach { $0.hideCommandResultBadge() }
+        zoomPresentation.zoomedHost?.hideCommandResultBadge()
+    }
 }

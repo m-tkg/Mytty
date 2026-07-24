@@ -33,11 +33,16 @@ final class PaneHostView: NSView {
     private let dimmingView = PaneDimmingView()
     private let orchestrationTintView = PaneOrchestrationTintView()
     private let keyToastView = PaneKeyToastView()
+    private let commandResultBadgeView = PaneCommandResultBadgeView()
     private let sizeIndicatorView = PaneSizeIndicatorView()
     private let countdownView = PaneCountdownView()
     private let swapClickCatcher = PaneSwapClickCatcherView()
     private var keyToastHideTask: Task<Void, Never>?
     private var keyToastCursorRect: NSRect?
+    // Kept separate from the key toast's own state/timer so the two
+    // overlays never fight over one another's auto-hide.
+    private var commandResultBadgeHideTask: Task<Void, Never>?
+    private var commandResultBadgeCursorRect: NSRect?
     private var contentConstraints: [NSLayoutConstraint] = []
     private(set) var contentView: NSView?
 
@@ -134,6 +139,14 @@ final class PaneHostView: NSView {
     var keyToastText: String { keyToastView.stringValue }
     var isKeyToastVisible: Bool { !keyToastView.isHidden }
     var keyToastFrame: NSRect { keyToastView.frame }
+    var commandResultBadgeText: String { commandResultBadgeView.stringValue }
+    var isCommandResultBadgeVisible: Bool {
+        !commandResultBadgeView.isHidden
+    }
+    var commandResultBadgeFrame: NSRect { commandResultBadgeView.frame }
+    var commandResultBadgeTextColor: NSColor {
+        commandResultBadgeView.textColor
+    }
     var sizeIndicatorText: String { sizeIndicatorView.stringValue }
     var isSizeIndicatorVisible: Bool { !sizeIndicatorView.isHidden }
     var countdownText: String { countdownView.stringValue }
@@ -154,6 +167,8 @@ final class PaneHostView: NSView {
         addSubview(dimmingView)
         keyToastView.isHidden = true
         addSubview(keyToastView)
+        commandResultBadgeView.isHidden = true
+        addSubview(commandResultBadgeView)
         sizeIndicatorView.translatesAutoresizingMaskIntoConstraints = false
         sizeIndicatorView.isHidden = true
         addSubview(sizeIndicatorView)
@@ -238,6 +253,7 @@ final class PaneHostView: NSView {
     override func layout() {
         super.layout()
         positionKeyToast()
+        positionCommandResultBadge()
     }
 
     func showKeyToast(
@@ -273,6 +289,45 @@ final class PaneHostView: NSView {
         keyToastView.frame = PressedKeyToastLayout.frame(
             cursorRect: keyToastCursorRect,
             toastSize: size,
+            in: bounds
+        )
+    }
+
+    func showCommandResultBadge(
+        _ text: String,
+        isFailure: Bool,
+        at cursorRect: NSRect,
+        duration: Duration = .seconds(3)
+    ) {
+        guard !text.isEmpty else { return }
+        commandResultBadgeHideTask?.cancel()
+        commandResultBadgeView.stringValue = text
+        commandResultBadgeView.textColor = isFailure ? .systemRed : .white
+        commandResultBadgeCursorRect = cursorRect
+        positionCommandResultBadge()
+        commandResultBadgeView.isHidden = false
+        commandResultBadgeHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else { return }
+            self?.hideCommandResultBadge()
+        }
+    }
+
+    func hideCommandResultBadge() {
+        commandResultBadgeHideTask?.cancel()
+        commandResultBadgeHideTask = nil
+        commandResultBadgeCursorRect = nil
+        commandResultBadgeView.isHidden = true
+    }
+
+    private func positionCommandResultBadge() {
+        guard let commandResultBadgeCursorRect else { return }
+        let size = commandResultBadgeView.fittingSize(
+            maximumWidth: max(0, bounds.width - 12)
+        )
+        commandResultBadgeView.frame = CommandResultBadgeLayout.frame(
+            cursorRect: commandResultBadgeCursorRect,
+            badgeSize: size,
             in: bounds
         )
     }
@@ -372,6 +427,73 @@ private final class PaneKeyToastView: NSView {
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
+/// Badge showing a finished command's exit code and elapsed time, anchored
+/// on the cursor. Styled like `PaneKeyToastView` (translucent black rounded
+/// backdrop, click-transparent) but with a settable text color so a failing
+/// exit code can be called out in red.
+@MainActor
+private final class PaneCommandResultBadgeView: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    var stringValue: String {
+        get { label.stringValue }
+        set { label.stringValue = newValue }
+    }
+
+    var textColor: NSColor {
+        get { label.textColor ?? .white }
+        set { label.textColor = newValue }
+    }
+
+    func fittingSize(maximumWidth: CGFloat) -> NSSize {
+        CommandResultBadgeLayout.badgeSize(
+            for: stringValue,
+            maximumWidth: maximumWidth
+        )
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = CommandResultBadgeLayout.cornerRadius
+        layer?.backgroundColor = NSColor.black
+            .withAlphaComponent(0.78)
+            .cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white
+            .withAlphaComponent(0.14)
+            .cgColor
+
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.alignment = .center
+        label.font = CommandResultBadgeLayout.font()
+        label.textColor = .white
+        label.lineBreakMode = .byTruncatingMiddle
+        label.maximumNumberOfLines = 1
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: CommandResultBadgeLayout.horizontalPadding
+            ),
+            label.trailingAnchor.constraint(
+                equalTo: trailingAnchor,
+                constant: -CommandResultBadgeLayout.horizontalPadding
+            ),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }

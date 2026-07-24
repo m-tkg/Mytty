@@ -106,6 +106,43 @@ struct PaneHostViewTests {
         #expect(!pane.isKeyToastVisible)
     }
 
+    @Test("shows a command result badge at the pane's trailing edge")
+    @MainActor
+    func commandResultBadge() {
+        let pane = PaneHostView(content: NSView())
+        pane.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+
+        pane.showCommandResultBadge(
+            "✓ 0 · 1.2s",
+            isFailure: false,
+            at: NSRect(x: 20, y: 240, width: 10, height: 20)
+        )
+
+        #expect(pane.commandResultBadgeText == "✓ 0 · 1.2s")
+        #expect(pane.isCommandResultBadgeVisible)
+        #expect(pane.commandResultBadgeFrame.maxX == pane.bounds.maxX - 6)
+        #expect(pane.commandResultBadgeTextColor == .white)
+
+        pane.hideCommandResultBadge()
+
+        #expect(!pane.isCommandResultBadgeVisible)
+    }
+
+    @Test("distinguishes a failing command result badge with a red color")
+    @MainActor
+    func commandResultBadgeFailure() {
+        let pane = PaneHostView(content: NSView())
+        pane.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+
+        pane.showCommandResultBadge(
+            "✗ 130 · 1.2s",
+            isFailure: true,
+            at: NSRect(x: 20, y: 240, width: 10, height: 20)
+        )
+
+        #expect(pane.commandResultBadgeTextColor == .systemRed)
+    }
+
     @Test("shows and hides a large centered recording countdown")
     @MainActor
     func recordingCountdown() {
