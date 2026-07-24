@@ -69,6 +69,36 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the force ASCII input on focus setting")
+    func forceASCIIInputOnFocusPreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(!preferences.forceASCIIInputOnFocus)
+
+        preferences.forceASCIIInputOnFocus = true
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("input.force-ascii-on-focus = \"true\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        input.force-ascii-on-focus = "sideways"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("rejects an unrecognized new tab position")
     func invalidNewTabPosition() throws {
         let harness = try Harness()

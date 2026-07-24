@@ -90,6 +90,16 @@ struct TerminalAgentProcessDetectorTests {
         ) == nil)
     }
 
+    @Test("identifies shell command names")
+    func shellCommandNameDetection() {
+        for name in ["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "pwsh"] {
+            #expect(TerminalAgentProcessDetector.isShellCommandName(name))
+        }
+        #expect(!TerminalAgentProcessDetector.isShellCommandName("vim"))
+        #expect(!TerminalAgentProcessDetector.isShellCommandName("claude"))
+        #expect(!TerminalAgentProcessDetector.isShellCommandName(""))
+    }
+
     @Test("resolves a running process's current working directory")
     func processWorkingDirectory() {
         let expected = URL(

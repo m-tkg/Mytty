@@ -267,6 +267,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var commandSummaryTask: Task<Void, Never>?
     private var lastCommandResultBySurface:
         [TerminalSurfaceID: LastCommandResult] = [:]
+    private var didBecomeActiveObserver: (any NSObjectProtocol)?
 
     private var foregroundAgentProvider: AgentProvider? {
         agentStatusPolling.foregroundProvider(
@@ -367,6 +368,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         agentStatusPolling.start()
         agentUsagePolling.start()
         repositoryStatus.start()
+        // Only regaining focus from *another app* should force the input
+        // source -- window-to-window switches within Mytty go through
+        // `windowDidBecomeKey` instead, which must not trigger this.
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.forceASCIIInputIfNeeded()
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -1376,6 +1389,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         agentStatusPolling.stop()
         agentUsagePolling.stop()
         repositoryStatus.stop()
+        if let didBecomeActiveObserver {
+            NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+            self.didBecomeActiveObserver = nil
+        }
         paneExplanationTask?.cancel()
         paneExplanationPanel?.close()
         commandSummaryTask?.cancel()
@@ -2458,6 +2475,28 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             browsers[tab.focusedSurfaceID]?.focusContent()
         }
         acknowledgeAttention(for: tab.focusedSurfaceID)
+    }
+
+    /// Switches to an ASCII input source when the app just regained focus
+    /// from another app at a bare shell prompt -- never on a window-to-
+    /// window switch within Mytty (callers must only invoke this from
+    /// `didBecomeActiveNotification`, not `windowDidBecomeKey`), and never
+    /// when some other foreground process (an agent, an editor, ...) is
+    /// running, since that process's own input expectations should win.
+    private func forceASCIIInputIfNeeded() {
+        guard window?.isKeyWindow == true,
+              applicationPreferences.forceASCIIInputOnFocus,
+              let tab = session.selectedTab,
+              let surface = surfaces[tab.focusedSurfaceID]
+        else { return }
+        let processID = surface.foregroundProcessID
+        guard processID > 0,
+              let name = TerminalAgentProcessDetector.commandName(
+                  processID: processID
+              ),
+              TerminalAgentProcessDetector.isShellCommandName(name)
+        else { return }
+        ASCIIInputSourceSwitcher.switchToASCIIIfNeeded()
     }
 
     private func acknowledgeAttention(for surfaceID: TerminalSurfaceID) {

@@ -77,6 +77,10 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var windowStartupBehavior: WindowStartupBehavior
     public var showStatusBar: Bool
     public var showPressedKeyToast: Bool
+    /// Whether regaining focus from another app forces the macOS input
+    /// source to ASCII/alphanumeric, but only when the focused pane's
+    /// foreground process is just the shell (no other process running).
+    public var forceASCIIInputOnFocus: Bool
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
     public var attentionUnreadOnly: Bool
@@ -130,6 +134,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         windowStartupBehavior: WindowStartupBehavior = .rememberLastSize,
         showStatusBar: Bool = true,
         showPressedKeyToast: Bool = false,
+        forceASCIIInputOnFocus: Bool = false,
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         attentionUnreadOnly: Bool = false,
@@ -159,6 +164,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.windowStartupBehavior = windowStartupBehavior
         self.showStatusBar = showStatusBar
         self.showPressedKeyToast = showPressedKeyToast
+        self.forceASCIIInputOnFocus = forceASCIIInputOnFocus
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.attentionUnreadOnly = attentionUnreadOnly
@@ -286,6 +292,7 @@ public struct ApplicationPreferencesStore {
             "show-status-bar",
             "recording.show-keys",
             "input.show-key-toast",
+            "input.force-ascii-on-focus",
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
             "attention.unread-only",
@@ -406,6 +413,15 @@ public struct ApplicationPreferencesStore {
                 throw invalid(key: "recording.show-keys", value: value)
             }
             preferences.showPressedKeyToast = showToast
+        }
+        if let value = document.lastValue(for: "input.force-ascii-on-focus") {
+            guard let enabled = Bool(value) else {
+                throw invalid(
+                    key: "input.force-ascii-on-focus",
+                    value: value
+                )
+            }
+            preferences.forceASCIIInputOnFocus = enabled
         }
         if let value = document.lastValue(for: "autocomplete.enabled") {
             guard let enabled = Bool(value) else {
@@ -602,6 +618,7 @@ public struct ApplicationPreferencesStore {
             "window.mode = \(quoted(preferences.windowStartupBehavior.rawValue))",
             "show-status-bar = \(quoted(String(preferences.showStatusBar)))",
             "input.show-key-toast = \(quoted(String(preferences.showPressedKeyToast)))",
+            "input.force-ascii-on-focus = \(quoted(String(preferences.forceASCIIInputOnFocus)))",
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
