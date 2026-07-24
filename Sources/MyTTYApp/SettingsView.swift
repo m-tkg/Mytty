@@ -363,19 +363,22 @@ private struct GeneralSettingsView: View {
                 )
                 .toggleStyle(.switch)
 
-                Picker(
-                    "",
-                    selection: applicationBinding(\.forceASCIIInputScope)
-                ) {
-                    Text(localizer[.forceASCIIInputScopeShellIdleOnly])
-                        .tag(ForceASCIIInputScope.shellIdleOnly)
-                    Text(localizer[.forceASCIIInputScopeAlways])
-                        .tag(ForceASCIIInputScope.always)
+                HStack {
+                    Spacer()
+                    Picker(
+                        "",
+                        selection: applicationBinding(\.forceASCIIInputScope)
+                    ) {
+                        Text(localizer[.forceASCIIInputScopeShellIdleOnly])
+                            .tag(ForceASCIIInputScope.shellIdleOnly)
+                        Text(localizer[.forceASCIIInputScopeAlways])
+                            .tag(ForceASCIIInputScope.always)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
                 .disabled(!model.application.forceASCIIInputOnFocus)
-                .padding(.leading, 16)
             }
 
             Section(localizer[.gifRecording]) {
