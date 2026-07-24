@@ -60,6 +60,100 @@ public enum CodexSessionInspector {
         .first
     }
 
+    /// Reads the tail of the transcript the Codex process holds open and
+    /// returns the user's most recent prompts, oldest first — material for
+    /// inferring what the user is trying to accomplish (e.g. when naming
+    /// the tab).
+    public static func recentUserPrompts(
+        processID: pid_t,
+        codexHome: URL = defaultCodexHome,
+        limit: Int
+    ) -> [String] {
+        guard processID > 0 else { return [] }
+        return openSessionTranscripts(
+            processID: processID,
+            codexHome: codexHome
+        )
+        .sorted { modificationDate($0) > modificationDate($1) }
+        .lazy
+        .map { url -> [String] in
+            guard let data = readTailData(from: url) else { return [] }
+            return recentUserPrompts(from: data, limit: limit)
+        }
+        .first { !$0.isEmpty } ?? []
+    }
+
+    static func recentUserPrompts(from data: Data, limit: Int) -> [String] {
+        guard limit > 0 else { return [] }
+        var eventPrompts: [String] = []
+        var responsePrompts: [String] = []
+
+        for line in data.split(separator: 0x0A) {
+            guard let object = try? JSONSerialization.jsonObject(
+                with: Data(line)
+            ) as? [String: Any],
+                  let type = object["type"] as? String,
+                  let payload = object["payload"] as? [String: Any]
+            else { continue }
+
+            switch type {
+            case "event_msg":
+                guard payload["type"] as? String == "user_message",
+                      isPlainKind(payload["kind"]),
+                      let message = payload["message"] as? String,
+                      !isInjectedText(message),
+                      let prompt = AgentSessionValidation.promptText(message)
+                else { continue }
+                eventPrompts.append(prompt)
+            case "response_item":
+                // Older rollouts carry no user_message events; the raw
+                // conversation items are the fallback prompt source.
+                guard payload["type"] as? String == "message",
+                      payload["role"] as? String == "user",
+                      let blocks = payload["content"] as? [[String: Any]]
+                else { continue }
+                let texts = blocks.compactMap { block -> String? in
+                    guard block["type"] as? String == "input_text" else {
+                        return nil
+                    }
+                    return block["text"] as? String
+                }
+                .filter { !isInjectedText($0) }
+                guard !texts.isEmpty,
+                      let prompt = AgentSessionValidation.promptText(
+                          texts.joined(separator: " ")
+                      )
+                else { continue }
+                responsePrompts.append(prompt)
+            default:
+                continue
+            }
+        }
+
+        let prompts = eventPrompts.isEmpty ? responsePrompts : eventPrompts
+        return Array(prompts.suffix(limit))
+    }
+
+    /// Codex marks injected user messages with a `kind`; anything other
+    /// than a plain prompt (user instructions, environment context) is not
+    /// something the user typed.
+    private static func isPlainKind(_ kind: Any?) -> Bool {
+        guard let kind = kind as? String else { return kind == nil }
+        return kind == "plain"
+    }
+
+    private static let injectedTextPrefixes = [
+        "<user_instructions>",
+        "<environment_context>",
+        "<ENVIRONMENT_CONTEXT>",
+        "<turn_aborted>",
+    ]
+
+    private static func isInjectedText(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return injectedTextPrefixes.contains { trimmed.hasPrefix($0) }
+    }
+
     static func sessionID(from data: Data) -> String? {
         let line: Data
         if let newline = data.firstIndex(of: 0x0A) {
@@ -228,6 +322,19 @@ public enum CodexSessionInspector {
             upToCount: maximumMetadataBytes
         ) else { return nil }
         return sessionID(from: data)
+    }
+
+    private static func readTailData(from url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        let tailSize = min(UInt64(maximumStatusTailBytes), end)
+        guard (try? handle.seek(toOffset: end - tailSize)) != nil else {
+            return nil
+        }
+        return try? handle.readToEnd()
     }
 
     private static func readStatus(from url: URL) -> AgentSessionStatus? {
