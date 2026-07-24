@@ -13,6 +13,11 @@ struct AgentIntegrationSettingsView: View {
             Divider()
                 .padding(.leading, 44)
 
+            contextWarningRow
+
+            Divider()
+                .padding(.leading, 44)
+
             sleepPreventionRow
 
             Divider()
@@ -75,6 +80,77 @@ struct AgentIntegrationSettingsView: View {
         }
         .frame(minHeight: 64)
         .padding(.vertical, 4)
+    }
+
+    private var contextWarningRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(localizer[.agentContextWarning])
+                    .font(.system(size: 13, weight: .semibold))
+                Text(localizer[.agentContextWarningDescription])
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                contextWarningThreshold
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { settings.application.agentContextWarningEnabled },
+                    set: { enabled in
+                        settings.updateApplication {
+                            $0.agentContextWarningEnabled = enabled
+                        }
+                    }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .accessibilityLabel(localizer[.agentContextWarning])
+        }
+        .frame(minHeight: 64)
+        .padding(.vertical, 4)
+    }
+
+    private var contextWarningThreshold: some View {
+        HStack(spacing: 8) {
+            Text(localizer[.agentContextWarningThreshold])
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            Slider(
+                value: Binding(
+                    get: {
+                        settings.application.agentContextWarningThreshold
+                    },
+                    set: { threshold in
+                        settings.updateApplication {
+                            $0.agentContextWarningThreshold = threshold
+                        }
+                    }
+                ),
+                in: AgentContextWarning.thresholdRange,
+                step: 5
+            )
+            .frame(width: 160)
+            .accessibilityLabel(localizer[.agentContextWarningThreshold])
+
+            Text(
+                "\(Int(settings.application.agentContextWarningThreshold))%"
+            )
+            .font(.system(size: 11))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .frame(width: 34, alignment: .leading)
+        }
+        .padding(.top, 2)
+        .disabled(!settings.application.agentContextWarningEnabled)
     }
 
     private var sleepPreventionRow: some View {

@@ -214,7 +214,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .agents:
             [
                 "agents", "attention", "codex", "claude", "opencode",
-                "gemini", "antigravity", "cursor", "sleep",
+                "gemini", "antigravity", "cursor", "sleep", "context",
+                "warning",
             ]
         case .orchestration:
             [
