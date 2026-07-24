@@ -379,6 +379,8 @@ struct PreferencesStoreTests {
         #expect(preferences.activePaneBorderEnabled)
         #expect(preferences.activePaneBorderWidth == 2)
         #expect(preferences.activePaneBorderColorHex.isEmpty)
+        #expect(preferences.agentContextWarningEnabled)
+        #expect(preferences.agentContextWarningThreshold == 30)
         #expect(
             !CloseConfirmation.whenProcessRunning.requiresConfirmation(
                 hasRunningProcess: false
@@ -518,6 +520,49 @@ struct PreferencesStoreTests {
         for bad in ["recording.fade-out-color = \"zzzzzz\"",
                     "recording.fade-out-duration = \"0\"",
                     "recording.fade-out = \"sometimes\""] {
+            try bad.appending("\n").write(
+                to: harness.appConfiguration,
+                atomically: true,
+                encoding: .utf8
+            )
+            #expect(throws: PreferencesStoreError.self) {
+                try store.load(from: harness.appConfiguration)
+            }
+        }
+    }
+
+    @Test("round trips the low context warning settings")
+    func agentContextWarningPreferences() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.agentContextWarningEnabled)
+        #expect(preferences.agentContextWarningThreshold == 30)
+
+        preferences.agentContextWarningEnabled = false
+        preferences.agentContextWarningThreshold = 45
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("agents.context-warning = \"false\""))
+        #expect(
+            contents.contains("agents.context-warning-threshold = \"45\"")
+        )
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        var invalid = ApplicationPreferences()
+        invalid.agentContextWarningThreshold = 120
+        #expect(throws: PreferencesStoreError.self) {
+            try store.save(invalid, to: harness.appConfiguration)
+        }
+
+        for bad in ["agents.context-warning = \"maybe\"",
+                    "agents.context-warning-threshold = \"3\"",
+                    "agents.context-warning-threshold = \"high\""] {
             try bad.appending("\n").write(
                 to: harness.appConfiguration,
                 atomically: true,
