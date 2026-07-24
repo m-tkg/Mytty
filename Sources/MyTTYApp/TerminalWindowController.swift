@@ -1142,9 +1142,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         localizer = MyTTYLocalizer(language: preferences.language)
         scheduledInput.updateLocalizer(localizer)
         let terminalSearchLabels = makeTerminalSearchLabels()
+        let clipboardConfirmationLabels = makeClipboardConfirmationLabels()
         surfaces.values.forEach {
             $0.updateSearchLabels(terminalSearchLabels)
             $0.updateContextMenuLabels(makeTerminalContextMenuLabels())
+            $0.updateClipboardConfirmationLabels(clipboardConfirmationLabels)
         }
         let browserFindLabels = makeBrowserFindLabels()
         browsers.values.forEach {
@@ -1970,7 +1972,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 environmentVariables: environment,
                 initialSize: initialSize,
                 searchLabels: makeTerminalSearchLabels(),
-                contextMenuLabels: makeTerminalContextMenuLabels()
+                contextMenuLabels: makeTerminalContextMenuLabels(),
+                clipboardConfirmationLabels: makeClipboardConfirmationLabels()
             )
         } catch {
             agentEventServer.revoke(surface: state.id)
@@ -2052,6 +2055,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             services: localizer[.services],
             moveToTab: localizer[.moveToTab],
             closePane: localizer[.closePane]
+        )
+    }
+
+    private func makeClipboardConfirmationLabels()
+        -> GhosttyClipboardConfirmationLabels
+    {
+        GhosttyClipboardConfirmationLabels(
+            title: localizer[.unsafePasteTitle],
+            message: localizer[.unsafePasteMessage],
+            pasteButton: localizer[.paste],
+            cancelButton: localizer[.cancel]
         )
     }
 
@@ -2719,6 +2733,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             bind(surface: surface, to: surfaceID)
             surface.updateSearchLabels(makeTerminalSearchLabels())
             surface.updateContextMenuLabels(makeTerminalContextMenuLabels())
+            surface.updateClipboardConfirmationLabels(
+                makeClipboardConfirmationLabels()
+            )
         }
         for (paneID, browser) in transfer.browsers {
             browsers[paneID] = browser

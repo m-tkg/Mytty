@@ -102,6 +102,29 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
     }
 }
 
+/// Labels for the confirmation dialog shown before completing a clipboard
+/// paste that libghostty's clipboard-paste-protection has flagged as unsafe
+/// (e.g. text containing embedded newlines or control sequences that could
+/// auto-execute a shell command once pasted).
+public struct GhosttyClipboardConfirmationLabels: Equatable, Sendable {
+    public var title: String
+    public var message: String
+    public var pasteButton: String
+    public var cancelButton: String
+
+    public init(
+        title: String = "Potentially Unsafe Paste",
+        message: String = "This text contains multiple lines or control characters that could run a command automatically once pasted.",
+        pasteButton: String = "Paste",
+        cancelButton: String = "Cancel"
+    ) {
+        self.title = title
+        self.message = message
+        self.pasteButton = pasteButton
+        self.cancelButton = cancelButton
+    }
+}
+
 /// A tab a pane can be moved into from the context menu's "Move to Tab"
 /// submenu.
 public struct GhosttyContextMenuMoveTarget: Equatable, Sendable {
@@ -156,6 +179,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     private let runtime: GhosttyRuntime
     private var contextMenuLabels: GhosttyContextMenuLabels
+    private var clipboardConfirmationLabels: GhosttyClipboardConfirmationLabels
     private var native: ghostty_surface_t?
     private var markedText = NSMutableAttributedString()
     private var markedSelection = NSRange(location: 0, length: 0)
@@ -215,13 +239,16 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         initialSize: NSSize? = nil,
         searchLabels: GhosttySearchLabels = GhosttySearchLabels(),
         contextMenuLabels: GhosttyContextMenuLabels
-            = GhosttyContextMenuLabels()
+            = GhosttyContextMenuLabels(),
+        clipboardConfirmationLabels: GhosttyClipboardConfirmationLabels
+            = GhosttyClipboardConfirmationLabels()
     ) throws {
         self.runtime = runtime
         self.workingDirectory = workingDirectory
         self.native = nil
         self.searchBar = GhosttySearchBarView(labels: searchLabels)
         self.contextMenuLabels = contextMenuLabels
+        self.clipboardConfirmationLabels = clipboardConfirmationLabels
 
         super.init(
             frame: NSRect(
@@ -1024,6 +1051,12 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         contextMenuLabels = labels
     }
 
+    public func updateClipboardConfirmationLabels(
+        _ labels: GhosttyClipboardConfirmationLabels
+    ) {
+        clipboardConfirmationLabels = labels
+    }
+
     @objc private func lookUpSelectionFromMenu(_ sender: NSMenuItem) {
         guard let selectionText = sender.representedObject as? String else {
             return
@@ -1459,14 +1492,51 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         return true
     }
 
+    /// Whether reaching `confirmClipboardRead` for this request means
+    /// libghostty's clipboard-paste-protection flagged the clipboard
+    /// contents as unsafe and wants explicit user confirmation before the
+    /// paste is completed. Only `GHOSTTY_CLIPBOARD_REQUEST_PASTE` is a
+    /// paste the user can approve; other request kinds (OSC 52 read/write)
+    /// are always completed without a prompt, matching the pre-existing
+    /// non-approved path.
+    nonisolated static func requiresPasteConfirmation(
+        for request: ghostty_clipboard_request_e
+    ) -> Bool {
+        request == GHOSTTY_CLIPBOARD_REQUEST_PASTE
+    }
+
     func confirmClipboardRead(
         _ string: String,
         state: UnsafeMutableRawPointer?,
         request: ghostty_clipboard_request_e
     ) {
         guard let native else { return }
-        let approved = request == GHOSTTY_CLIPBOARD_REQUEST_PASTE
-        let value = approved ? string : ""
+
+        guard Self.requiresPasteConfirmation(for: request) else {
+            completeClipboardRequest(
+                native: native,
+                state: state,
+                value: "",
+                approved: false
+            )
+            return
+        }
+
+        let approved = presentPasteConfirmationAlert()
+        completeClipboardRequest(
+            native: native,
+            state: state,
+            value: approved ? string : "",
+            approved: approved
+        )
+    }
+
+    private func completeClipboardRequest(
+        native: ghostty_surface_t,
+        state: UnsafeMutableRawPointer?,
+        value: String,
+        approved: Bool
+    ) {
         value.withCString { pointer in
             ghostty_surface_complete_clipboard_request(
                 native,
@@ -1475,6 +1545,43 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                 approved
             )
         }
+    }
+
+    /// Presents a native, app-modal confirmation for a paste that
+    /// libghostty flagged as potentially unsafe (embedded newlines or
+    /// control sequences that could auto-execute a shell command).
+    ///
+    /// This uses `NSAlert.runModal()` (synchronous) rather than
+    /// `beginSheetModal(for:completionHandler:)` (asynchronous) on
+    /// purpose: the `state` pointer this callback receives from ghostty
+    /// is only guaranteed valid for the duration of this synchronous C
+    /// callback. `runModal()` blocks the current call stack until the
+    /// user picks a button, so `confirmClipboardRead` can complete the
+    /// ghostty request with `state` immediately afterward, still on the
+    /// same call stack. A sheet's completion handler would instead run on
+    /// a later run-loop turn, by which point ghostty may already have
+    /// freed or reused `state`, making the completion call unsafe.
+    private func presentPasteConfirmationAlert() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = clipboardConfirmationLabels.title
+        alert.informativeText = clipboardConfirmationLabels.message
+        let pasteButton = alert.addButton(
+            withTitle: clipboardConfirmationLabels.pasteButton
+        )
+        let cancelButton = alert.addButton(
+            withTitle: clipboardConfirmationLabels.cancelButton
+        )
+        // Make Cancel the default (Return) and Escape target so a reflexive
+        // keypress cancels rather than approves a paste ghostty flagged as
+        // unsafe; approving requires an explicit click on Paste.
+        pasteButton.keyEquivalent = ""
+        cancelButton.keyEquivalent = "\r"
+
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+        }
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func writeClipboard(

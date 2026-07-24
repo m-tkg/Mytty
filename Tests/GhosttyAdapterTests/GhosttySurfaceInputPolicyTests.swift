@@ -199,4 +199,23 @@ struct GhosttySurfaceInputPolicyTests {
             ).rawValue == shiftCommand.rawValue
         )
     }
+
+    @Test("only a flagged paste requires user confirmation")
+    func requiresPasteConfirmation() {
+        #expect(
+            GhosttySurfaceView.requiresPasteConfirmation(
+                for: GHOSTTY_CLIPBOARD_REQUEST_PASTE
+            )
+        )
+        #expect(
+            !GhosttySurfaceView.requiresPasteConfirmation(
+                for: GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ
+            )
+        )
+        #expect(
+            !GhosttySurfaceView.requiresPasteConfirmation(
+                for: GHOSTTY_CLIPBOARD_REQUEST_OSC_52_WRITE
+            )
+        )
+    }
 }

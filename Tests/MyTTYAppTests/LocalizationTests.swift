@@ -533,4 +533,25 @@ struct LocalizationTests {
                 == "開けるフォルダがありませんでした"
         )
     }
+
+    @Test("localizes the unsafe-paste confirmation dialog")
+    func unsafePasteConfirmationText() {
+        let english = MyTTYLocalizer(language: .english)
+        let japanese = MyTTYLocalizer(language: .japanese)
+
+        #expect(
+            english[.unsafePasteTitle] == "Potentially Unsafe Paste"
+        )
+        #expect(
+            english[.unsafePasteMessage]
+                == "This text contains multiple lines or control characters that could run a command automatically once pasted."
+        )
+        #expect(
+            japanese[.unsafePasteTitle] == "安全でない可能性があるペースト"
+        )
+        #expect(
+            japanese[.unsafePasteMessage]
+                == "このテキストには複数行または制御文字が含まれており、ペーストすると自動的にコマンドが実行される可能性があります。"
+        )
+    }
 }
