@@ -76,6 +76,90 @@ struct RemotePairingCoordinatorTests {
         #expect(result == .rejected(.noActiveCode))
     }
 
+    @Test("wrong-code guesses consume the active code after the failed-attempt threshold")
+    func wrongCodeGuessesConsumeCodeAfterThreshold() throws {
+        let coordinator = try makeCoordinator()
+        let code = coordinator.beginPairing()
+
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+            #expect(coordinator.activeCode != nil)
+        }
+        coordinator.recordFailedAttempt()
+        #expect(coordinator.activeCode == nil)
+
+        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        #expect(result == .rejected(.noActiveCode))
+    }
+
+    @Test("a correct guess within the failed-attempt threshold still pairs successfully")
+    func correctGuessWithinThresholdStillPairs() throws {
+        let store = try makeStore()
+        let coordinator = RemotePairingCoordinator(deviceStore: store)
+        let code = coordinator.beginPairing()
+
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+        }
+        #expect(coordinator.activeCode != nil)
+
+        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        guard case let .approved(device) = result else {
+            Issue.record("expected approval")
+            return
+        }
+        #expect(device.name == "iPhone")
+    }
+
+    @Test("recordFailedAttempt is a no-op when no code is active")
+    func recordFailedAttemptNoOpWithoutActiveCode() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.recordFailedAttempt()
+        #expect(coordinator.activeCode == nil)
+    }
+
+    @Test("beginning pairing resets the failed-attempt counter")
+    func beginPairingResetsFailedAttemptCounter() throws {
+        let coordinator = try makeCoordinator()
+        _ = coordinator.beginPairing()
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+        }
+        let code = coordinator.beginPairing()
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+        }
+        #expect(coordinator.activeCode != nil)
+
+        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        guard case .approved = result else {
+            Issue.record("expected approval, got \(result)")
+            return
+        }
+    }
+
+    @Test("cancelling pairing resets the failed-attempt counter")
+    func cancelPairingResetsFailedAttemptCounter() throws {
+        let coordinator = try makeCoordinator()
+        _ = coordinator.beginPairing()
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+        }
+        coordinator.cancelPairing()
+
+        let code = coordinator.beginPairing()
+        for _ in 0..<(RemotePairingCoordinator.maxFailedAttempts - 1) {
+            coordinator.recordFailedAttempt()
+        }
+        #expect(coordinator.activeCode != nil)
+
+        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        guard case .approved = result else {
+            Issue.record("expected approval, got \(result)")
+            return
+        }
+    }
+
     @Test("beginning pairing again replaces the previous code")
     func beginPairingReplacesPreviousCode() throws {
         let coordinator = try makeCoordinator()

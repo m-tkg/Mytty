@@ -283,11 +283,30 @@ final class RemoteAccessServer {
                 code: code.value
             )
         }
-        guard let (message, key) = RemoteHandshakeResolver.resolve(
+        let message: RemoteMessage
+        let key: SymmetricKey
+        switch RemoteHandshakeResolver.resolve(
             firstFramePayload: payload,
             pairingPresharedKey: pairingKey,
             pairedDevices: pairedDevices()
-        ) else {
+        ) {
+        case let .resolved(resolvedMessage, resolvedKey):
+            message = resolvedMessage
+            key = resolvedKey
+        case .pairingKeyRejected:
+            // note: RemoteAccessTransport doesn't currently surface a
+            // peer address/identifier at accept time (ConnectionID is
+            // just an ObjectIdentifier of the NWConnection), so there is
+            // no clean per-source rate limit to layer on here without
+            // adding fragile plumbing. The failed-attempt counter below
+            // already caps the total number of online guesses against the
+            // active code regardless of source, which is the primary
+            // defense against brute-forcing it.
+            pairingCoordinator.recordFailedAttempt()
+            connectionStates.removeValue(forKey: id)
+            transport.cancel(id)
+            return
+        case .unresolved:
             connectionStates.removeValue(forKey: id)
             transport.cancel(id)
             return

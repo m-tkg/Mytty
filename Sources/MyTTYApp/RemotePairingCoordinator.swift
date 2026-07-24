@@ -13,11 +13,25 @@ enum RemotePairingAttemptResult: Equatable {
 }
 
 /// Owns the lifecycle of the six digit pairing code shown in Settings.
-/// A code is single-use: the first attempt against it (successful or not)
-/// consumes it, and a new code must be generated to retry.
+/// A code is single-use once a guess actually reaches `attempt()`: that
+/// only happens after the guess's derived key has already opened the
+/// handshake frame, and `attempt()` consumes the code on that first call
+/// whether the code value inside the frame turns out to match or not. A
+/// wrong-code online guess never gets that far — the frame fails to open
+/// with the real code's key before `attempt()` is reached — so those are
+/// tracked separately via `recordFailedAttempt()`, which invalidates the
+/// active code after `maxFailedAttempts` such guesses. Together this means
+/// an online guesser gets at most a handful of tries before the code dies
+/// and the user has to generate a new one.
 @MainActor
 final class RemotePairingCoordinator {
+    /// Number of failed online guesses (frames that couldn't be opened
+    /// with the active code's derived key at all) tolerated against a
+    /// single active code before it is invalidated.
+    static let maxFailedAttempts = 5
+
     private(set) var activeCode: RemotePairingCode?
+    private var failedAttemptCount = 0
     private let deviceStore: RemotePairedDeviceStore
     private let now: () -> Date
 
@@ -33,11 +47,27 @@ final class RemotePairingCoordinator {
     func beginPairing() -> RemotePairingCode {
         let code = RemotePairing.generateCode(generatedAt: now())
         activeCode = code
+        failedAttemptCount = 0
         return code
     }
 
     func cancelPairing() {
         activeCode = nil
+        failedAttemptCount = 0
+    }
+
+    /// Records an online guess whose frame could not be opened at all
+    /// using the active code's derived key (see
+    /// `RemoteHandshakeResolution.pairingKeyRejected`). Once
+    /// `maxFailedAttempts` accumulate against the same active code, it is
+    /// invalidated, so a brute-force script cannot keep probing it for the
+    /// rest of its 120s validity window. A no-op if no code is active.
+    func recordFailedAttempt() {
+        guard activeCode != nil else { return }
+        failedAttemptCount += 1
+        guard failedAttemptCount >= Self.maxFailedAttempts else { return }
+        activeCode = nil
+        failedAttemptCount = 0
     }
 
     @discardableResult
