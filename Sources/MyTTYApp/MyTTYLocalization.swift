@@ -371,6 +371,9 @@ enum MyTTYText: String {
     case devicePushRegistered = "Push registered"
     case devicePushNotRegistered = "Push not registered"
     case finderOpenNothingToOpen = "No folder was available to open."
+    case unsafePasteTitle = "Potentially Unsafe Paste"
+    case unsafePasteMessage =
+        "This text contains multiple lines or control characters that could run a command automatically once pasted."
 }
 
 struct MyTTYLocalizer: Equatable {
@@ -845,6 +848,8 @@ struct MyTTYLocalizer: Equatable {
         case .devicePushRegistered: "プッシュ登録済み"
         case .devicePushNotRegistered: "プッシュ未登録"
         case .finderOpenNothingToOpen: "開けるフォルダがありませんでした"
+        case .unsafePasteTitle: "安全でない可能性があるペースト"
+        case .unsafePasteMessage: "このテキストには複数行または制御文字が含まれており、ペーストすると自動的にコマンドが実行される可能性があります。"
         }
     }
 }
