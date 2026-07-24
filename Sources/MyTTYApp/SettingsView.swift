@@ -691,6 +691,14 @@ private struct ShellSettingsView: View {
                 )
             }
 
+            Section(localizer[.commandResult]) {
+                Toggle(
+                    localizer[.showCommandResultBadge],
+                    isOn: applicationBinding(\.showCommandResultBadge)
+                )
+                .toggleStyle(.switch)
+            }
+
             Section(localizer[.autocomplete]) {
                 Toggle(
                     localizer[.inlineSuggestions],

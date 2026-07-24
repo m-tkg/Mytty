@@ -86,6 +86,11 @@ struct LocalizationTests {
                 == "Show pressed keys below cursor"
         )
         #expect(english[.stopRecording] == "Stop Recording")
+        #expect(english[.commandResult] == "Command Result")
+        #expect(
+            english[.showCommandResultBadge]
+                == "Show exit code and elapsed time when a command finishes"
+        )
         #expect(english[.gifRecording] == "GIF Recording")
         #expect(japanese[.gifRecording] == "GIF 録画")
         #expect(
@@ -426,6 +431,11 @@ struct LocalizationTests {
                 == "フォーカス復帰時、シェル待機中なら英数入力に切り替える"
         )
         #expect(japanese[.stopRecording] == "録画を停止")
+        #expect(japanese[.commandResult] == "コマンド結果")
+        #expect(
+            japanese[.showCommandResultBadge]
+                == "コマンド終了時に終了コードと実行時間を表示"
+        )
         #expect(japanese[.aboutMyTTY] == "Mytty について")
         #expect(japanese[.checkForUpdates] == "アップデートを確認")
         #expect(

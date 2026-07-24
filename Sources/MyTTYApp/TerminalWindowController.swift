@@ -1131,6 +1131,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             && !preferences.autocompleteEnabled
         let keyToastDisabled = applicationPreferences.showPressedKeyToast
             && !preferences.showPressedKeyToast
+        let commandResultBadgeDisabled = applicationPreferences
+            .showCommandResultBadge && !preferences.showCommandResultBadge
         let inactiveDimmingChanged = applicationPreferences.inactivePaneDimming
             != preferences.inactivePaneDimming
         let activeBorderChanged = activePaneBorderStyle
@@ -1158,6 +1160,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
         if keyToastDisabled {
             hidePressedKeyToasts()
+        }
+        if commandResultBadgeDisabled {
+            paneLayout.hideCommandResultBadges()
         }
         if inactiveDimmingChanged {
             paneLayout.updateInactiveDimming()
@@ -1216,6 +1221,49 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private func hidePressedKeyToasts() {
         paneLayout.hideKeyToasts()
+    }
+
+    /// Unlike `showPressedKey(_:)` this must not require the surface to be
+    /// first responder — a command can finish in an unfocused pane, and
+    /// that's exactly when the badge is most useful.
+    private func showCommandResultBadge(
+        exitCode: Int?,
+        durationNanoseconds: UInt64,
+        surfaceID: TerminalSurfaceID
+    ) {
+        guard applicationPreferences.showCommandResultBadge,
+              let surface = surfaces[surfaceID]
+        else { return }
+
+        let text = CommandResultBadge.text(
+            exitCode: exitCode,
+            durationNanoseconds: durationNanoseconds
+        )
+        let isFailure = CommandResultBadge.isFailure(exitCode: exitCode)
+        if let host = paneLayout.host(for: surfaceID) {
+            let cursorRect = surface.convert(
+                surface.terminalCursorRect,
+                to: host
+            )
+            host.showCommandResultBadge(
+                text,
+                isFailure: isFailure,
+                at: cursorRect
+            )
+        }
+        if paneLayout.zoomedPaneID == surfaceID {
+            if let host = paneLayout.zoomedHost {
+                let cursorRect = surface.convert(
+                    surface.terminalCursorRect,
+                    to: host
+                )
+                host.showCommandResultBadge(
+                    text,
+                    isFailure: isFailure,
+                    at: cursorRect
+                )
+            }
+        }
     }
 
     @discardableResult
@@ -2270,13 +2318,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case .cellSizeChanged:
             updateStatusBar()
 
-        case let .commandFinished(exitCode, _):
+        case let .commandFinished(exitCode, durationNanoseconds):
             lastCommandResultBySurface[surfaceID] = LastCommandResult(
                 exitCode: exitCode,
                 finishedAt: Date()
             )
             autocomplete.handleCommandFinished(
                 exitCode: exitCode,
+                surfaceID: surfaceID
+            )
+            showCommandResultBadge(
+                exitCode: exitCode,
+                durationNanoseconds: durationNanoseconds,
                 surfaceID: surfaceID
             )
 
