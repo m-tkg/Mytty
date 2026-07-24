@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 /// shell prompt so the user isn't left typing into a non-ASCII input method
 /// meant for whatever app previously had focus.
 enum ASCIIInputSourceSwitcher {
+    @MainActor
     static func switchToASCIIIfNeeded() {
         if let current = TISCopyCurrentKeyboardInputSource()?
             .takeRetainedValue(),
@@ -23,7 +24,7 @@ enum ASCIIInputSourceSwitcher {
             kTISPropertyInputSourceIsASCIICapable
         ) else { return false }
         return CFBooleanGetValue(
-            unsafeBitCast(raw, to: CFBoolean.self)
+            Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue()
         )
     }
 }

@@ -69,12 +69,11 @@ enum TerminalAgentProcessDetector {
         "pwsh",
     ]
 
-    /// True when `name` (after stripping a single leading `-` used for
-    /// login shells, e.g. `-zsh`) names a recognized shell.
+    /// True when `name` names a recognized shell. Names come from
+    /// `commandName(processID:)`, which resolves the on-disk binary path via
+    /// `proc_pidpath`, so login shells arrive as plain `zsh`, never `-zsh`.
     static func isShellCommandName(_ name: String) -> Bool {
-        guard !name.isEmpty else { return false }
-        let stripped = name.hasPrefix("-") ? String(name.dropFirst()) : name
-        return shellCommandNames.contains(stripped)
+        shellCommandNames.contains(name)
     }
 
     static func provider(processID: pid_t) -> AgentProvider? {

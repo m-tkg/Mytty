@@ -90,13 +90,11 @@ struct TerminalAgentProcessDetectorTests {
         ) == nil)
     }
 
-    @Test("identifies shell command names, including login-shell form")
+    @Test("identifies shell command names")
     func shellCommandNameDetection() {
         for name in ["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "pwsh"] {
             #expect(TerminalAgentProcessDetector.isShellCommandName(name))
         }
-        #expect(TerminalAgentProcessDetector.isShellCommandName("-zsh"))
-        #expect(TerminalAgentProcessDetector.isShellCommandName("-bash"))
         #expect(!TerminalAgentProcessDetector.isShellCommandName("vim"))
         #expect(!TerminalAgentProcessDetector.isShellCommandName("claude"))
         #expect(!TerminalAgentProcessDetector.isShellCommandName(""))
