@@ -26,6 +26,8 @@
 	<array>
 		<string>_mytty._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Mytty needs camera access to scan the pairing QR code shown on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Mytty needs local network access to find and connect to your Mac.</string>
 	<key>UIApplicationSceneManifest</key>

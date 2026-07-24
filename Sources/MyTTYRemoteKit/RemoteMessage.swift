@@ -1,7 +1,7 @@
 import Foundation
 
 public enum RemoteMessage: Equatable, Sendable {
-    case pairRequest(deviceName: String, code: String)
+    case pairRequest(deviceName: String, token: String)
     case pairApproved(deviceID: String, deviceSecretBase64: String)
     /// Authenticity is proven by the caller successfully decrypting the
     /// frame carrying this message with the device's stored secret, so no
@@ -125,7 +125,7 @@ extension RemoteMessage: Codable {
         case .pairRequest:
             self = .pairRequest(
                 deviceName: try container.decode(String.self, forKey: .deviceName),
-                code: try container.decode(String.self, forKey: .code)
+                token: try container.decode(String.self, forKey: .token)
             )
         case .pairApproved:
             self = .pairApproved(
@@ -249,10 +249,10 @@ extension RemoteMessage: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .pairRequest(deviceName, code):
+        case let .pairRequest(deviceName, token):
             try container.encode(MessageType.pairRequest, forKey: .type)
             try container.encode(deviceName, forKey: .deviceName)
-            try container.encode(code, forKey: .code)
+            try container.encode(token, forKey: .token)
         case let .pairApproved(deviceID, deviceSecretBase64):
             try container.encode(MessageType.pairApproved, forKey: .type)
             try container.encode(deviceID, forKey: .deviceID)

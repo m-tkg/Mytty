@@ -1,3 +1,4 @@
+import MyTTYRemoteKit
 import Network
 import SwiftUI
 import UIKit
@@ -16,7 +17,8 @@ struct PairingView: View {
     @StateObject private var discovery = MacDiscovery()
     @State private var method: AddressMethod = .discovered
     @State private var label = ""
-    @State private var code = ""
+    @State private var pairingToken: String?
+    @State private var isShowingScanner = false
     @State private var manualHost = ""
     @State private var manualPort = "51820"
     @State private var isPairing = false
@@ -77,10 +79,21 @@ struct PairingView: View {
                     .textInputAutocapitalization(.words)
             }
 
-            Section("Pairing Code") {
-                TextField("6-digit code from Mytty on your Mac", text: $code)
-                    .keyboardType(.numberPad)
-                    .textContentType(.oneTimeCode)
+            Section("Pairing QR Code") {
+                if pairingToken != nil {
+                    HStack {
+                        Label("QR code scanned", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button("Rescan") { isShowingScanner = true }
+                    }
+                } else {
+                    Button {
+                        isShowingScanner = true
+                    } label: {
+                        Label("Scan QR Code", systemImage: "qrcode.viewfinder")
+                    }
+                }
             }
 
             if let errorMessage {
@@ -114,10 +127,19 @@ struct PairingView: View {
         .navigationTitle("Add a Mac")
         .onAppear { discovery.start() }
         .onDisappear { discovery.stop() }
+        .fullScreenCover(isPresented: $isShowingScanner) {
+            PairingQRScanView(
+                onScanned: { payload in
+                    pairingToken = payload.token
+                    isShowingScanner = false
+                },
+                onCancel: { isShowingScanner = false }
+            )
+        }
     }
 
     private var canPair: Bool {
-        guard code.count == 6 else { return false }
+        guard pairingToken != nil else { return false }
         guard !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return false }
         switch method {
@@ -127,6 +149,7 @@ struct PairingView: View {
     }
 
     private func pair() {
+        guard let pairingToken else { return }
         errorMessage = nil
         isPairing = true
         let deviceName = UIDevice.current.name
@@ -141,7 +164,7 @@ struct PairingView: View {
                     mac = try await client.pair(
                         macName: selectedMac.name,
                         endpoint: selectedMac.endpoint,
-                        code: code,
+                        token: pairingToken,
                         deviceName: deviceName,
                         label: label
                     )
@@ -160,7 +183,7 @@ struct PairingView: View {
                     mac = try await client.pair(
                         macName: nil,
                         endpoint: endpoint,
-                        code: code,
+                        token: pairingToken,
                         deviceName: deviceName,
                         label: label
                     )
@@ -179,7 +202,7 @@ struct PairingView: View {
                     + "Check the address and port."
             } catch {
                 isPairing = false
-                errorMessage = "Could not pair. Check the code and try again."
+                errorMessage = "Could not pair. Scan the QR code again and retry."
             }
         }
     }

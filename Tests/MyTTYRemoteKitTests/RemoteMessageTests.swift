@@ -85,7 +85,7 @@ struct RemoteMessageTests {
     func encodesAndDecodesPairRequest() throws {
         let message = RemoteMessage.pairRequest(
             deviceName: "iPhone",
-            code: "123456"
+            token: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"
         )
         let data = try RemoteMessageCodec.encode(message)
         let decoded = try RemoteMessageCodec.decode(data)

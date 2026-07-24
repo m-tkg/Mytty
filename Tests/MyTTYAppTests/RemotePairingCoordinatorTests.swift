@@ -9,7 +9,7 @@ struct RemotePairingCoordinatorTests {
     @Test("attempting without an active code is rejected")
     func attemptWithoutActiveCodeIsRejected() throws {
         let coordinator = try makeCoordinator()
-        let result = try coordinator.attempt(code: "123456", deviceName: "iPhone")
+        let result = try coordinator.attempt(token: "123456", deviceName: "iPhone")
         #expect(result == .rejected(.noActiveCode))
     }
 
@@ -19,7 +19,7 @@ struct RemotePairingCoordinatorTests {
         let coordinator = RemotePairingCoordinator(deviceStore: store)
         let code = coordinator.beginPairing()
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         guard case let .approved(device) = result else {
             Issue.record("expected approval")
             return
@@ -33,8 +33,8 @@ struct RemotePairingCoordinatorTests {
         let coordinator = try makeCoordinator()
         let code = coordinator.beginPairing()
 
-        _ = try coordinator.attempt(code: code.value, deviceName: "iPhone")
-        let second = try coordinator.attempt(code: code.value, deviceName: "iPad")
+        _ = try coordinator.attempt(token: code.value, deviceName: "iPhone")
+        let second = try coordinator.attempt(token: code.value, deviceName: "iPad")
 
         #expect(second == .rejected(.noActiveCode))
     }
@@ -45,10 +45,10 @@ struct RemotePairingCoordinatorTests {
         let code = coordinator.beginPairing()
         _ = code
 
-        let result = try coordinator.attempt(code: "000000", deviceName: "iPhone")
+        let result = try coordinator.attempt(token: "000000", deviceName: "iPhone")
         #expect(result == .rejected(.codeMismatch))
 
-        let retry = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let retry = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         #expect(retry == .rejected(.noActiveCode))
     }
 
@@ -62,7 +62,7 @@ struct RemotePairingCoordinatorTests {
         let code = coordinator.beginPairing()
         now = code.expiresAt
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         #expect(result == .rejected(.codeExpired))
     }
 
@@ -72,7 +72,7 @@ struct RemotePairingCoordinatorTests {
         _ = coordinator.beginPairing()
         coordinator.cancelPairing()
 
-        let result = try coordinator.attempt(code: "123456", deviceName: "iPhone")
+        let result = try coordinator.attempt(token: "123456", deviceName: "iPhone")
         #expect(result == .rejected(.noActiveCode))
     }
 
@@ -88,7 +88,7 @@ struct RemotePairingCoordinatorTests {
         coordinator.recordFailedAttempt()
         #expect(coordinator.activeCode == nil)
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         #expect(result == .rejected(.noActiveCode))
     }
 
@@ -103,7 +103,7 @@ struct RemotePairingCoordinatorTests {
         }
         #expect(coordinator.activeCode != nil)
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         guard case let .approved(device) = result else {
             Issue.record("expected approval")
             return
@@ -131,7 +131,7 @@ struct RemotePairingCoordinatorTests {
         }
         #expect(coordinator.activeCode != nil)
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         guard case .approved = result else {
             Issue.record("expected approval, got \(result)")
             return
@@ -153,7 +153,7 @@ struct RemotePairingCoordinatorTests {
         }
         #expect(coordinator.activeCode != nil)
 
-        let result = try coordinator.attempt(code: code.value, deviceName: "iPhone")
+        let result = try coordinator.attempt(token: code.value, deviceName: "iPhone")
         guard case .approved = result else {
             Issue.record("expected approval, got \(result)")
             return
@@ -167,7 +167,7 @@ struct RemotePairingCoordinatorTests {
         let second = coordinator.beginPairing()
 
         let usingFirst = try coordinator.attempt(
-            code: first.value,
+            token: first.value,
             deviceName: "iPhone"
         )
         if first.value == second.value {

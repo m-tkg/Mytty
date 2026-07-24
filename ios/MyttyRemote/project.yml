@@ -39,6 +39,7 @@ targets:
         # neither target has to hardcode the team ID to find the group.
         MyTTYKeychainAccessGroup: $(AppIdentifierPrefix)dev.mytty.remote.shared
         NSLocalNetworkUsageDescription: "Mytty needs local network access to find and connect to your Mac."
+        NSCameraUsageDescription: "Mytty needs camera access to scan the pairing QR code shown on your Mac."
         NSBonjourServices:
           - _mytty._tcp
         UIApplicationSceneManifest:

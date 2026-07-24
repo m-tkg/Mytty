@@ -84,12 +84,12 @@ final class RemoteClient: ObservableObject {
     func pair(
         macName: String?,
         endpoint: NWEndpoint,
-        code: String,
+        token: String,
         deviceName: String,
         label: String
     ) async throws -> PairedMac {
         disconnect()
-        let key = RemotePairing.derivePresharedKey(code: code)
+        let key = RemotePairing.derivePresharedKey(token: token)
         pairingEndpointInfo = addressingInfo(macName: macName, endpoint: endpoint)
         pairingLabel = label
 
@@ -98,7 +98,7 @@ final class RemoteClient: ObservableObject {
 
         transport.onReady = { [weak self] in
             Task { @MainActor [weak self] in
-                self?.sendPairRequest(deviceName: deviceName, code: code, key: key)
+                self?.sendPairRequest(deviceName: deviceName, token: token, key: key)
             }
         }
         transport.onFrame = { [weak self] frame in
@@ -134,11 +134,11 @@ final class RemoteClient: ObservableObject {
 
     private func sendPairRequest(
         deviceName: String,
-        code: String,
+        token: String,
         key: SymmetricKey
     ) {
         guard let payload = try? RemoteMessageCodec.encode(
-            .pairRequest(deviceName: deviceName, code: code)
+            .pairRequest(deviceName: deviceName, token: token)
         ), let sealed = try? RemoteSecureChannel.seal(payload, using: key)
         else {
             failPairing(RemoteClientError.protocolError)
