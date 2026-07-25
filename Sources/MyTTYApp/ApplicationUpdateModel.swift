@@ -35,6 +35,22 @@ final class ApplicationUpdateModel: ObservableObject {
         availableRelease != nil && canCheck
     }
 
+    /// Release page of the running build, for reading what shipped in it.
+    var currentReleaseNotesURL: URL {
+        ApplicationReleaseNotes.pageURL(for: currentVersion)
+    }
+
+    /// Release page of the version a check just found, for reading what the
+    /// update would bring. `nil` until a newer release is known.
+    var pendingReleaseNotesURL: URL? {
+        switch phase {
+        case let .available(release), let .installing(release):
+            release.pageURL
+        default:
+            nil
+        }
+    }
+
     private let checker: any ApplicationUpdateChecking
     private let installer: any ApplicationUpdateInstalling
     private let confirmsInstallation: @MainActor () -> Bool
