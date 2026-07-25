@@ -3,7 +3,9 @@ import MyTTYCore
 
 struct AgentUsageMeterContent: Equatable, Sendable {
     let title: String
+    /// What the meter shows, already flipped for `display`.
     let percent: Int
+    let display: AgentMeterDisplay
     let isStale: Bool
     /// Whether the meter should be drawn as a warning. Only the agent's
     /// context meter passes a threshold; usage meters leave it nil.
@@ -12,16 +14,19 @@ struct AgentUsageMeterContent: Equatable, Sendable {
     init(
         title: String,
         remainingPercent: Double,
+        display: AgentMeterDisplay = .remaining,
         isStale: Bool = false,
         lowThresholdPercent: Double? = nil
     ) {
         self.title = title
-        let percent = Int(min(100, max(0, remainingPercent)).rounded())
-        self.percent = percent
+        let remaining = Int(min(100, max(0, remainingPercent)).rounded())
+        self.display = display
+        percent = display == .used ? 100 - remaining : remaining
         self.isStale = isStale
-        // Compare the rounded percent so the meter never reads a value that
-        // contradicts its own color.
-        isLow = lowThresholdPercent.map { Double(percent) < $0 } ?? false
+        // The threshold is always about remaining context, so the flipped
+        // display never moves the warning. Compare the rounded percent so the
+        // meter never reads a value that contradicts its own color.
+        isLow = lowThresholdPercent.map { Double(remaining) < $0 } ?? false
     }
 
     var progress: Double {
@@ -29,7 +34,7 @@ struct AgentUsageMeterContent: Equatable, Sendable {
     }
 
     func tooltip(localizer: MyTTYLocalizer) -> String {
-        let base = "\(title) \(localizer.remainingPercent(percent))"
+        let base = "\(title) \(percentText(localizer: localizer))"
         guard isStale else { return base }
         return "\(base) · \(localizer.cachedUsageNote())"
     }
@@ -37,9 +42,16 @@ struct AgentUsageMeterContent: Equatable, Sendable {
     /// Spoken value for the meter. The warning is a color change, so
     /// VoiceOver needs it spelled out.
     func accessibilityValue(localizer: MyTTYLocalizer) -> String {
-        let base = localizer.remainingPercent(percent)
+        let base = percentText(localizer: localizer)
         guard isLow else { return base }
         return "\(base) · \(localizer[.agentContextWarningStatus])"
+    }
+
+    private func percentText(localizer: MyTTYLocalizer) -> String {
+        switch display {
+        case .remaining: localizer.remainingPercent(percent)
+        case .used: localizer.usedPercent(percent)
+        }
     }
 }
 
@@ -49,8 +61,11 @@ struct AgentUsageStatusContent: Equatable, Sendable {
 }
 
 extension AgentUsageSummary {
-    func compactDescription(localizer: MyTTYLocalizer) -> String? {
-        guard let content = statusContent() else { return nil }
+    func compactDescription(
+        localizer: MyTTYLocalizer,
+        display: AgentMeterDisplay = .remaining
+    ) -> String? {
+        guard let content = statusContent(display: display) else { return nil }
         var components = content.costDescription.map { [$0] } ?? []
         components.append(contentsOf: content.limits.map {
             $0.tooltip(localizer: localizer)
@@ -58,12 +73,15 @@ extension AgentUsageSummary {
         return components.isEmpty ? nil : components.joined(separator: " · ")
     }
 
-    func statusContent() -> AgentUsageStatusContent? {
+    func statusContent(
+        display: AgentMeterDisplay = .remaining
+    ) -> AgentUsageStatusContent? {
         let costDescription = cost.map(Self.describe)
         let visibleLimits = limits.prefix(2).map {
             AgentUsageMeterContent(
                 title: $0.title,
                 remainingPercent: $0.remainingPercent,
+                display: display,
                 isStale: limitsAreStale
             )
         }
@@ -100,11 +118,12 @@ enum AgentUsageStatusSelection {
     static func content(
         activeProvider: AgentProvider?,
         loadedProvider: AgentProvider?,
-        summary: AgentUsageSummary?
+        summary: AgentUsageSummary?,
+        display: AgentMeterDisplay = .remaining
     ) -> AgentUsageStatusContent? {
         guard let activeProvider,
               activeProvider == loadedProvider
         else { return nil }
-        return summary?.statusContent()
+        return summary?.statusContent(display: display)
     }
 }

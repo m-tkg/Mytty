@@ -604,6 +604,34 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the agent meter display setting")
+    func agentMeterDisplayPreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.agentMeterDisplay == .remaining)
+
+        preferences.agentMeterDisplay = .used
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("agents.meter-display = \"used\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try "agents.meter-display = \"both\"\n".write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("round trips the recording countdown setting")
     func recordingCountdownPreference() throws {
         let harness = try Harness()

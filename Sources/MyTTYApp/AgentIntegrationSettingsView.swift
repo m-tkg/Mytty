@@ -18,6 +18,11 @@ struct AgentIntegrationSettingsView: View {
             Divider()
                 .padding(.leading, 44)
 
+            meterDisplayRow
+
+            Divider()
+                .padding(.leading, 44)
+
             sleepPreventionRow
 
             Divider()
@@ -154,6 +159,47 @@ struct AgentIntegrationSettingsView: View {
         }
         .padding(.top, 2)
         .disabled(!settings.application.agentContextWarningEnabled)
+    }
+
+    private var meterDisplayRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "chart.bar")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(localizer[.agentMeterDisplay])
+                    .font(.system(size: 13, weight: .semibold))
+                Text(localizer[.agentMeterDisplayDescription])
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Picker(
+                "",
+                selection: Binding(
+                    get: { settings.application.agentMeterDisplay },
+                    set: { display in
+                        settings.updateApplication {
+                            $0.agentMeterDisplay = display
+                        }
+                    }
+                )
+            ) {
+                Text(localizer[.agentMeterDisplayRemaining])
+                    .tag(AgentMeterDisplay.remaining)
+                Text(localizer[.agentMeterDisplayUsed])
+                    .tag(AgentMeterDisplay.used)
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel(localizer[.agentMeterDisplay])
+        }
+        .frame(minHeight: 64)
+        .padding(.vertical, 4)
     }
 
     private var sleepPreventionRow: some View {

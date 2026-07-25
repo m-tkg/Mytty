@@ -72,6 +72,14 @@ public enum AgentSleepPreventionMode: String, CaseIterable, Equatable, Sendable 
     case preventWhileLaunched = "prevent-while-launched"
 }
 
+/// Which side of the agent's context and usage limits the status bar meters
+/// graph. Everything Mytty reads is a remaining amount, so `used` is only a
+/// presentation flip: the warning threshold keeps its "remaining" meaning.
+public enum AgentMeterDisplay: String, CaseIterable, Equatable, Sendable {
+    case remaining
+    case used
+}
+
 public struct ApplicationPreferences: Equatable, Sendable {
     public var tabPlacement: MyTTYTabPlacement
     public var newTabPosition: NewTabPosition
@@ -99,6 +107,9 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var agentContextWarningEnabled: Bool
     /// Percentage of remaining context below which the meter warns.
     public var agentContextWarningThreshold: Double
+    /// Whether the status bar's context and usage meters graph what is left
+    /// or what has been used.
+    public var agentMeterDisplay: AgentMeterDisplay
     public var attentionUnreadOnly: Bool
     /// Whether tab rows show how long each tab has been open.
     public var showTabUptime: Bool
@@ -156,6 +167,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         agentContextWarningEnabled: Bool = true,
         agentContextWarningThreshold: Double = 30,
+        agentMeterDisplay: AgentMeterDisplay = .remaining,
         attentionUnreadOnly: Bool = false,
         showTabUptime: Bool = false,
         paneTeamPointersEnabled: Bool = true,
@@ -189,6 +201,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.agentContextWarningEnabled = agentContextWarningEnabled
         self.agentContextWarningThreshold = agentContextWarningThreshold
+        self.agentMeterDisplay = agentMeterDisplay
         self.attentionUnreadOnly = attentionUnreadOnly
         self.showTabUptime = showTabUptime
         self.paneTeamPointersEnabled = paneTeamPointersEnabled
@@ -332,6 +345,7 @@ public struct ApplicationPreferencesStore {
             "agents.prevent-system-sleep",
             "agents.context-warning",
             "agents.context-warning-threshold",
+            "agents.meter-display",
             "attention.unread-only",
             "tab.show-uptime",
             "agents.pane-team-pointers",
@@ -508,6 +522,12 @@ public struct ApplicationPreferencesStore {
                 )
             }
             preferences.agentContextWarningThreshold = threshold
+        }
+        if let value = document.lastValue(for: "agents.meter-display") {
+            guard let display = AgentMeterDisplay(rawValue: value) else {
+                throw invalid(key: "agents.meter-display", value: value)
+            }
+            preferences.agentMeterDisplay = display
         }
         if let value = document.lastValue(for: "attention.unread-only") {
             guard let enabled = Bool(value) else {
@@ -694,6 +714,7 @@ public struct ApplicationPreferencesStore {
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "agents.context-warning = \(quoted(String(preferences.agentContextWarningEnabled)))",
             "agents.context-warning-threshold = \(quoted(decimal(preferences.agentContextWarningThreshold)))",
+            "agents.meter-display = \(quoted(preferences.agentMeterDisplay.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
             "tab.show-uptime = \(quoted(String(preferences.showTabUptime)))",
             "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",
