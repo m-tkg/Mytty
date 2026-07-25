@@ -99,6 +99,36 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the force ASCII input scope setting")
+    func forceASCIIInputScopePreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.forceASCIIInputScope == .shellIdleOnly)
+
+        preferences.forceASCIIInputScope = .always
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("input.force-ascii-scope = \"always\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        input.force-ascii-scope = "sometimes"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("rejects an unrecognized new tab position")
     func invalidNewTabPosition() throws {
         let harness = try Harness()

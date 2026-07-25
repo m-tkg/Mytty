@@ -363,6 +363,23 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.forceASCIIInputOnFocus)
                 )
                 .toggleStyle(.switch)
+
+                HStack {
+                    Spacer()
+                    Picker(
+                        "",
+                        selection: applicationBinding(\.forceASCIIInputScope)
+                    ) {
+                        Text(localizer[.forceASCIIInputScopeShellIdleOnly])
+                            .tag(ForceASCIIInputScope.shellIdleOnly)
+                        Text(localizer[.forceASCIIInputScopeAlways])
+                            .tag(ForceASCIIInputScope.always)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .disabled(!model.application.forceASCIIInputOnFocus)
             }
 
             Section(localizer[.gifRecording]) {

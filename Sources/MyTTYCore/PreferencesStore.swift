@@ -58,6 +58,14 @@ public enum WindowStartupBehavior: String, CaseIterable, Equatable, Sendable {
     case small
 }
 
+/// How far `ApplicationPreferences.forceASCIIInputOnFocus` reaches: only when
+/// the focused pane sits at a bare shell prompt, or no matter what the pane's
+/// foreground process happens to be.
+public enum ForceASCIIInputScope: String, CaseIterable, Equatable, Sendable {
+    case shellIdleOnly = "shell-idle-only"
+    case always
+}
+
 public enum AgentSleepPreventionMode: String, CaseIterable, Equatable, Sendable {
     case allowSleep = "allow-sleep"
     case preventWhileProcessing = "prevent-while-processing"
@@ -78,9 +86,12 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var showStatusBar: Bool
     public var showPressedKeyToast: Bool
     /// Whether regaining focus from another app forces the macOS input
-    /// source to ASCII/alphanumeric, but only when the focused pane's
-    /// foreground process is just the shell (no other process running).
+    /// source to ASCII/alphanumeric. `forceASCIIInputScope` decides whether
+    /// that only happens at a bare shell prompt or in every pane.
     public var forceASCIIInputOnFocus: Bool
+    /// Which panes `forceASCIIInputOnFocus` applies to. Meaningless while
+    /// that flag is off.
+    public var forceASCIIInputScope: ForceASCIIInputScope
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
     /// Whether the status bar's context meter turns red once the agent's
@@ -140,6 +151,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         showStatusBar: Bool = true,
         showPressedKeyToast: Bool = false,
         forceASCIIInputOnFocus: Bool = false,
+        forceASCIIInputScope: ForceASCIIInputScope = .shellIdleOnly,
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
         agentContextWarningEnabled: Bool = true,
@@ -172,6 +184,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.showStatusBar = showStatusBar
         self.showPressedKeyToast = showPressedKeyToast
         self.forceASCIIInputOnFocus = forceASCIIInputOnFocus
+        self.forceASCIIInputScope = forceASCIIInputScope
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
         self.agentContextWarningEnabled = agentContextWarningEnabled
@@ -314,6 +327,7 @@ public struct ApplicationPreferencesStore {
             "recording.show-keys",
             "input.show-key-toast",
             "input.force-ascii-on-focus",
+            "input.force-ascii-scope",
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
             "agents.context-warning",
@@ -445,6 +459,12 @@ public struct ApplicationPreferencesStore {
                 )
             }
             preferences.forceASCIIInputOnFocus = enabled
+        }
+        if let value = document.lastValue(for: "input.force-ascii-scope") {
+            guard let scope = ForceASCIIInputScope(rawValue: value) else {
+                throw invalid(key: "input.force-ascii-scope", value: value)
+            }
+            preferences.forceASCIIInputScope = scope
         }
         if let value = document.lastValue(for: "autocomplete.enabled") {
             guard let enabled = Bool(value) else {
@@ -669,6 +689,7 @@ public struct ApplicationPreferencesStore {
             "show-status-bar = \(quoted(String(preferences.showStatusBar)))",
             "input.show-key-toast = \(quoted(String(preferences.showPressedKeyToast)))",
             "input.force-ascii-on-focus = \(quoted(String(preferences.forceASCIIInputOnFocus)))",
+            "input.force-ascii-scope = \(quoted(preferences.forceASCIIInputScope.rawValue))",
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
             "agents.context-warning = \(quoted(String(preferences.agentContextWarningEnabled)))",

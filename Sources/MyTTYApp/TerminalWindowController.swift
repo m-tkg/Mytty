@@ -2497,24 +2497,27 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Switches to an ASCII input source when the app just regained focus
-    /// from another app at a bare shell prompt -- never on a window-to-
-    /// window switch within Mytty (callers must only invoke this from
-    /// `didBecomeActiveNotification`, not `windowDidBecomeKey`), and never
-    /// when some other foreground process (an agent, an editor, ...) is
-    /// running, since that process's own input expectations should win.
+    /// from another app -- never on a window-to-window switch within Mytty
+    /// (callers must only invoke this from `didBecomeActiveNotification`,
+    /// not `windowDidBecomeKey`). With the default `.shellIdleOnly` scope
+    /// this stays out of the way whenever some other foreground process (an
+    /// agent, an editor, ...) is running, since that process's own input
+    /// expectations should win; `.always` switches regardless.
     private func forceASCIIInputIfNeeded() {
         guard window?.isKeyWindow == true,
               applicationPreferences.forceASCIIInputOnFocus,
               let tab = session.selectedTab,
               let surface = surfaces[tab.focusedSurfaceID]
         else { return }
-        let processID = surface.foregroundProcessID
-        guard processID > 0,
-              let name = TerminalAgentProcessDetector.commandName(
-                  processID: processID
-              ),
-              TerminalAgentProcessDetector.isShellCommandName(name)
-        else { return }
+        if applicationPreferences.forceASCIIInputScope == .shellIdleOnly {
+            let processID = surface.foregroundProcessID
+            guard processID > 0,
+                  let name = TerminalAgentProcessDetector.commandName(
+                      processID: processID
+                  ),
+                  TerminalAgentProcessDetector.isShellCommandName(name)
+            else { return }
+        }
         ASCIIInputSourceSwitcher.switchToASCIIIfNeeded()
     }
 
