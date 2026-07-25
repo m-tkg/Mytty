@@ -283,6 +283,10 @@ struct LocalizationTests {
                 == "Option-click to also check pre-releases"
         )
         #expect(english[.update] == "Update")
+        #expect(english[.releaseNotes] == "Release Notes")
+        #expect(
+            english[.viewReleaseNotes] == "View the release notes on GitHub"
+        )
         #expect(english[.ago] == "ago")
         #expect(english[.moveToShell] == "Move to the shell")
         #expect(english[.scheduledInput] == "Scheduled Input")
@@ -451,6 +455,8 @@ struct LocalizationTests {
                 == "option を押しながらクリックすると pre-release も確認"
         )
         #expect(japanese[.update] == "アップデート")
+        #expect(japanese[.releaseNotes] == "リリースノート")
+        #expect(japanese[.viewReleaseNotes] == "GitHub でリリースノートを開く")
         #expect(japanese[.ago] == "前")
         #expect(japanese[.moveToShell] == "シェルへ移動")
         #expect(japanese[.scheduledInput] == "日時指定入力")

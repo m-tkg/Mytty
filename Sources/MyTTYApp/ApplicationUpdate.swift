@@ -116,6 +116,21 @@ struct ApplicationUpdateRelease: Equatable, Sendable {
     let asset: ApplicationUpdateAsset
 }
 
+/// Release pages on GitHub, so the app can link to the notes for a version.
+/// An update check already carries a validated `pageURL`; this covers the
+/// versions that never came from a check, notably the running build.
+enum ApplicationReleaseNotes {
+    private static let tagBase = URL(
+        string: "https://github.com/m-tkg/Mytty/releases/tag/"
+    )!
+
+    static func pageURL(for version: ApplicationVersion) -> URL {
+        // `ApplicationVersion` only ever renders digits, ASCII letters, dots
+        // and hyphens, so the tag needs no escaping beyond appending it.
+        tagBase.appendingPathComponent("v\(version.description)")
+    }
+}
+
 enum ApplicationUpdateError: Error, Equatable, Sendable {
     case invalidRelease
     case requestFailed

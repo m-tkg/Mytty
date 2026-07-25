@@ -272,6 +272,48 @@ struct ApplicationUpdateTests {
         #expect(didInstall)
     }
 
+    @Test("builds the GitHub release page URL for a version")
+    func releaseNotesPageURL() throws {
+        let release = try #require(ApplicationVersion("1.2.3"))
+        #expect(
+            ApplicationReleaseNotes.pageURL(for: release).absoluteString
+                == "https://github.com/m-tkg/Mytty/releases/tag/v1.2.3"
+        )
+
+        let prerelease = try #require(ApplicationVersion("v0.2.0-beta.1"))
+        #expect(
+            ApplicationReleaseNotes.pageURL(for: prerelease).absoluteString
+                == "https://github.com/m-tkg/Mytty/releases/tag/v0.2.0-beta.1"
+        )
+    }
+
+    @Test("offers release notes for the running and the pending version")
+    @MainActor
+    func releaseNotesLinks() async throws {
+        let release = makeRelease(version: "0.1.1")
+        let model = ApplicationUpdateModel(
+            currentVersion: try #require(ApplicationVersion("0.1.0")),
+            checker: StubUpdateChecker(release: release),
+            installer: RecordingUpdateInstaller(),
+            confirmsInstallation: { true },
+            onInstalled: {}
+        )
+
+        #expect(
+            model.currentReleaseNotesURL.absoluteString
+                == "https://github.com/m-tkg/Mytty/releases/tag/v0.1.0"
+        )
+        #expect(model.pendingReleaseNotesURL == nil)
+
+        await model.checkForUpdates()
+
+        #expect(model.pendingReleaseNotesURL == release.pageURL)
+
+        await model.installAvailableUpdate()
+
+        #expect(model.pendingReleaseNotesURL == nil)
+    }
+
     @Test("checks on launch and About but offers installation only on launch")
     @MainActor
     func automaticChecks() async throws {

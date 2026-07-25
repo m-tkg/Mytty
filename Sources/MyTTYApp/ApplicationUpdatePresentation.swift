@@ -9,11 +9,17 @@ struct ApplicationUpdateControlsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             LabeledContent(localizer[.currentVersion]) {
-                Text(
-                    verbatim: "\(ApplicationIdentity.displayName) "
-                        + model.currentVersion.description
-                )
-                    .foregroundStyle(.secondary)
+                // Development builds carry a placeholder version that has no
+                // release page, so they stay plain text.
+                if updatesEnabled {
+                    Link(destination: model.currentReleaseNotesURL) {
+                        Text(verbatim: currentVersionText)
+                    }
+                    .help(localizer[.viewReleaseNotes])
+                } else {
+                    Text(verbatim: currentVersionText)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let statusText {
@@ -24,6 +30,14 @@ struct ApplicationUpdateControlsView: View {
                     }
                     Text(statusText)
                         .foregroundStyle(statusColor)
+                    if updatesEnabled,
+                       let pendingURL = model.pendingReleaseNotesURL {
+                        Link(
+                            localizer[.releaseNotes],
+                            destination: pendingURL
+                        )
+                            .help(localizer[.viewReleaseNotes])
+                    }
                 }
             }
 
@@ -58,6 +72,11 @@ struct ApplicationUpdateControlsView: View {
                 }
             }
         }
+    }
+
+    private var currentVersionText: String {
+        "\(ApplicationIdentity.displayName) "
+            + model.currentVersion.description
     }
 
     private var isBusy: Bool {
