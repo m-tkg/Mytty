@@ -129,6 +129,43 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the floating pane edge and global hot key settings")
+    func floatingPanePreferences() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.floatingPaneEdge == .top)
+        #expect(preferences.floatingPaneGlobalHotKeyEnabled)
+
+        preferences.floatingPaneEdge = .left
+        preferences.floatingPaneGlobalHotKeyEnabled = false
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("floating-pane.edge = \"left\""))
+        #expect(
+            contents.contains(
+                "floating-pane.global-hotkey-enabled = \"false\""
+            )
+        )
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        floating-pane.edge = "diagonal"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("rejects an unrecognized new tab position")
     func invalidNewTabPosition() throws {
         let harness = try Harness()

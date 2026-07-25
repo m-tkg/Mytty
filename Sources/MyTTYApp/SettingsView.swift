@@ -203,7 +203,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
                 "language", "launch", "session", "tabs", "position",
                 "keys", "toast", "input", "default terminal", "window",
                 "size", "fullscreen", "confirmation", "close", "status",
-                "bar",
+                "bar", "floating terminal", "quake", "slide", "hotkey",
+                "global shortcut", "edge",
             ]
         case .shell:
             [
@@ -450,6 +451,37 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.showStatusBar)
                 )
                 .toggleStyle(.switch)
+            }
+
+            Section(localizer[.floatingPane]) {
+                Picker(
+                    localizer[.floatingPaneEdge],
+                    selection: applicationBinding(\.floatingPaneEdge)
+                ) {
+                    Text(localizer[.top]).tag(FloatingPaneEdge.top)
+                    Text(localizer[.bottom]).tag(FloatingPaneEdge.bottom)
+                    Text(localizer[.left]).tag(FloatingPaneEdge.left)
+                    Text(localizer[.right]).tag(FloatingPaneEdge.right)
+                }
+                .pickerStyle(.menu)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(
+                        localizer[.floatingPaneGlobalHotKey],
+                        isOn: applicationBinding(
+                            \.floatingPaneGlobalHotKeyEnabled
+                        )
+                    )
+                    .toggleStyle(.switch)
+                    Text(localizer[.floatingPaneGlobalHotKeyDescription])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if model.floatingPaneHotKeyRegistrationFailed {
+                        Text(localizer[.floatingPaneGlobalHotKeyFailed])
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
             }
 
             Section(localizer[.confirmation]) {

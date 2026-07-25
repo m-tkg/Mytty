@@ -43,6 +43,9 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     /// Opens the floating text box that sends its contents to the focused
     /// terminal pane in one paste-like delivery.
     case composeInput = "compose-input"
+    /// Slides the standalone floating terminal panel in or out. Reachable
+    /// system-wide via a Carbon global hot key, not just inside Mytty.
+    case toggleFloatingPane = "toggle-floating-pane"
     /// macOS 26+ only: explains the focused pane with the on-device model.
     case explainPane = "explain-pane"
     /// macOS 26+ only: composes a shell one-liner from natural language
@@ -127,6 +130,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .toggleRecording: "Start/Stop Recording"
         case .commandPalette: "Command Palette"
         case .composeInput: "Compose Input"
+        case .toggleFloatingPane: "Toggle Floating Terminal"
         case .explainPane: "Explain Pane"
         case .composeOneLiner: "Compose One-Liner"
         case .summarizeLastCommand: "Summarize Last Command"
@@ -207,6 +211,10 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             .composeInput: .init(
                 key: "t",
                 modifiers: [.control, .command]
+            ),
+            .toggleFloatingPane: .init(
+                key: "t",
+                modifiers: [.control, .option, .command]
             ),
             .explainPane: .init(
                 key: "i",

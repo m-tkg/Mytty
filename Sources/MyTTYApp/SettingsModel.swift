@@ -8,6 +8,12 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var terminal: TerminalPreferences
     @Published private(set) var terminalThemes: [GhosttyThemePreview]
     @Published private(set) var errorText: MyTTYText?
+    /// Whether the floating terminal panel's global hot key
+    /// (`AppDelegate.registerFloatingPaneHotKey`) failed to register --
+    /// typically because another app already owns the combination. Not
+    /// persisted: it's a live registration outcome, recomputed on every
+    /// preference change, not a stored preference.
+    @Published var floatingPaneHotKeyRegistrationFailed = false
 
     var errorMessage: String? {
         errorText.map {

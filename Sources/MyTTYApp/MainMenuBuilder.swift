@@ -430,6 +430,15 @@ enum MainMenuBuilder {
             keyBindings: keyBindings,
             target: target
         )
+        viewMenu.addItem(.separator())
+        addCommandItem(
+            to: viewMenu,
+            title: localizer.commandTitle(.toggleFloatingPane),
+            action: #selector(AppDelegate.toggleFloatingPane(_:)),
+            command: .toggleFloatingPane,
+            keyBindings: keyBindings,
+            target: target
+        )
         viewItem.submenu = viewMenu
         mainMenu.addItem(viewItem)
 

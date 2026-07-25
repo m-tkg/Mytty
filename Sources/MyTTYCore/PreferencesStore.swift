@@ -66,6 +66,12 @@ public enum ForceASCIIInputScope: String, CaseIterable, Equatable, Sendable {
     case always
 }
 
+/// Which screen edge the floating terminal panel (issue #103) slides in
+/// from, and therefore which edge it stays docked to while open.
+public enum FloatingPaneEdge: String, CaseIterable, Equatable, Sendable {
+    case top, bottom, left, right
+}
+
 public enum AgentSleepPreventionMode: String, CaseIterable, Equatable, Sendable {
     case allowSleep = "allow-sleep"
     case preventWhileProcessing = "prevent-while-processing"
@@ -146,6 +152,12 @@ public struct ApplicationPreferences: Equatable, Sendable {
     /// Whether starting a GIF recording counts down (3, 2, 1) before capture
     /// begins.
     public var recordingCountdownEnabled: Bool
+    /// Which screen edge the floating terminal panel slides in from.
+    public var floatingPaneEdge: FloatingPaneEdge
+    /// Whether the floating terminal panel's system-wide Carbon hot key is
+    /// registered at all. Off leaves the panel reachable only through the
+    /// menu/key-binding entry inside the app.
+    public var floatingPaneGlobalHotKeyEnabled: Bool
 
     public init(
         tabPlacement: MyTTYTabPlacement = .left,
@@ -181,7 +193,9 @@ public struct ApplicationPreferences: Equatable, Sendable {
         recordingFadeOutEnabled: Bool = true,
         recordingFadeOutDuration: Double = 0.5,
         recordingFadeOutColorHex: String = "000000",
-        recordingCountdownEnabled: Bool = true
+        recordingCountdownEnabled: Bool = true,
+        floatingPaneEdge: FloatingPaneEdge = .top,
+        floatingPaneGlobalHotKeyEnabled: Bool = true
     ) {
         self.tabPlacement = tabPlacement
         self.newTabPosition = newTabPosition
@@ -216,6 +230,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.recordingFadeOutDuration = recordingFadeOutDuration
         self.recordingFadeOutColorHex = recordingFadeOutColorHex
         self.recordingCountdownEnabled = recordingCountdownEnabled
+        self.floatingPaneEdge = floatingPaneEdge
+        self.floatingPaneGlobalHotKeyEnabled = floatingPaneGlobalHotKeyEnabled
     }
 }
 
@@ -359,6 +375,8 @@ public struct ApplicationPreferencesStore {
             "recording.fade-out-duration",
             "recording.fade-out-color",
             "recording.countdown",
+            "floating-pane.edge",
+            "floating-pane.global-hotkey-enabled",
             "keybinding.toggle-attention",
         ] + MyTTYCommand.allCases.map {
             keyBindingKey(for: $0)
@@ -623,6 +641,23 @@ public struct ApplicationPreferencesStore {
             }
             preferences.recordingCountdownEnabled = enabled
         }
+        if let value = document.lastValue(for: "floating-pane.edge") {
+            guard let edge = FloatingPaneEdge(rawValue: value) else {
+                throw invalid(key: "floating-pane.edge", value: value)
+            }
+            preferences.floatingPaneEdge = edge
+        }
+        if let value = document.lastValue(
+            for: "floating-pane.global-hotkey-enabled"
+        ) {
+            guard let enabled = Bool(value) else {
+                throw invalid(
+                    key: "floating-pane.global-hotkey-enabled",
+                    value: value
+                )
+            }
+            preferences.floatingPaneGlobalHotKeyEnabled = enabled
+        }
 
         for command in MyTTYCommand.allCases {
             let key = Self.keyBindingKey(for: command)
@@ -729,6 +764,8 @@ public struct ApplicationPreferencesStore {
             "recording.fade-out-duration = \(quoted(decimal(preferences.recordingFadeOutDuration)))",
             "recording.fade-out-color = \(quoted(fadeOutColorHex))",
             "recording.countdown = \(quoted(String(preferences.recordingCountdownEnabled)))",
+            "floating-pane.edge = \(quoted(preferences.floatingPaneEdge.rawValue))",
+            "floating-pane.global-hotkey-enabled = \(quoted(String(preferences.floatingPaneGlobalHotKeyEnabled)))",
         ]
         managed.append(contentsOf: MyTTYCommand.allCases.map { command in
             let value = preferences.keyBindings[command]?.serialized ?? "none"
