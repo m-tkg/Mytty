@@ -118,6 +118,90 @@ struct AgentUsagePresentationTests {
         #expect(summary.statusContent()?.limits.first?.isLow == false)
     }
 
+    @Test("flips the meter to used amounts on request")
+    func usedMeterDisplay() throws {
+        let used = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 72.6,
+            display: .used
+        )
+        #expect(used.percent == 27)
+        #expect(used.progress == 0.27)
+        #expect(
+            used.tooltip(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "Context 27% used"
+        )
+        #expect(
+            used.tooltip(
+                localizer: MyTTYLocalizer(language: .japanese)
+            ) == "Context 27%使用"
+        )
+        #expect(
+            used.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "27% used"
+        )
+
+        // The warning threshold keeps its "remaining" meaning, so the same
+        // session is flagged in both displays.
+        let lowRemaining = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 18,
+            lowThresholdPercent: 30
+        )
+        let lowUsed = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 18,
+            display: .used,
+            lowThresholdPercent: 30
+        )
+        #expect(lowRemaining.isLow)
+        #expect(lowUsed.isLow)
+        #expect(lowUsed.percent == 82)
+        #expect(
+            lowUsed.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .japanese)
+            ) == "82%使用 · 残量わずか"
+        )
+
+        let summary = AgentUsageSummary(
+            cost: .session(amount: 0.421, currencyCode: "USD"),
+            limits: [AgentUsageLimit(title: "5h", remainingPercent: 72.6)]
+        )
+        let content = try #require(summary.statusContent(display: .used))
+        #expect(content.limits.map(\.percent) == [27])
+        #expect(
+            summary.compactDescription(
+                localizer: MyTTYLocalizer(language: .english),
+                display: .used
+            ) == "$0.42 · 5h 27% used"
+        )
+    }
+
+    @Test("carries the meter display through the provider selection")
+    func usedMeterProviderSelection() throws {
+        let summary = AgentUsageSummary(
+            cost: nil,
+            limits: [AgentUsageLimit(title: "5h", remainingPercent: 60)]
+        )
+
+        #expect(AgentUsageStatusSelection.content(
+            activeProvider: .codex,
+            loadedProvider: .codex,
+            summary: summary,
+            display: .used
+        ) == summary.statusContent(display: .used))
+        #expect(
+            AgentUsageStatusSelection.content(
+                activeProvider: .codex,
+                loadedProvider: .codex,
+                summary: summary,
+                display: .used
+            )?.limits.map(\.percent) == [40]
+        )
+    }
+
     @Test("spells out the low context warning for VoiceOver")
     func lowContextAccessibilityValue() throws {
         let low = AgentUsageMeterContent(

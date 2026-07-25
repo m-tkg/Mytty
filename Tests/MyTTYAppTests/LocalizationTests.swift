@@ -198,6 +198,16 @@ struct LocalizationTests {
         )
         #expect(english[.agentContextWarningThreshold] == "Warn below")
         #expect(english[.agentContextWarningStatus] == "Running low")
+        #expect(english[.agentMeterDisplay] == "Meter shows")
+        #expect(
+            english[.agentMeterDisplayDescription]
+                == "Choose whether the status bar meters graph what is left "
+                + "of the context and usage limits, or how much of them has "
+                + "been used."
+        )
+        #expect(english[.agentMeterDisplayRemaining] == "Remaining")
+        #expect(english[.agentMeterDisplayUsed] == "Used")
+        #expect(english.usedPercent(27) == "27% used")
         #expect(
             japanese[.sleepClamshellArmedStatus]
                 == "モニタを閉じてもスリープしません"
@@ -252,6 +262,15 @@ struct LocalizationTests {
         )
         #expect(japanese[.agentContextWarningThreshold] == "警告する残量")
         #expect(japanese[.agentContextWarningStatus] == "残量わずか")
+        #expect(japanese[.agentMeterDisplay] == "メーターの表示")
+        #expect(
+            japanese[.agentMeterDisplayDescription]
+                == "ステータスバーのコンテキストと使用量のメーターに、残量と"
+                + "使用量のどちらをグラフで表示するか選択します。"
+        )
+        #expect(japanese[.agentMeterDisplayRemaining] == "残量")
+        #expect(japanese[.agentMeterDisplayUsed] == "使用量")
+        #expect(japanese.usedPercent(27) == "27%使用")
         #expect(
             japanese[.sleepModePreventWhileProcessing]
                 == "Agent の実行中はスリープしない"

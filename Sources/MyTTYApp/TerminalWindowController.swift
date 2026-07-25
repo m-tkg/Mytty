@@ -1135,6 +1135,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             != preferences.inactivePaneDimming
         let contextWarningChanged = lowContextWarningThreshold
             != Self.lowContextWarningThreshold(for: preferences)
+        let meterDisplayChanged = applicationPreferences.agentMeterDisplay
+            != preferences.agentMeterDisplay
         let activeBorderChanged = activePaneBorderStyle
             != Self.activePaneBorderStyle(for: preferences)
         applicationPreferences = preferences
@@ -1167,7 +1169,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         if activeBorderChanged {
             paneLayout.updateActiveBorder()
         }
-        if contextWarningChanged {
+        if contextWarningChanged || meterDisplayChanged {
             updateStatusBar()
         }
         if languageChanged || placementChanged || statusBarChanged
@@ -2874,10 +2876,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         } else {
             activeAgentSessionID = nil
         }
+        let meterDisplay = applicationPreferences.agentMeterDisplay
         let agentUsage = AgentUsageStatusSelection.content(
             activeProvider: foregroundAgentProvider,
             loadedProvider: agentUsagePolling.loadedProvider,
-            summary: agentUsagePolling.loadedSummary
+            summary: agentUsagePolling.loadedSummary,
+            display: meterDisplay
         )
         let agentSessionStatus = agentStatusPolling.statusBySurface[focusedID]
         statusBarModel.content = TerminalStatusBarContent(
@@ -2894,6 +2898,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 AgentUsageMeterContent(
                     title: localizer[.context],
                     remainingPercent: $0,
+                    display: meterDisplay,
                     lowThresholdPercent: lowContextWarningThreshold
                 )
             },

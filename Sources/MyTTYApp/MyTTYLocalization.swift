@@ -153,6 +153,10 @@ enum MyTTYText: String {
     case agentContextWarningDescription = "Turn the status bar context meter red once the agent's remaining context falls below the threshold."
     case agentContextWarningThreshold = "Warn below"
     case agentContextWarningStatus = "Running low"
+    case agentMeterDisplay = "Meter shows"
+    case agentMeterDisplayDescription = "Choose whether the status bar meters graph what is left of the context and usage limits, or how much of them has been used."
+    case agentMeterDisplayRemaining = "Remaining"
+    case agentMeterDisplayUsed = "Used"
     case teachPaneTeamPointers = "Teach agents about Mytty orchestration"
     case teachPaneTeamPointersDescription = "For Claude Code and Codex, add a short reference to the bundled usage guide (mytty-ctl.md) when asked to run sub-agents across panes."
     case orchestration = "Orchestration"
@@ -463,6 +467,13 @@ struct MyTTYLocalizer: Equatable {
         }
     }
 
+    func usedPercent(_ percent: Int) -> String {
+        switch language {
+        case .english: "\(percent)% used"
+        case .japanese: "\(percent)%使用"
+        }
+    }
+
     func cachedUsageNote() -> String {
         switch language {
         case .english: "cached"
@@ -639,6 +650,10 @@ struct MyTTYLocalizer: Equatable {
         case .agentContextWarningDescription: "エージェントのコンテキスト残量がこの割合を下回ったら、ステータスバーの表示を赤くします。"
         case .agentContextWarningThreshold: "警告する残量"
         case .agentContextWarningStatus: "残量わずか"
+        case .agentMeterDisplay: "メーターの表示"
+        case .agentMeterDisplayDescription: "ステータスバーのコンテキストと使用量のメーターに、残量と使用量のどちらをグラフで表示するか選択します。"
+        case .agentMeterDisplayRemaining: "残量"
+        case .agentMeterDisplayUsed: "使用量"
         case .teachPaneTeamPointers: "Agent に Mytty オーケストレーションの使い方を教える"
         case .teachPaneTeamPointersDescription: "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は同梱の使い方ガイド (mytty-ctl.md) への短い参照を追加します。"
         case .orchestration: "オーケストレーション"

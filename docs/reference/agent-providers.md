@@ -81,6 +81,8 @@ The status bar's model name and, where available, remaining-context meter come f
 
 The context meter turns red once the remaining context falls below a threshold, so a pane that is about to run out stands out without a notification. **Settings > Agents > Warn on low context** turns the warning off or moves the threshold (default 30%); the comparison uses the rounded percentage the meter displays.
 
+The context meter and the usage-limit meters next to it graph what is left by default. **Settings > Agents > Meter shows** switches both to the amount used instead, which only flips the presentation: everything Mytty reads is still a remaining amount, so the low-context warning keeps comparing the remaining percentage against the same threshold.
+
 `<slug>` for Claude Code replaces every non-alphanumeric character in the working directory path with `-`. To keep the 0.5-second foreground poll cheap, Claude Code transcript reads are skipped unless the tracked `(mtime, size)` fingerprint changed; the OpenCode, Cursor, and Antigravity lookups share a per-pane cache throttled to once every 5 seconds, invalidated immediately if the hook session ID changes.
 
 ## Session restoration (resume commands)
