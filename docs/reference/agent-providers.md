@@ -79,7 +79,7 @@ The status bar's model name and, where available, remaining-context meter come f
 | Cursor | `CursorSessionInspector` | Chat directory under `~/.cursor/chats/<workspace-hash>/<session-id>/` (by hook session ID, or newest `meta.json` whose `cwd` matches the pane); `store.db`'s `blobs` table, newest row first, text-scanned for `providerOptions.cursor.modelName` | not exposed locally |
 | Antigravity | `AntigravitySessionInspector` | Globally selected `model` in `~/.gemini/antigravity-cli/settings.json`; requires a hook session ID first, since the setting isn't scoped to a session | not exposed locally (conversation DB is protobuf-encoded with no stable schema) |
 
-The context meter turns red once the remaining context falls below a threshold, so a pane that is about to run out stands out without a notification. **Settings > Agents > Warn on low context** turns the warning off or moves the threshold (default 30%); the comparison uses the rounded percentage the meter displays.
+The context meter turns red once the remaining context falls below a threshold, so a pane that is about to run out stands out without a notification. **Settings > Agents > Warn on low context** turns the warning off or moves the threshold (default 30%); the comparison uses the rounded remaining percentage, whichever side the meter displays.
 
 The context meter and the usage-limit meters next to it graph what is left by default. **Settings > Agents > Meter shows** switches both to the amount used instead, which only flips the presentation: everything Mytty reads is still a remaining amount, so the low-context warning keeps comparing the remaining percentage against the same threshold.
 
