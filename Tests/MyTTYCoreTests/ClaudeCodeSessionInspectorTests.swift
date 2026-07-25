@@ -21,19 +21,63 @@ struct ClaudeCodeSessionInspectorTests {
         )
     }
 
-    @Test("uses a 1,000,000 token window for [1m] models")
-    func largeContextWindow() {
+    /// A transcript only ever names the normalized model, so the 1M window
+    /// has to come from the selection the user configured.
+    @Test("uses a 1,000,000 token window for a [1m] model selection")
+    func largeContextWindowFromSelection() {
         let data = Data("""
-        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-fable-5[1m]","usage":{"input_tokens":250000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5","usage":{"input_tokens":250000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
         """.utf8)
 
         #expect(
-            ClaudeCodeSessionInspector.status(from: data)
+            ClaudeCodeSessionInspector.status(from: data, selection: "opus[1m]")
                 == AgentSessionStatus(
                     sessionID: "claude-session-id",
-                    modelName: "claude-fable-5[1m]",
+                    modelName: "claude-opus-5",
                     contextRemainingPercent: 75
                 )
+        )
+    }
+
+    @Test("keeps the 200k window without a [1m] selection")
+    func defaultContextWindowWithoutSelection() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5","usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 50
+        )
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data, selection: "opus")?
+                .contextRemainingPercent == 50
+        )
+    }
+
+    @Test("keeps the 1,000,000 token window for natively large models")
+    func nativeLargeContextWindowIgnoresSelection() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-fable-5","usage":{"input_tokens":250000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data, selection: "fable")?
+                .contextRemainingPercent == 75
+        )
+    }
+
+    /// Claude Code rounds the used share, not the remainder.
+    @Test("rounds the remaining percentage the way Claude Code does")
+    func roundsLikeClaudeCode() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5","usage":{"input_tokens":85000,"cache_creation_input_tokens":6806,"cache_read_input_tokens":0,"output_tokens":6301}}}
+        """.utf8)
+
+        // 91,806 / 200,000 = 45.903% used -> 46% used -> 54% remaining.
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 54
         )
     }
 

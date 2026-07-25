@@ -19,6 +19,8 @@ struct AgentSessionQueryContext {
 ///
 /// - `claudeCodeSnapshot`: skip re-parsing the Claude Code transcript unless
 ///   its (mtime, size) fingerprint changed since the last poll.
+/// - `claudeCodeModelSelection`: reuse the resolved model selection for up
+///   to `lifetime` seconds, since resolving it reads settings files.
 /// - `timedStatus`: reuse the last result for up to `lifetime` seconds
 ///   unless the hook-reported session ID changed — used by providers whose
 ///   local data source (SQLite database or settings file) is too costly to
@@ -34,8 +36,12 @@ final class AgentSessionThrottleCache {
             url: URL,
             mtime: Date,
             size: UInt64,
+            selection: String?,
             snapshot: ClaudeCodeTranscriptSnapshot
         )
+    ] = [:]
+    private var claudeModelSelections: [
+        TerminalSurfaceID: (fetchedAt: Date, selection: String?)
     ] = [:]
     private var timedCache: [
         TerminalSurfaceID: (
@@ -56,6 +62,9 @@ final class AgentSessionThrottleCache {
         claudeTranscriptFingerprints = claudeTranscriptFingerprints.filter {
             active.contains($0.key)
         }
+        claudeModelSelections = claudeModelSelections.filter {
+            active.contains($0.key)
+        }
         timedCache = timedCache.filter { active.contains($0.key) }
     }
 
@@ -63,16 +72,21 @@ final class AgentSessionThrottleCache {
         claudeTranscriptFingerprints[surfaceID] = nil
     }
 
+    /// `selection` takes part in the cache key: it decides the context
+    /// window the snapshot's percentage was measured against, so switching
+    /// models must re-parse even when the transcript hasn't changed yet.
     func claudeCodeSnapshot(
         surfaceID: TerminalSurfaceID,
         transcript: URL,
         fingerprint: (mtime: Date, size: UInt64),
+        selection: String?,
         compute: () -> ClaudeCodeTranscriptSnapshot
     ) -> ClaudeCodeTranscriptSnapshot {
         if let cached = claudeTranscriptFingerprints[surfaceID],
            cached.url == transcript,
            cached.mtime == fingerprint.mtime,
-           cached.size == fingerprint.size {
+           cached.size == fingerprint.size,
+           cached.selection == selection {
             return cached.snapshot
         }
 
@@ -81,9 +95,32 @@ final class AgentSessionThrottleCache {
             url: transcript,
             mtime: fingerprint.mtime,
             size: fingerprint.size,
+            selection: selection,
             snapshot: snapshot
         )
         return snapshot
+    }
+
+    /// Resolving the selection reads up to three settings files, so it is
+    /// kept out of the 0.5s tick the same way `timedStatus` keeps SQLite
+    /// queries out of it.
+    func claudeCodeModelSelection(
+        surfaceID: TerminalSurfaceID,
+        lifetime: TimeInterval = 5,
+        resolve: () -> String?
+    ) -> String? {
+        let currentTime = now()
+        if let cached = claudeModelSelections[surfaceID],
+           currentTime.timeIntervalSince(cached.fetchedAt) < lifetime {
+            return cached.selection
+        }
+
+        let selection = resolve()
+        claudeModelSelections[surfaceID] = (
+            fetchedAt: currentTime,
+            selection: selection
+        )
+        return selection
     }
 
     func timedStatus(
@@ -173,20 +210,38 @@ struct ClaudeCodeProviderRuntime: AgentProviderRuntime {
         context: AgentSessionQueryContext,
         throttle: AgentSessionThrottleCache
     ) -> AgentProviderPollResult {
+        let workingDirectory = context.workingDirectory()
         guard let transcript = ClaudeCodeSessionInspector.transcriptURL(
             sessionID: context.hookSessionID(),
-            workingDirectory: context.workingDirectory()
+            workingDirectory: workingDirectory
         ), let fingerprint = FileFingerprint.of(transcript) else {
             throttle.clearClaudeCodeFingerprint(surfaceID: context.surfaceID)
             return AgentProviderPollResult(status: nil)
         }
 
+        // The transcript records the normalized model ID, so the context
+        // window has to come from what the user selected instead.
+        let selection = throttle.claudeCodeModelSelection(
+            surfaceID: context.surfaceID
+        ) {
+            ClaudeCodeModelSelection.resolve(
+                arguments: TerminalAgentProcessDetector.arguments(
+                    processID: context.surface.foregroundProcessID
+                ),
+                workingDirectory: workingDirectory
+            )
+        }
+
         let snapshot = throttle.claudeCodeSnapshot(
             surfaceID: context.surfaceID,
             transcript: transcript,
-            fingerprint: fingerprint
+            fingerprint: fingerprint,
+            selection: selection
         ) {
-            ClaudeCodeSessionInspector.snapshot(contentsOf: transcript)
+            ClaudeCodeSessionInspector.snapshot(
+                contentsOf: transcript,
+                selection: selection
+            )
         }
         return AgentProviderPollResult(
             status: snapshot.status,

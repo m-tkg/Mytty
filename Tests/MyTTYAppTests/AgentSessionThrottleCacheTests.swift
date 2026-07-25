@@ -168,12 +168,14 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
         let second = cache.claudeCodeSnapshot(
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
 
@@ -205,18 +207,21 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: (mtime: Date(timeIntervalSince1970: 500), size: 10),
+            selection: nil,
             compute: compute
         )
         let afterSizeChange = cache.claudeCodeSnapshot(
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: (mtime: Date(timeIntervalSince1970: 500), size: 20),
+            selection: nil,
             compute: compute
         )
         let afterMtimeChange = cache.claudeCodeSnapshot(
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: (mtime: Date(timeIntervalSince1970: 600), size: 20),
+            selection: nil,
             compute: compute
         )
 
@@ -245,16 +250,95 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: surfaceID,
             transcript: URL(fileURLWithPath: "/tmp/a.jsonl"),
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
         _ = cache.claudeCodeSnapshot(
             surfaceID: surfaceID,
             transcript: URL(fileURLWithPath: "/tmp/b.jsonl"),
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
 
         #expect(computeCount == 2)
+    }
+
+    @Test("recomputes the Claude Code status once the model selection changes")
+    @MainActor
+    func claudeCodeStatusRecomputesOnChangedSelection() {
+        let (cache, _) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let surfaceID = TerminalSurfaceID()
+        let transcript = URL(fileURLWithPath: "/tmp/transcript.jsonl")
+        let fingerprint = (mtime: Date(timeIntervalSince1970: 500), size: UInt64(10))
+        var computeCount = 0
+
+        func compute() -> ClaudeCodeTranscriptSnapshot {
+            computeCount += 1
+            return ClaudeCodeTranscriptSnapshot(
+                status: nil,
+                interruption: nil
+            )
+        }
+
+        _ = cache.claudeCodeSnapshot(
+            surfaceID: surfaceID,
+            transcript: transcript,
+            fingerprint: fingerprint,
+            selection: "opus",
+            compute: compute
+        )
+        // Same transcript, different window: the percentage has to be
+        // measured again.
+        _ = cache.claudeCodeSnapshot(
+            surfaceID: surfaceID,
+            transcript: transcript,
+            fingerprint: fingerprint,
+            selection: "opus[1m]",
+            compute: compute
+        )
+        _ = cache.claudeCodeSnapshot(
+            surfaceID: surfaceID,
+            transcript: transcript,
+            fingerprint: fingerprint,
+            selection: "opus[1m]",
+            compute: compute
+        )
+
+        #expect(computeCount == 2)
+    }
+
+    @Test("reuses the resolved Claude Code model selection for 5 seconds")
+    @MainActor
+    func claudeCodeModelSelectionIsTimeCached() {
+        let (cache, clock) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let surfaceID = TerminalSurfaceID()
+        var resolveCount = 0
+
+        func resolve() -> String? {
+            resolveCount += 1
+            return "opus[1m]"
+        }
+
+        #expect(
+            cache.claudeCodeModelSelection(
+                surfaceID: surfaceID,
+                resolve: resolve
+            ) == "opus[1m]"
+        )
+        clock.value.addTimeInterval(4)
+        _ = cache.claudeCodeModelSelection(
+            surfaceID: surfaceID,
+            resolve: resolve
+        )
+        #expect(resolveCount == 1)
+
+        clock.value.addTimeInterval(2)
+        _ = cache.claudeCodeModelSelection(
+            surfaceID: surfaceID,
+            resolve: resolve
+        )
+        #expect(resolveCount == 2)
     }
 
     @Test("clearing the Claude Code fingerprint forces a recompute")
@@ -278,6 +362,7 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
         cache.clearClaudeCodeFingerprint(surfaceID: surfaceID)
@@ -285,13 +370,14 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: surfaceID,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: compute
         )
 
         #expect(computeCount == 2)
     }
 
-    @Test("purging drops both caches for surfaces that are no longer active")
+    @Test("purging drops every cache for surfaces that are no longer active")
     @MainActor
     func purgeDropsInactiveSurfaces() {
         let (cache, clock) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
@@ -304,6 +390,7 @@ struct AgentSessionThrottleCacheTests {
             surfaceID: droppedSurface,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: {
                 ClaudeCodeTranscriptSnapshot(
                     status: nil,
@@ -321,14 +408,29 @@ struct AgentSessionThrottleCacheTests {
             sessionID: "s",
             fetch: { nil }
         )
+        _ = cache.claudeCodeModelSelection(
+            surfaceID: droppedSurface,
+            resolve: { "opus[1m]" }
+        )
 
         cache.purge(activeSurfaceIDs: [keptSurface])
+
+        var selectionResolveCount = 0
+        _ = cache.claudeCodeModelSelection(
+            surfaceID: droppedSurface,
+            resolve: {
+                selectionResolveCount += 1
+                return "opus[1m]"
+            }
+        )
+        #expect(selectionResolveCount == 1)
 
         var claudeComputeCount = 0
         _ = cache.claudeCodeSnapshot(
             surfaceID: droppedSurface,
             transcript: transcript,
             fingerprint: fingerprint,
+            selection: nil,
             compute: {
                 claudeComputeCount += 1
                 return ClaudeCodeTranscriptSnapshot(
