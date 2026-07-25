@@ -135,20 +135,20 @@ struct FloatingTerminalPanelTests {
     }
 
     @MainActor
-    @Test("the close button leaves the next hot key press able to reopen")
-    func closeButtonKeepsTheNextToggleOpening() throws {
+    @Test("being hidden elsewhere leaves the next hot key press able to reopen")
+    func externalHideKeepsTheNextToggleOpening() throws {
         let runtime = try Self.makeRuntime()
         let controller = Self.makeController(runtime: runtime)
 
         controller.toggle()
         #expect(controller.isPanelVisible)
 
-        controller.simulateCloseButton()
+        controller.simulateExternalHide()
         #expect(!controller.isPanelVisible)
 
-        // Closing sidesteps `toggle()`, so without the delegate resetting
-        // the open flag this press would be spent sliding out a panel that
-        // is already closed.
+        // Being ordered out sidesteps `toggle()`, so were the open state
+        // tracked in a flag of its own this press would be spent sliding
+        // out a panel that is already gone.
         controller.toggle()
 
         #expect(controller.isPanelVisible)

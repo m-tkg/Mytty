@@ -22,6 +22,13 @@ import MyTTYCore
 /// created/destroyed per use. `becomesKeyOnlyIfNeeded` is deliberately not
 /// set, unlike `PaneExplanation.swift:98` -- a terminal needs real keyboard
 /// focus, not just enough to dismiss itself.
+/// A borderless panel that still takes keyboard focus. `NSWindow` refuses
+/// key status to borderless windows by default, which for a terminal would
+/// mean a panel that looks focused and swallows nothing.
+final class FloatingTerminalPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 /// Decides whether opening the floating panel should force an ASCII input
 /// source, mirroring the scope rule `TerminalWindowController` applies to
 /// its own surfaces. Pure, so the rule is testable without touching the
@@ -100,9 +107,9 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     /// it stays `true` for the whole slide-out and only drops on the final
     /// `orderOut`. Everything else about "is the panel open" is read from
     /// `panel.isVisible` rather than tracked separately, so the panel
-    /// disappearing by some route other than `toggle()` -- the close
-    /// button, `orderOut` after the shell exits -- can't leave a stale flag
-    /// that makes the next hot key press slide out something already gone.
+    /// disappearing by some route other than `toggle()` -- `orderOut` after
+    /// the shell exits, say -- can't leave a stale flag that makes the next
+    /// hot key press slide out something already gone.
     private var isSlidingOut = false
     /// Discards a stale animation's completion handler when a later
     /// `toggle()` retargets the same window property mid-flight.
@@ -123,24 +130,24 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         self.runtimeProvider = runtimeProvider
         self.frameAnimator = frameAnimator
 
-        panel = NSPanel(
+        // Borderless, so the terminal runs flush to the screen edge with no
+        // title bar band between them -- a drop-down console, not a
+        // document window. There is no close button to lose: the hot key
+        // both summons and dismisses the panel.
+        panel = FloatingTerminalPanel(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: true
         )
         panel.title = localizer[.floatingPane]
         panel.isFloatingPanel = true
         panel.isReleasedWhenClosed = false
-        // A `.utilityWindow` panel hides itself the moment the app stops
-        // being active. That would pull the panel out from under anyone who
-        // switched to another app to copy something they meant to paste
-        // back here, so the hot key stays the only way it goes away.
+        // A panel hides itself the moment the app stops being active. That
+        // would pull the panel out from under anyone who switched to
+        // another app to copy something they meant to paste back here, so
+        // the hot key stays the only way it goes away.
         panel.hidesOnDeactivate = false
-        // Quake-style chrome: keep the close button but hide the title bar
-        // text, matching a drop-down console rather than a document window.
-        panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .hidden
         TerminalWindowController.prepareWindowForLiveTransparency(panel)
 
         super.init()
@@ -420,9 +427,10 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     var isPanelVisible: Bool { panel.isVisible }
     var hasLiveSurface: Bool { surface != nil }
 
-    /// Drives the title bar's close button, which reaches `isOpen` only
-    /// through `windowWillClose(_:)`.
-    func simulateCloseButton() {
-        panel.performClose(nil)
+    /// Hides the panel the way something other than `toggle()` would -- the
+    /// shell exiting, AppKit ordering it out -- so a test can check that the
+    /// next hot key press still reopens it.
+    func simulateExternalHide() {
+        panel.orderOut(nil)
     }
 }
