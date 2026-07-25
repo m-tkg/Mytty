@@ -225,7 +225,9 @@ enum TerminalAgentProcessDetector {
         )
     }
 
-    private static func arguments(processID: pid_t) -> [String] {
+    /// The process's argv. Also read outside provider detection, to see the
+    /// model an agent was launched with (`--model opus[1m]`).
+    static func arguments(processID: pid_t) -> [String] {
         var query = [CTL_KERN, KERN_PROCARGS2, processID]
         var size = 0
         guard sysctl(&query, UInt32(query.count), nil, &size, nil, 0) == 0,

@@ -33,11 +33,26 @@ public enum ClaudeCodeSessionInspector {
     private static let largeContextWindow: Double = 1_000_000
     private static let defaultContextWindow: Double = 200_000
 
-    /// Best-known context window for a model label. The 200k default made
-    /// Mythos-class sessions (claude-fable-5 etc.) pin the meter at 0% as
-    /// soon as their usage passed 200k; their exact window isn't published
-    /// in the transcript, so they share the 1M large-window estimate.
-    static func contextWindow(forModel model: String?) -> Double {
+    /// Best-known context window for a session, mirroring how Claude Code
+    /// itself picks one.
+    ///
+    /// The 1M window comes from the *selection* — the model string the user
+    /// configured (`opus[1m]`) — because a transcript only ever records the
+    /// normalized ID (`claude-opus-5`), never the `[1m]` suffix. Checking
+    /// the transcript label alone left every 1M session on the 200k default,
+    /// reporting far less context than it had and pinning the meter at 0%
+    /// past 200k.
+    ///
+    /// Mythos-class models (claude-fable-5 etc.) are natively 1M, so they
+    /// keep the large window whatever the selection says.
+    static func contextWindow(
+        forModel model: String?,
+        selection: String? = nil
+    ) -> Double {
+        if let selection = selection?.lowercased(),
+           selection.contains("[1m]") {
+            return largeContextWindow
+        }
         guard let model = model?.lowercased() else {
             return defaultContextWindow
         }
@@ -52,14 +67,15 @@ public enum ClaudeCodeSessionInspector {
     static func status(
         sessionID: String?,
         workingDirectory: URL?,
-        claudeHome: URL = defaultClaudeHome
+        claudeHome: URL = defaultClaudeHome,
+        selection: String? = nil
     ) -> AgentSessionStatus? {
         guard let transcript = transcriptURL(
             sessionID: sessionID,
             workingDirectory: workingDirectory,
             claudeHome: claudeHome
         ) else { return nil }
-        return status(contentsOf: transcript)
+        return status(contentsOf: transcript, selection: selection)
     }
 
     /// Locates the transcript for a session without reading it, so callers
@@ -90,16 +106,24 @@ public enum ClaudeCodeSessionInspector {
         return newestTranscript(in: projectDirectory)
     }
 
-    public static func status(contentsOf url: URL) -> AgentSessionStatus? {
-        snapshot(contentsOf: url).status
+    public static func status(
+        contentsOf url: URL,
+        selection: String? = nil
+    ) -> AgentSessionStatus? {
+        snapshot(contentsOf: url, selection: selection).status
     }
 
     /// One pass over the transcript tail for everything the poller needs:
     /// the session status *and* whether the newest prompt ended in a user
     /// interrupt. Claude Code fires no hook when the user presses ESC, so
     /// the interrupted prompt is the only record that a run stopped.
+    ///
+    /// `selection` is the model string the user configured
+    /// (`ClaudeCodeModelSelection`); it decides the context window the
+    /// remaining percentage is measured against.
     public static func snapshot(
-        contentsOf url: URL
+        contentsOf url: URL,
+        selection: String? = nil
     ) -> ClaudeCodeTranscriptSnapshot {
         guard let data = readTail(from: url) else {
             return ClaudeCodeTranscriptSnapshot(
@@ -108,7 +132,7 @@ public enum ClaudeCodeSessionInspector {
             )
         }
         return ClaudeCodeTranscriptSnapshot(
-            status: status(from: data).map { parsed in
+            status: status(from: data, selection: selection).map { parsed in
                 guard parsed.sessionID == nil else { return parsed }
                 // A transcript is named after its session, so fall back to
                 // the file name when no line carried a session ID.
@@ -224,7 +248,10 @@ public enum ClaudeCodeSessionInspector {
         return injectedTextPrefixes.contains { trimmed.hasPrefix($0) }
     }
 
-    static func status(from data: Data) -> AgentSessionStatus? {
+    static func status(
+        from data: Data,
+        selection: String? = nil
+    ) -> AgentSessionStatus? {
         var sessionID: String?
         var modelName: String?
         var contextRemainingPercent: Double?
@@ -243,11 +270,14 @@ public enum ClaudeCodeSessionInspector {
             let model = AgentSessionValidation.label(
                 message["model"] as? String
             )
-            let window = contextWindow(forModel: model)
+            let window = contextWindow(forModel: model, selection: selection)
             modelName = model ?? modelName
-            contextRemainingPercent = min(
+            // Claude Code rounds the *used* share to a whole percent and
+            // subtracts it, so rounding the remainder instead would report
+            // one percent more than the CLI does on half-percent usage.
+            contextRemainingPercent = 100 - min(
                 100,
-                max(0, (1 - tokens / window) * 100)
+                max(0, (tokens / window * 100).rounded())
             )
             sessionID = AgentSessionValidation.identifier(
                 object["sessionId"] as? String
