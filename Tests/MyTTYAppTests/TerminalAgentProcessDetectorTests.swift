@@ -113,6 +113,25 @@ struct TerminalAgentProcessDetectorTests {
         #expect(TerminalAgentProcessDetector.workingDirectory(processID: -1) == nil)
     }
 
+    @Test("prefers the agent's own working directory over the shell's")
+    func workingDirectorySelection() {
+        let agentDirectory = URL(fileURLWithPath: "/tmp/worktree", isDirectory: true)
+        let shellDirectory = URL(fileURLWithPath: "/tmp/main-checkout", isDirectory: true)
+
+        #expect(TerminalWorkingDirectorySelection.resolve(
+            agentDirectory: agentDirectory,
+            shellDirectory: shellDirectory
+        ) == agentDirectory)
+        #expect(TerminalWorkingDirectorySelection.resolve(
+            agentDirectory: nil,
+            shellDirectory: shellDirectory
+        ) == shellDirectory)
+        #expect(TerminalWorkingDirectorySelection.resolve(
+            agentDirectory: nil,
+            shellDirectory: nil
+        ) == nil)
+    }
+
     @Test("shows only the agent running in the foreground")
     func foregroundAgentDisplay() {
         #expect(TerminalAgentDisplay.resolve(
