@@ -10,6 +10,36 @@ enum ApplicationWindowLifecycle {
     }
 }
 
+/// Gates pane/tab commands while the floating terminal panel
+/// (`FloatingTerminalPanelController`) is the key window. That panel is
+/// deliberately absent from every real window's `session.tabs`, so
+/// `ApplicationShortcutRouter` would otherwise route a split/pane/tab
+/// shortcut pressed while the panel has focus to whichever real window
+/// `WindowSessionCoordinator.activeController` falls back to -- usually the
+/// window sitting behind the panel, invisible to the user at that moment.
+/// A pure static lookup, same pattern as `WindowSessionCoordinator.composerTargetWindow`,
+/// so the gating logic is testable without an actual key window.
+enum FloatingPaneCommandAvailability {
+    private static let disabledCommands: Set<MyTTYCommand> = Set(
+        [
+            .newTab, .renameTab, .closeTab, .reopenClosed,
+            .nextTab, .previousTab, .toggleTabPanel,
+            .splitLeft, .splitRight, .splitUp, .splitDown,
+            .focusLeft, .focusRight, .focusUp, .focusDown,
+            .equalizePanes, .togglePaneZoom, .swapPanes, .findInPane,
+            .showPaneList, .closePane,
+        ] + MyTTYCommand.numberedTabCommands
+    )
+
+    static func isAvailable(
+        _ command: MyTTYCommand,
+        floatingPaneIsKeyWindow: Bool
+    ) -> Bool {
+        guard floatingPaneIsKeyWindow else { return true }
+        return !disabledCommands.contains(command)
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var runtime: GhosttyRuntime?
@@ -71,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var shortcutRouter: ApplicationShortcutRouter?
     private var oneLinerPanel: OneLinerPanelController?
     private var inputComposerPanel: InputComposerPanelController?
+    private var floatingTerminalPanel: FloatingTerminalPanelController?
+    private var globalHotKeyRegistrar: GlobalHotKeyRegistrar?
     private lazy var applicationUpdateCoordinator = ApplicationUpdateCoordinator(
         localizerProvider: { [weak self] in
             self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
@@ -228,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         agentSleepPrevention.stop()
         appearanceObservation?.invalidate()
         shortcutRouter = nil
+        globalHotKeyRegistrar?.unregister()
     }
 
     func makeMainMenu(
@@ -446,6 +479,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         inputComposerPanel = panel
         panel.show()
+    }
+
+    @objc func toggleFloatingPane(_ sender: Any?) {
+        let panel = floatingTerminalPanel ?? FloatingTerminalPanelController(
+            localizer: localizer,
+            edge: settingsModel?.application.floatingPaneEdge ?? .top,
+            runtimeProvider: { [weak self] in self?.runtime }
+        )
+        floatingTerminalPanel = panel
+        panel.toggle()
     }
 
     @objc func showPaneList(_ sender: Any?) {
@@ -919,8 +962,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             shortcutRouter = ApplicationShortcutRouter(
                 bindings: preferences.keyBindings,
                 isAvailable: { [weak self] command in
-                    guard command == .reloadBrowser else { return true }
-                    return self?.isReloadBrowserAvailable() ?? false
+                    guard let self else { return true }
+                    if command == .reloadBrowser {
+                        return self.isReloadBrowserAvailable()
+                    }
+                    return FloatingPaneCommandAvailability.isAvailable(
+                        command,
+                        floatingPaneIsKeyWindow:
+                            self.floatingTerminalPanel?.isKeyWindow ?? false
+                    )
                 },
                 onKeyPressed: { [weak self] event in
                     self?.windowSessionCoordinator.activeController?
@@ -948,6 +998,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         paneListWindowController?.updateLocalization(localizer)
         attentionNotifier?.updateLocalization(localizer)
         remotePushNotifier?.updateLocalization(localizer)
+        floatingTerminalPanel?.updateLocalization(localizer)
+        floatingTerminalPanel?.updateEdge(preferences.floatingPaneEdge)
+        registerFloatingPaneHotKey(
+            enabled: preferences.floatingPaneGlobalHotKeyEnabled,
+            binding: preferences.keyBindings[.toggleFloatingPane]
+        )
         remoteAccessCoordinator?.updateRemoteAccessServer(
             enabled: preferences.remoteAccessEnabled
         )
@@ -973,6 +1029,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               controller.window === NSApplication.shared.keyWindow
         else { return false }
         return controller.hasFocusedBrowserPane
+    }
+
+    /// Registers (or drops) the floating terminal panel's system-wide hot
+    /// key against the current preferences. Runs on every preference
+    /// change, not only key-binding edits -- a re-registration is cheap and
+    /// this is the one place both `floatingPaneGlobalHotKeyEnabled` and the
+    /// `.toggleFloatingPane` binding itself can change. Publishes the
+    /// outcome to `settingsModel` so Settings can tell the user when
+    /// another app already owns the chosen combination.
+    private func registerFloatingPaneHotKey(
+        enabled: Bool,
+        binding: MyTTYKeyBinding?
+    ) {
+        guard enabled, let binding else {
+            globalHotKeyRegistrar?.unregister()
+            settingsModel?.floatingPaneHotKeyRegistrationFailed = false
+            return
+        }
+        let registrar = globalHotKeyRegistrar ?? GlobalHotKeyRegistrar()
+        globalHotKeyRegistrar = registrar
+        let succeeded = registrar.register(binding: binding) { [weak self] in
+            self?.toggleFloatingPane(nil)
+        }
+        settingsModel?.floatingPaneHotKeyRegistrationFailed = !succeeded
     }
 
     private func applyTerminalPresentation(

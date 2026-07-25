@@ -120,6 +120,33 @@ struct LocalizationTests {
         #expect(japanese[.composeOneLiner] == "ワンライナー作成")
         #expect(english.commandTitle(.composeInput) == "Compose Input")
         #expect(japanese[.composeInput] == "テキストボックスから入力")
+        #expect(
+            english.commandTitle(.toggleFloatingPane)
+                == "Toggle Floating Terminal"
+        )
+        #expect(japanese[.toggleFloatingPane] == "フローティングターミナルを切り替え")
+        #expect(english[.floatingPane] == "Floating Terminal")
+        #expect(japanese[.floatingPane] == "フローティングターミナル")
+        #expect(english[.floatingPaneEdge] == "Slide in from")
+        #expect(japanese[.floatingPaneEdge] == "スライドイン方向")
+        #expect(english[.floatingPaneGlobalHotKey] == "Global hot key")
+        #expect(japanese[.floatingPaneGlobalHotKey] == "グローバルホットキー")
+        #expect(
+            english[.floatingPaneGlobalHotKeyDescription]
+                == "Reach the floating terminal from any app, not only while Mytty is frontmost."
+        )
+        #expect(
+            japanese[.floatingPaneGlobalHotKeyDescription]
+                == "Mytty が前面にないときも、どのアプリからでもフローティングターミナルを呼び出せるようにします。"
+        )
+        #expect(
+            english[.floatingPaneGlobalHotKeyFailed]
+                == "Couldn't register the global hot key. Another app may already use this combination."
+        )
+        #expect(
+            japanese[.floatingPaneGlobalHotKeyFailed]
+                == "グローバルホットキーを登録できませんでした。この組み合わせは他のアプリが使用している可能性があります。"
+        )
         #expect(english[.inputComposerSend] == "Send")
         #expect(japanese[.inputComposerSend] == "送信")
         #expect(

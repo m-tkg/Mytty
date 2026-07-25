@@ -250,6 +250,12 @@ enum MyTTYText: String {
     case oneLinerGenerating = "Generating…"
     case oneLinerFailed = "Could not generate a command."
     case composeInput = "Compose Input"
+    case toggleFloatingPane = "Toggle Floating Terminal"
+    case floatingPane = "Floating Terminal"
+    case floatingPaneEdge = "Slide in from"
+    case floatingPaneGlobalHotKey = "Global hot key"
+    case floatingPaneGlobalHotKeyDescription = "Reach the floating terminal from any app, not only while Mytty is frontmost."
+    case floatingPaneGlobalHotKeyFailed = "Couldn't register the global hot key. Another app may already use this combination."
     case inputComposerSend = "Send"
     case inputComposerNoTerminalPane =
         "Focus a terminal pane to send input."
@@ -716,6 +722,12 @@ struct MyTTYLocalizer: Equatable {
         case .oneLinerGenerating: "生成中…"
         case .oneLinerFailed: "コマンドを生成できませんでした。"
         case .composeInput: "テキストボックスから入力"
+        case .toggleFloatingPane: "フローティングターミナルを切り替え"
+        case .floatingPane: "フローティングターミナル"
+        case .floatingPaneEdge: "スライドイン方向"
+        case .floatingPaneGlobalHotKey: "グローバルホットキー"
+        case .floatingPaneGlobalHotKeyDescription: "Mytty が前面にないときも、どのアプリからでもフローティングターミナルを呼び出せるようにします。"
+        case .floatingPaneGlobalHotKeyFailed: "グローバルホットキーを登録できませんでした。この組み合わせは他のアプリが使用している可能性があります。"
         case .inputComposerSend: "送信"
         case .inputComposerNoTerminalPane:
             "送信先のターミナルペインをフォーカスしてください。"
@@ -926,6 +938,7 @@ private extension MyTTYCommand {
         case .toggleRecording: .toggleRecording
         case .commandPalette: .commandPalette
         case .composeInput: .composeInput
+        case .toggleFloatingPane: .toggleFloatingPane
         case .explainPane: .explainPane
         case .composeOneLiner: .composeOneLiner
         case .summarizeLastCommand: .summarizeLastCommand

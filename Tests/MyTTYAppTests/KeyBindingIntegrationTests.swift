@@ -45,6 +45,9 @@ struct KeyBindingIntegrationTests {
         let toggleRecording = try #require(
             menu.item(titled: "Start/Stop Recording")
         )
+        let toggleFloatingPane = try #require(
+            menu.item(titled: "Toggle Floating Terminal")
+        )
         let settings = try #require(menu.item(titled: "Settings..."))
         let about = try #require(menu.item(titled: "About Mytty"))
 
@@ -87,6 +90,64 @@ struct KeyBindingIntegrationTests {
         #expect(toggleRecording.keyEquivalent == "g")
         #expect(
             toggleRecording.keyEquivalentModifierMask == [.shift, .command]
+        )
+        #expect(toggleFloatingPane.keyEquivalent == "t")
+        #expect(
+            toggleFloatingPane.keyEquivalentModifierMask
+                == [.control, .option, .command]
+        )
+    }
+
+    @Test("gates pane/tab commands while the floating panel is key")
+    @MainActor
+    func floatingPaneGatesPaneAndTabCommands() {
+        // Not gated at all while the floating panel isn't key.
+        #expect(
+            FloatingPaneCommandAvailability.isAvailable(
+                .splitRight,
+                floatingPaneIsKeyWindow: false
+            )
+        )
+        #expect(
+            FloatingPaneCommandAvailability.isAvailable(
+                .newTab,
+                floatingPaneIsKeyWindow: false
+            )
+        )
+
+        // Pane/tab layout commands are disabled while it is key...
+        #expect(
+            !FloatingPaneCommandAvailability.isAvailable(
+                .splitRight,
+                floatingPaneIsKeyWindow: true
+            )
+        )
+        #expect(
+            !FloatingPaneCommandAvailability.isAvailable(
+                .newTab,
+                floatingPaneIsKeyWindow: true
+            )
+        )
+        #expect(
+            !FloatingPaneCommandAvailability.isAvailable(
+                .selectTab1,
+                floatingPaneIsKeyWindow: true
+            )
+        )
+
+        // ...but commands unrelated to a real window's layout still work,
+        // including toggling the floating panel itself.
+        #expect(
+            FloatingPaneCommandAvailability.isAvailable(
+                .toggleFloatingPane,
+                floatingPaneIsKeyWindow: true
+            )
+        )
+        #expect(
+            FloatingPaneCommandAvailability.isAvailable(
+                .settings,
+                floatingPaneIsKeyWindow: true
+            )
         )
     }
 

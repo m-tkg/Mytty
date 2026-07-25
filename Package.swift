@@ -66,6 +66,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("Carbon"),
                 .linkedFramework("ImageIO"),
                 .linkedFramework("Security"),
                 .linkedFramework("SwiftUI"),

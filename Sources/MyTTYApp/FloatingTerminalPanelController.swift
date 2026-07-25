@@ -1,0 +1,353 @@
+import AppKit
+import GhosttyAdapter
+import MyTTYCore
+
+/// Owns the standalone Quake-style floating terminal panel (issue #103): a
+/// single terminal surface in its own `NSPanel` that slides in from a
+/// screen edge on a global hot key, for quick throwaway work without
+/// touching the split-pane layout of any real window.
+///
+/// Deliberately never registers with `TerminalWindowController.surfaces` or
+/// `session.tabs` -- those two collections are what every excluded feature
+/// (session persistence, iOS remote visibility, mytty-ctl pane listing,
+/// agent status/usage polling, Attention, autocomplete) enumerates from, so
+/// staying out of both satisfies every exclusion without a single `if`
+/// checking for "is this the floating pane". `environmentVariables: [:]` is
+/// the same mechanism applied to the shell itself: no `MYTTY_*` variables
+/// means no hook, no `AgentEventServer` registration, nothing for an agent
+/// or `mytty-ctl` to find.
+///
+/// Structure follows `InputComposerPanelController` (`InputComposerPanel.swift:25`):
+/// a plain `NSPanel`, built once, shown and hidden rather than
+/// created/destroyed per use. `becomesKeyOnlyIfNeeded` is deliberately not
+/// set, unlike `PaneExplanation.swift:98` -- a terminal needs real keyboard
+/// focus, not just enough to dismiss itself.
+@MainActor
+final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
+    private static let animationDuration: TimeInterval = 0.16
+    private static let defaultExtentRatio: CGFloat = 0.5
+    private static let minimumExtentRatio: CGFloat = 0.15
+
+    /// How the panel's frame moves from wherever it is now to `frame`,
+    /// then calls `completion`. Real usage animates via
+    /// `NSAnimationContext` (`coreAnimationFrameAnimator`); tests inject a
+    /// synchronous variant instead, since a real Core Animation completion
+    /// callback rides on an actual display refresh that a headless test
+    /// process can't reliably drive on a deadline.
+    typealias FrameAnimator = (
+        _ panel: NSPanel,
+        _ frame: NSRect,
+        _ completion: @escaping @MainActor () -> Void
+    ) -> Void
+
+    /// Animates only the window's origin between two frames of identical
+    /// size (`FloatingPanePlacement.frames` guarantees this), so
+    /// `ghostty_surface_set_size` never fires mid-slide -- resizing the
+    /// terminal every animation frame would be needless work the animation
+    /// doesn't need.
+    static let coreAnimationFrameAnimator: FrameAnimator = {
+        panel, frame, completion in
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = FloatingTerminalPanelController.animationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(frame, display: true)
+        } completionHandler: {
+            MainActor.assumeIsolated {
+                completion()
+            }
+        }
+    }
+
+    private let panel: NSPanel
+    private var localizer: MyTTYLocalizer
+    private let runtimeProvider: () -> GhosttyRuntime?
+    private let frameAnimator: FrameAnimator
+    private var surface: GhosttySurfaceView?
+    private var edge: FloatingPaneEdge
+    /// Fraction of the screen's perpendicular dimension the panel occupies.
+    /// Kept for the process's lifetime only -- never written to disk, per
+    /// the spec's "don't persist a dimension the user only nudged for this
+    /// session".
+    private var extentRatio = FloatingTerminalPanelController.defaultExtentRatio
+    /// Whether a slide-out is in flight. `panel.isVisible` alone can't say:
+    /// it stays `true` for the whole slide-out and only drops on the final
+    /// `orderOut`. Everything else about "is the panel open" is read from
+    /// `panel.isVisible` rather than tracked separately, so the panel
+    /// disappearing by some route other than `toggle()` -- the close
+    /// button, `orderOut` after the shell exits -- can't leave a stale flag
+    /// that makes the next hot key press slide out something already gone.
+    private var isSlidingOut = false
+    /// Discards a stale animation's completion handler when a later
+    /// `toggle()` retargets the same window property mid-flight.
+    private var animationGeneration = 0
+
+    init(
+        localizer: MyTTYLocalizer,
+        edge: FloatingPaneEdge,
+        runtimeProvider: @escaping () -> GhosttyRuntime?,
+        frameAnimator: @escaping FrameAnimator = coreAnimationFrameAnimator
+    ) {
+        self.localizer = localizer
+        self.edge = edge
+        self.runtimeProvider = runtimeProvider
+        self.frameAnimator = frameAnimator
+
+        panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
+            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            backing: .buffered,
+            defer: true
+        )
+        panel.title = localizer[.floatingPane]
+        panel.isFloatingPanel = true
+        panel.isReleasedWhenClosed = false
+        // A `.utilityWindow` panel hides itself the moment the app stops
+        // being active. That would pull the panel out from under anyone who
+        // switched to another app to copy something they meant to paste
+        // back here, so the hot key stays the only way it goes away.
+        panel.hidesOnDeactivate = false
+        // Quake-style chrome: keep the close button but hide the title bar
+        // text, matching a drop-down console rather than a document window.
+        panel.titlebarAppearsTransparent = true
+        panel.titleVisibility = .hidden
+        TerminalWindowController.prepareWindowForLiveTransparency(panel)
+
+        super.init()
+        panel.delegate = self
+    }
+
+    func updateLocalization(_ localizer: MyTTYLocalizer) {
+        self.localizer = localizer
+        panel.title = localizer[.floatingPane]
+    }
+
+    /// Applies a new dock edge. Deferred while the panel is open so a
+    /// settings change never yanks a visible panel to a different edge and
+    /// size out from under the user -- it takes effect the next time the
+    /// panel opens.
+    func updateEdge(_ edge: FloatingPaneEdge) {
+        guard edge != self.edge else { return }
+        self.edge = edge
+        if !panel.isVisible {
+            extentRatio = Self.defaultExtentRatio
+        }
+    }
+
+    /// Slides the panel in if it's closed, out if it's open. Safe to call
+    /// mid-animation: the in-flight slide reverses direction from wherever
+    /// it currently is instead of snapping first.
+    func toggle() {
+        if !panel.isVisible || isSlidingOut {
+            show()
+        } else {
+            hide()
+        }
+    }
+
+    private func show() {
+        guard let frames = targetFrames() else { return }
+        isSlidingOut = false
+        ensureSurface()
+        // Only jump to the staged off-screen frame when actually starting
+        // from closed. Reversing a slide-out mid-flight must resume from
+        // the window's current (still visible) frame, not reset first.
+        if !panel.isVisible {
+            panel.setFrame(frames.offscreen, display: false)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            panel.orderFrontRegardless()
+        }
+        // Key status is taken before the slide, not in its completion
+        // handler: `orderFrontRegardless()` shows the panel without making
+        // it key, and an `NSWindow` frame animation's completion is not a
+        // dependable place to hang that on -- when it doesn't run, the
+        // panel sits there visibly focused-looking while every keystroke
+        // goes to whatever window actually holds focus.
+        panel.makeKey()
+        if let surface {
+            panel.makeFirstResponder(surface)
+        }
+        animate(to: frames.onscreen) {}
+    }
+
+    private func hide() {
+        guard let frames = targetFrames() else {
+            panel.orderOut(nil)
+            return
+        }
+        isSlidingOut = true
+        animate(to: frames.offscreen) { [weak self] in
+            guard let self else { return }
+            isSlidingOut = false
+            panel.orderOut(nil)
+        }
+    }
+
+    private func targetFrames() -> (offscreen: NSRect, onscreen: NSRect)? {
+        guard let screen = FloatingPanePlacement.targetScreen(
+            screens: NSScreen.screens,
+            mouseLocation: NSEvent.mouseLocation,
+            mainScreen: NSScreen.main
+        ) else { return nil }
+        return FloatingPanePlacement.frames(
+            edge: edge,
+            visibleFrame: screen.visibleFrame,
+            extentRatio: extentRatio
+        )
+    }
+
+    /// Runs `frameAnimator` and discards its completion if a later
+    /// `animate(to:completion:)` call has since superseded it -- the
+    /// generation counter is what actually implements "an in-flight slide
+    /// reverses instead of both animations finishing and fighting over the
+    /// final state".
+    private func animate(
+        to frame: NSRect,
+        completion: @escaping () -> Void
+    ) {
+        animationGeneration += 1
+        let generation = animationGeneration
+        frameAnimator(panel, frame) { [weak self] in
+            guard let self, generation == animationGeneration else { return }
+            completion()
+        }
+    }
+
+    /// Creates the terminal surface on first use and keeps it alive across
+    /// hide/show cycles -- the shell underneath survives an `orderOut`, per
+    /// the spec's "closing is `orderOut` only, no persistence".
+    private func ensureSurface() {
+        guard surface == nil, let runtime = runtimeProvider() else { return }
+        guard let created = try? GhosttySurfaceView(
+            runtime: runtime,
+            workingDirectory: FileManager.default.homeDirectoryForCurrentUser,
+            environmentVariables: [:],
+            searchLabels: makeSearchLabels(),
+            contextMenuLabels: makeContextMenuLabels(),
+            clipboardConfirmationLabels: makeClipboardConfirmationLabels()
+        ) else { return }
+        bind(created)
+        panel.contentView = created
+        surface = created
+    }
+
+    private func bind(_ surface: GhosttySurfaceView) {
+        surface.onEvent = { [weak self] event in
+            self?.handle(event)
+        }
+    }
+
+    private func handle(_ event: GhosttySurfaceEvent) {
+        switch event {
+        case .childExited, .closeRequested(processAlive: false):
+            destroySurfaceAndHide()
+        case let .openURLRequested(url):
+            NSWorkspace.shared.open(url)
+        case .newTabRequested, .closeTabRequested, .newWindowRequested,
+             .movePaneRequested, .closePaneRequested:
+            // No tabs or sibling panes exist in this standalone panel.
+            break
+        default:
+            break
+        }
+    }
+
+    /// The shell exited on its own (e.g. `exit`, or the process died).
+    /// Unlike a user-initiated `toggle()`, there's no shell left to keep
+    /// alive, so the surface is torn down immediately rather than staying
+    /// around for a hide/show cycle -- the next `show()` builds a fresh one.
+    private func destroySurfaceAndHide() {
+        surface?.onEvent = nil
+        surface?.removeFromSuperview()
+        surface = nil
+        panel.contentView = nil
+        isSlidingOut = false
+        panel.orderOut(nil)
+    }
+
+    private func makeSearchLabels() -> GhosttySearchLabels {
+        GhosttySearchLabels(
+            placeholder: localizer[.search],
+            previousMatch: localizer[.previousMatch],
+            nextMatch: localizer[.nextMatch],
+            closeSearch: localizer[.closeSearch]
+        )
+    }
+
+    private func makeContextMenuLabels() -> GhosttyContextMenuLabels {
+        GhosttyContextMenuLabels(
+            copy: localizer[.copy],
+            paste: localizer[.paste],
+            selectAll: localizer[.selectAll],
+            lookUpSelectionFormat: localizer[.lookUpSelectionFormat],
+            searchWithGoogle: localizer[.searchWithGoogle],
+            share: localizer[.share],
+            services: localizer[.services],
+            moveToTab: localizer[.moveToTab],
+            closePane: localizer[.closePane]
+        )
+    }
+
+    private func makeClipboardConfirmationLabels()
+        -> GhosttyClipboardConfirmationLabels
+    {
+        GhosttyClipboardConfirmationLabels(
+            title: localizer[.unsafePasteTitle],
+            message: localizer[.unsafePasteMessage],
+            pasteButton: localizer[.paste],
+            cancelButton: localizer[.cancel]
+        )
+    }
+
+    // MARK: - NSWindowDelegate
+
+    /// Only the dimension perpendicular to the docked edge is meaningful to
+    /// resize by hand -- the parallel one stays pinned to the full screen
+    /// extent (e.g. dragging a top-docked panel's bottom edge changes its
+    /// height, but its width always fills the screen).
+    func windowWillResize(
+        _ sender: NSWindow,
+        to frameSize: NSSize
+    ) -> NSSize {
+        guard let screen = sender.screen else { return frameSize }
+        var size = frameSize
+        switch edge {
+        case .top, .bottom:
+            size.width = screen.visibleFrame.width
+        case .left, .right:
+            size.height = screen.visibleFrame.height
+        }
+        return size
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let screen = panel.screen else { return }
+        let ratio: CGFloat
+        switch edge {
+        case .top, .bottom:
+            ratio = panel.frame.height / screen.visibleFrame.height
+        case .left, .right:
+            ratio = panel.frame.width / screen.visibleFrame.width
+        }
+        guard ratio.isFinite else { return }
+        extentRatio = min(max(ratio, Self.minimumExtentRatio), 1)
+    }
+
+    /// Whether the panel is the app's key window right now. `AppDelegate`
+    /// consults this to gate split/pane/tab shortcuts (see
+    /// `FloatingPaneCommandAvailability`) so they don't reach a real
+    /// terminal window sitting behind this one.
+    var isKeyWindow: Bool {
+        panel === NSApplication.shared.keyWindow
+    }
+
+    // MARK: - Test seams
+
+    var isPanelVisible: Bool { panel.isVisible }
+    var hasLiveSurface: Bool { surface != nil }
+
+    /// Drives the title bar's close button, which reaches `isOpen` only
+    /// through `windowWillClose(_:)`.
+    func simulateCloseButton() {
+        panel.performClose(nil)
+    }
+}
