@@ -187,6 +187,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     private var trackingArea: NSTrackingArea?
     private var contextMenuLocation = NSPoint.zero
     private var contextMenuSharingPicker: NSSharingServicePicker?
+    private var previousPressureStage = 0
     private let searchBar: GhosttySearchBarView
     private var searchUpdateTask: Task<Void, Never>?
     private lazy var autocompleteSuggestionLabel: NSTextField = {
@@ -684,11 +685,16 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         let didRead = preservesAttributes
             ? ghostty_surface_read_text_vt(native, selection, &text)
             : ghostty_surface_read_text(native, selection, &text)
-        guard didRead,
-              let pointer = text.text
-        else { return "" }
+        guard didRead else { return "" }
         defer { ghostty_surface_free_text(native, &text) }
+        return Self.decodedText(text) ?? ""
+    }
 
+    /// Decodes the UTF-8 payload Ghostty hands back in a `ghostty_text_s`.
+    /// The caller still owns the buffer and must free it with
+    /// `ghostty_surface_free_text`.
+    nonisolated static func decodedText(_ text: ghostty_text_s) -> String? {
+        guard text.text_len > 0, let pointer = text.text else { return nil }
         let bytes = UnsafeRawPointer(pointer)
             .assumingMemoryBound(to: UInt8.self)
         return String(
@@ -823,7 +829,63 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     }
 
     public override func mouseUp(with event: NSEvent) {
+        previousPressureStage = 0
         sendMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_LEFT)
+    }
+
+    public override func pressureChange(with event: NSEvent) {
+        guard let native else { return }
+        // Ghostty tracks the pressure itself so that the word under the
+        // cursor is ready by the time we ask for it below.
+        ghostty_surface_mouse_pressure(
+            native,
+            UInt32(event.stage),
+            Double(event.pressure)
+        )
+
+        // Stage 2 is a force click; only act on the transition into it.
+        guard previousPressureStage < 2 else { return }
+        previousPressureStage = event.stage
+        guard event.stage == 2 else { return }
+
+        // Force click only looks words up when the system setting asks for
+        // it. AppKit exposes no API for this, so read the preference.
+        guard UserDefaults.standard.bool(
+            forKey: "com.apple.trackpad.forceClick"
+        ) else { return }
+        quickLook(with: event)
+    }
+
+    /// Looks up the word under the pointer, which is what a three-finger tap
+    /// (or a force click) asks for. AppKit only gets this for free on text
+    /// views, so route it through Ghostty's word selection.
+    public override func quickLook(with event: NSEvent) {
+        guard let native else { return super.quickLook(with: event) }
+        var text = ghostty_text_s()
+        guard ghostty_surface_quicklook_word(native, &text) else {
+            return super.quickLook(with: event)
+        }
+        defer { ghostty_surface_free_text(native, &text) }
+        guard let word = Self.decodedText(text), !word.isEmpty else {
+            return super.quickLook(with: event)
+        }
+
+        var attributes: [NSAttributedString.Key: Any] = [:]
+        if let fontRaw = ghostty_surface_quicklook_font(native) {
+            // ghostty_surface_quicklook_font hands back a +1 CTFont copy;
+            // storing it in the dictionary retains it again, so release the
+            // reference we were given.
+            let font = Unmanaged<CTFont>.fromOpaque(fontRaw)
+            attributes[.font] = font.takeUnretainedValue()
+            font.release()
+        }
+
+        // Ghostty reports the word's top-left in a top-left origin space;
+        // AppKit wants bottom-left.
+        showDefinition(
+            for: NSAttributedString(string: word, attributes: attributes),
+            at: NSPoint(x: text.tl_px_x, y: bounds.height - text.tl_px_y)
+        )
     }
 
     public override func rightMouseDown(with event: NSEvent) {
@@ -980,16 +1042,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
             return nil
         }
         defer { ghostty_surface_free_text(native, &text) }
-        guard text.text_len > 0, let pointer = text.text else { return nil }
-        let bytes = UnsafeRawPointer(pointer)
-            .assumingMemoryBound(to: UInt8.self)
-        return String(
-            decoding: UnsafeBufferPointer(
-                start: bytes,
-                count: Int(text.text_len)
-            ),
-            as: UTF8.self
-        )
+        return Self.decodedText(text)
     }
 
     nonisolated static func contextMenuActions(

@@ -218,4 +218,37 @@ struct GhosttySurfaceInputPolicyTests {
             )
         )
     }
+
+    @Test("decodes a Ghostty text payload as UTF-8")
+    func decodesGhosttyText() {
+        let source = "変数 café"
+        source.withCString { pointer in
+            var text = ghostty_text_s()
+            text.text = pointer
+            text.text_len = UInt(strlen(pointer))
+            #expect(GhosttySurfaceView.decodedText(text) == source)
+        }
+    }
+
+    @Test("reports no text for an empty or absent Ghostty payload")
+    func decodesEmptyGhosttyText() {
+        #expect(GhosttySurfaceView.decodedText(ghostty_text_s()) == nil)
+
+        "word".withCString { pointer in
+            var empty = ghostty_text_s()
+            empty.text = pointer
+            empty.text_len = 0
+            #expect(GhosttySurfaceView.decodedText(empty) == nil)
+        }
+    }
+
+    @Test("stops decoding a Ghostty payload at its reported length")
+    func decodesGhosttyTextWithoutTrailingBytes() {
+        "word tail".withCString { pointer in
+            var text = ghostty_text_s()
+            text.text = pointer
+            text.text_len = 4
+            #expect(GhosttySurfaceView.decodedText(text) == "word")
+        }
+    }
 }
