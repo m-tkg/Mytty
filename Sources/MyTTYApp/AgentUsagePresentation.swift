@@ -33,6 +33,14 @@ struct AgentUsageMeterContent: Equatable, Sendable {
         guard isStale else { return base }
         return "\(base) · \(localizer.cachedUsageNote())"
     }
+
+    /// Spoken value for the meter. The warning is a color change, so
+    /// VoiceOver needs it spelled out.
+    func accessibilityValue(localizer: MyTTYLocalizer) -> String {
+        let base = localizer.remainingPercent(percent)
+        guard isLow else { return base }
+        return "\(base) · \(localizer[.agentContextWarningStatus])"
+    }
 }
 
 struct AgentUsageStatusContent: Equatable, Sendable {

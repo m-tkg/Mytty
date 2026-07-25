@@ -140,6 +140,9 @@ struct AgentIntegrationSettingsView: View {
             )
             .frame(width: 160)
             .accessibilityLabel(localizer[.agentContextWarningThreshold])
+            .accessibilityValue(
+                "\(Int(settings.application.agentContextWarningThreshold))%"
+            )
 
             Text(
                 "\(Int(settings.application.agentContextWarningThreshold))%"

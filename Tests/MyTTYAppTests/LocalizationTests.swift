@@ -197,6 +197,7 @@ struct LocalizationTests {
                 + "remaining context falls below the threshold."
         )
         #expect(english[.agentContextWarningThreshold] == "Warn below")
+        #expect(english[.agentContextWarningStatus] == "Running low")
         #expect(
             japanese[.sleepClamshellArmedStatus]
                 == "モニタを閉じてもスリープしません"
@@ -250,6 +251,7 @@ struct LocalizationTests {
                 + "ステータスバーの表示を赤くします。"
         )
         #expect(japanese[.agentContextWarningThreshold] == "警告する残量")
+        #expect(japanese[.agentContextWarningStatus] == "残量わずか")
         #expect(
             japanese[.sleepModePreventWhileProcessing]
                 == "Agent の実行中はスリープしない"

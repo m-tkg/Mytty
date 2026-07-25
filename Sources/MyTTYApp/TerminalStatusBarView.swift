@@ -396,7 +396,7 @@ private struct AgentUsageMeterView: View {
         .help(content.tooltip(localizer: localizer))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.title)
-        .accessibilityValue(localizer.remainingPercent(content.percent))
+        .accessibilityValue(content.accessibilityValue(localizer: localizer))
     }
 }
 

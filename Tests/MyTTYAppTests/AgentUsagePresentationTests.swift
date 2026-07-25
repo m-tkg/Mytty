@@ -117,4 +117,34 @@ struct AgentUsagePresentationTests {
         )
         #expect(summary.statusContent()?.limits.first?.isLow == false)
     }
+
+    @Test("spells out the low context warning for VoiceOver")
+    func lowContextAccessibilityValue() throws {
+        let low = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 12,
+            lowThresholdPercent: 30
+        )
+        let normal = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 64,
+            lowThresholdPercent: 30
+        )
+
+        #expect(
+            low.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "12% left · Running low"
+        )
+        #expect(
+            low.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .japanese)
+            ) == "残り12% · 残量わずか"
+        )
+        #expect(
+            normal.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "64% left"
+        )
+    }
 }
