@@ -35,6 +35,8 @@ struct SettingsNavigationTests {
         #expect(SettingsSection.shell.matches("suggestion", localizer: localizer))
         #expect(SettingsSection.keyBindings.matches("shortcut", localizer: localizer))
         #expect(SettingsSection.agents.matches("cursor", localizer: localizer))
+        #expect(SettingsSection.agents.matches("context", localizer: localizer))
+        #expect(SettingsSection.agents.matches("warning", localizer: localizer))
         #expect(
             SettingsSection.orchestration.matches(
                 "mytty-ctl",

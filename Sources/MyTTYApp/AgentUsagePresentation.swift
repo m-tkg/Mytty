@@ -5,11 +5,23 @@ struct AgentUsageMeterContent: Equatable, Sendable {
     let title: String
     let percent: Int
     let isStale: Bool
+    /// Whether the meter should be drawn as a warning. Only the agent's
+    /// context meter passes a threshold; usage meters leave it nil.
+    let isLow: Bool
 
-    init(title: String, remainingPercent: Double, isStale: Bool = false) {
+    init(
+        title: String,
+        remainingPercent: Double,
+        isStale: Bool = false,
+        lowThresholdPercent: Double? = nil
+    ) {
         self.title = title
-        percent = Int(min(100, max(0, remainingPercent)).rounded())
+        let percent = Int(min(100, max(0, remainingPercent)).rounded())
+        self.percent = percent
         self.isStale = isStale
+        // Compare the rounded percent so the meter never reads a value that
+        // contradicts its own color.
+        isLow = lowThresholdPercent.map { Double(percent) < $0 } ?? false
     }
 
     var progress: Double {
@@ -20,6 +32,14 @@ struct AgentUsageMeterContent: Equatable, Sendable {
         let base = "\(title) \(localizer.remainingPercent(percent))"
         guard isStale else { return base }
         return "\(base) · \(localizer.cachedUsageNote())"
+    }
+
+    /// Spoken value for the meter. The warning is a color change, so
+    /// VoiceOver needs it spelled out.
+    func accessibilityValue(localizer: MyTTYLocalizer) -> String {
+        let base = localizer.remainingPercent(percent)
+        guard isLow else { return base }
+        return "\(base) · \(localizer[.agentContextWarningStatus])"
     }
 }
 

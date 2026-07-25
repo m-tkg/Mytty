@@ -79,4 +79,72 @@ struct AgentUsagePresentationTests {
             ) == "$12.30 / $50.00"
         )
     }
+
+    @Test("flags a meter as low only below the warning threshold")
+    func lowContextFlag() throws {
+        func meter(
+            _ remaining: Double,
+            threshold: Double? = 30
+        ) -> AgentUsageMeterContent {
+            AgentUsageMeterContent(
+                title: "Context",
+                remainingPercent: remaining,
+                lowThresholdPercent: threshold
+            )
+        }
+
+        #expect(meter(12).isLow)
+        // The comparison uses the rounded percent the meter displays, so a
+        // meter reading 30% is never flagged even when the raw value is
+        // slightly under the threshold.
+        #expect(!meter(29.6).isLow)
+        #expect(meter(29.4).isLow)
+        #expect(!meter(30).isLow)
+        #expect(!meter(64).isLow)
+
+        // Usage meters and a disabled warning pass no threshold at all.
+        #expect(!meter(4, threshold: nil).isLow)
+        #expect(
+            !AgentUsageMeterContent(
+                title: "5h",
+                remainingPercent: 2
+            ).isLow
+        )
+
+        let summary = AgentUsageSummary(
+            cost: nil,
+            limits: [AgentUsageLimit(title: "5h", remainingPercent: 3)]
+        )
+        #expect(summary.statusContent()?.limits.first?.isLow == false)
+    }
+
+    @Test("spells out the low context warning for VoiceOver")
+    func lowContextAccessibilityValue() throws {
+        let low = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 12,
+            lowThresholdPercent: 30
+        )
+        let normal = AgentUsageMeterContent(
+            title: "Context",
+            remainingPercent: 64,
+            lowThresholdPercent: 30
+        )
+
+        #expect(
+            low.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "12% left · Running low"
+        )
+        #expect(
+            low.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .japanese)
+            ) == "残り12% · 残量わずか"
+        )
+        #expect(
+            normal.accessibilityValue(
+                localizer: MyTTYLocalizer(language: .english)
+            ) == "64% left"
+        )
+    }
 }

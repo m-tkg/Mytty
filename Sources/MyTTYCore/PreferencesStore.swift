@@ -83,6 +83,11 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var forceASCIIInputOnFocus: Bool
     public var autocompleteEnabled: Bool
     public var agentSleepPreventionMode: AgentSleepPreventionMode
+    /// Whether the status bar's context meter turns red once the agent's
+    /// remaining context drops below `agentContextWarningThreshold`.
+    public var agentContextWarningEnabled: Bool
+    /// Percentage of remaining context below which the meter warns.
+    public var agentContextWarningThreshold: Double
     public var attentionUnreadOnly: Bool
     /// Whether tab rows show how long each tab has been open.
     public var showTabUptime: Bool
@@ -137,6 +142,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         forceASCIIInputOnFocus: Bool = false,
         autocompleteEnabled: Bool = true,
         agentSleepPreventionMode: AgentSleepPreventionMode = .allowSleep,
+        agentContextWarningEnabled: Bool = true,
+        agentContextWarningThreshold: Double = 30,
         attentionUnreadOnly: Bool = false,
         showTabUptime: Bool = false,
         paneTeamPointersEnabled: Bool = true,
@@ -167,6 +174,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.forceASCIIInputOnFocus = forceASCIIInputOnFocus
         self.autocompleteEnabled = autocompleteEnabled
         self.agentSleepPreventionMode = agentSleepPreventionMode
+        self.agentContextWarningEnabled = agentContextWarningEnabled
+        self.agentContextWarningThreshold = agentContextWarningThreshold
         self.attentionUnreadOnly = attentionUnreadOnly
         self.showTabUptime = showTabUptime
         self.paneTeamPointersEnabled = paneTeamPointersEnabled
@@ -200,6 +209,18 @@ public enum RecordingFadeOut {
     public static func normalizedColorHex(_ hex: String) -> String? {
         guard hex.count == 6, hex.allSatisfy(\.isHexDigit) else { return nil }
         return hex.uppercased()
+    }
+}
+
+/// Validation shared by the preferences store's load and save paths for the
+/// low-context warning threshold, so a value rejected on read is also
+/// rejected on write. The bounds match the settings slider: 0% and 100% would
+/// make the warning either unreachable or permanent.
+public enum AgentContextWarning {
+    public static let thresholdRange: ClosedRange<Double> = 5...95
+
+    public static func isValidThreshold(_ threshold: Double) -> Bool {
+        threshold.isFinite && thresholdRange.contains(threshold)
     }
 }
 
@@ -295,6 +316,8 @@ public struct ApplicationPreferencesStore {
             "input.force-ascii-on-focus",
             "autocomplete.enabled",
             "agents.prevent-system-sleep",
+            "agents.context-warning",
+            "agents.context-warning-threshold",
             "attention.unread-only",
             "tab.show-uptime",
             "agents.pane-team-pointers",
@@ -447,6 +470,25 @@ public struct ApplicationPreferencesStore {
                 )
             }
         }
+        if let value = document.lastValue(for: "agents.context-warning") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "agents.context-warning", value: value)
+            }
+            preferences.agentContextWarningEnabled = enabled
+        }
+        if let value = document.lastValue(
+            for: "agents.context-warning-threshold"
+        ) {
+            guard let threshold = Double(value),
+                  AgentContextWarning.isValidThreshold(threshold)
+            else {
+                throw invalid(
+                    key: "agents.context-warning-threshold",
+                    value: value
+                )
+            }
+            preferences.agentContextWarningThreshold = threshold
+        }
         if let value = document.lastValue(for: "attention.unread-only") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "attention.unread-only", value: value)
@@ -571,6 +613,14 @@ public struct ApplicationPreferencesStore {
                 value: String(preferences.inactivePaneDimming)
             )
         }
+        guard AgentContextWarning.isValidThreshold(
+            preferences.agentContextWarningThreshold
+        ) else {
+            throw invalid(
+                key: "agents.context-warning-threshold",
+                value: String(preferences.agentContextWarningThreshold)
+            )
+        }
         guard ActivePaneBorder.isValidWidth(preferences.activePaneBorderWidth)
         else {
             throw invalid(
@@ -621,6 +671,8 @@ public struct ApplicationPreferencesStore {
             "input.force-ascii-on-focus = \(quoted(String(preferences.forceASCIIInputOnFocus)))",
             "autocomplete.enabled = \(quoted(String(preferences.autocompleteEnabled)))",
             "agents.prevent-system-sleep = \(quoted(preferences.agentSleepPreventionMode.rawValue))",
+            "agents.context-warning = \(quoted(String(preferences.agentContextWarningEnabled)))",
+            "agents.context-warning-threshold = \(quoted(decimal(preferences.agentContextWarningThreshold)))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
             "tab.show-uptime = \(quoted(String(preferences.showTabUptime)))",
             "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",

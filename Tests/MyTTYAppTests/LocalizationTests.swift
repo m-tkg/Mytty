@@ -190,6 +190,14 @@ struct LocalizationTests {
                 == "Choose when Mytty keeps this Mac awake for agents."
         )
         #expect(english[.sleepModeAllowSleep] == "Allow sleep")
+        #expect(english[.agentContextWarning] == "Warn on low context")
+        #expect(
+            english[.agentContextWarningDescription]
+                == "Turn the status bar context meter red once the agent's "
+                + "remaining context falls below the threshold."
+        )
+        #expect(english[.agentContextWarningThreshold] == "Warn below")
+        #expect(english[.agentContextWarningStatus] == "Running low")
         #expect(
             japanese[.sleepClamshellArmedStatus]
                 == "モニタを閉じてもスリープしません"
@@ -234,6 +242,16 @@ struct LocalizationTests {
                 == "Agent 実行時、Mac のスリープを防ぐか選択します。"
         )
         #expect(japanese[.sleepModeAllowSleep] == "スリープする")
+        #expect(
+            japanese[.agentContextWarning] == "コンテキスト残量が少ないときに警告"
+        )
+        #expect(
+            japanese[.agentContextWarningDescription]
+                == "エージェントのコンテキスト残量がこの割合を下回ったら、"
+                + "ステータスバーの表示を赤くします。"
+        )
+        #expect(japanese[.agentContextWarningThreshold] == "警告する残量")
+        #expect(japanese[.agentContextWarningStatus] == "残量わずか")
         #expect(
             japanese[.sleepModePreventWhileProcessing]
                 == "Agent の実行中はスリープしない"
