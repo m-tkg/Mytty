@@ -22,6 +22,31 @@ import MyTTYCore
 /// created/destroyed per use. `becomesKeyOnlyIfNeeded` is deliberately not
 /// set, unlike `PaneExplanation.swift:98` -- a terminal needs real keyboard
 /// focus, not just enough to dismiss itself.
+/// Decides whether opening the floating panel should force an ASCII input
+/// source, mirroring the scope rule `TerminalWindowController` applies to
+/// its own surfaces. Pure, so the rule is testable without touching the
+/// system's input sources.
+enum FloatingPaneASCIIInputPolicy {
+    static func shouldForceASCII(
+        enabled: Bool,
+        scope: ForceASCIIInputScope,
+        shellIsFresh: Bool,
+        foregroundCommandName: String?
+    ) -> Bool {
+        guard enabled else { return false }
+        guard scope == .shellIdleOnly else { return true }
+        // A shell built moments ago has nothing running in it yet, and its
+        // foreground process usually can't be read back this early -- the
+        // one case where "no readable foreground process" means idle rather
+        // than unknown.
+        if shellIsFresh { return true }
+        guard let foregroundCommandName else { return false }
+        return TerminalAgentProcessDetector.isShellCommandName(
+            foregroundCommandName
+        )
+    }
+}
+
 @MainActor
 final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     private static let animationDuration: TimeInterval = 0.16
@@ -64,6 +89,8 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     private let frameAnimator: FrameAnimator
     private var surface: GhosttySurfaceView?
     private var edge: FloatingPaneEdge
+    private var forceASCIIInputOnFocus: Bool
+    private var forceASCIIInputScope: ForceASCIIInputScope
     /// Fraction of the screen's perpendicular dimension the panel occupies.
     /// Kept for the process's lifetime only -- never written to disk, per
     /// the spec's "don't persist a dimension the user only nudged for this
@@ -84,11 +111,15 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     init(
         localizer: MyTTYLocalizer,
         edge: FloatingPaneEdge,
+        forceASCIIInputOnFocus: Bool = false,
+        forceASCIIInputScope: ForceASCIIInputScope = .shellIdleOnly,
         runtimeProvider: @escaping () -> GhosttyRuntime?,
         frameAnimator: @escaping FrameAnimator = coreAnimationFrameAnimator
     ) {
         self.localizer = localizer
         self.edge = edge
+        self.forceASCIIInputOnFocus = forceASCIIInputOnFocus
+        self.forceASCIIInputScope = forceASCIIInputScope
         self.runtimeProvider = runtimeProvider
         self.frameAnimator = frameAnimator
 
@@ -133,6 +164,14 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    func updateASCIIInput(
+        onFocus: Bool,
+        scope: ForceASCIIInputScope
+    ) {
+        forceASCIIInputOnFocus = onFocus
+        forceASCIIInputScope = scope
+    }
+
     /// Slides the panel in if it's closed, out if it's open. Safe to call
     /// mid-animation: the in-flight slide reverses direction from wherever
     /// it currently is instead of snapping first.
@@ -147,6 +186,7 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     private func show() {
         guard let frames = targetFrames() else { return }
         isSlidingOut = false
+        let shellIsFresh = surface == nil
         ensureSurface()
         // Only jump to the staged off-screen frame when actually starting
         // from closed. Reversing a slide-out mid-flight must resume from
@@ -154,19 +194,54 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         if !panel.isVisible {
             panel.setFrame(frames.offscreen, display: false)
             NSApplication.shared.activate(ignoringOtherApps: true)
-            panel.orderFrontRegardless()
         }
+        forceASCIIInputIfNeeded(shellIsFresh: shellIsFresh)
         // Key status is taken before the slide, not in its completion
-        // handler: `orderFrontRegardless()` shows the panel without making
-        // it key, and an `NSWindow` frame animation's completion is not a
-        // dependable place to hang that on -- when it doesn't run, the
-        // panel sits there visibly focused-looking while every keystroke
-        // goes to whatever window actually holds focus.
-        panel.makeKey()
+        // handler: an `NSWindow` frame animation's completion is not a
+        // dependable place to hang it on, and when it doesn't run the panel
+        // sits there looking focused while every keystroke goes to whatever
+        // window actually holds focus.
+        //
+        // Activating the app is asynchronous and hands key status back to
+        // the window that last held it, so the panel has to claim it again
+        // once that has settled. Doing it twice -- now and on the next turn
+        // of the run loop -- covers both the already-active case (where
+        // there is nothing to wait for) and the summoned-from-another-app
+        // case.
+        takeKeyFocus()
+        DispatchQueue.main.async { [weak self] in
+            self?.takeKeyFocus()
+        }
+        animate(to: frames.onscreen) {}
+    }
+
+    private func takeKeyFocus() {
+        guard !isSlidingOut else { return }
+        panel.makeKeyAndOrderFront(nil)
         if let surface {
             panel.makeFirstResponder(surface)
         }
-        animate(to: frames.onscreen) {}
+    }
+
+    /// Switches the input source to an ASCII-capable one as the panel takes
+    /// focus. `TerminalWindowController` does the same for its own surfaces
+    /// (`forceASCIIInputIfNeeded`) but can't cover this one, which isn't in
+    /// its `surfaces`. The global hot key makes it matter more here: the
+    /// panel is routinely summoned from another app, and whatever IME that
+    /// app was using would otherwise still be active at the prompt.
+    private func forceASCIIInputIfNeeded(shellIsFresh: Bool) {
+        let foregroundCommandName = surface.flatMap {
+            TerminalAgentProcessDetector.commandName(
+                processID: $0.foregroundProcessID
+            )
+        }
+        guard FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: forceASCIIInputOnFocus,
+            scope: forceASCIIInputScope,
+            shellIsFresh: shellIsFresh,
+            foregroundCommandName: foregroundCommandName
+        ) else { return }
+        ASCIIInputSourceSwitcher.switchToASCIIIfNeeded()
     }
 
     private func hide() {

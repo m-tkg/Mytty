@@ -482,9 +482,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func toggleFloatingPane(_ sender: Any?) {
+        let preferences = settingsModel?.application
         let panel = floatingTerminalPanel ?? FloatingTerminalPanelController(
             localizer: localizer,
-            edge: settingsModel?.application.floatingPaneEdge ?? .top,
+            edge: preferences?.floatingPaneEdge ?? .top,
+            forceASCIIInputOnFocus: preferences?.forceASCIIInputOnFocus
+                ?? false,
+            forceASCIIInputScope: preferences?.forceASCIIInputScope
+                ?? .shellIdleOnly,
             runtimeProvider: { [weak self] in self?.runtime }
         )
         floatingTerminalPanel = panel
@@ -1000,6 +1005,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remotePushNotifier?.updateLocalization(localizer)
         floatingTerminalPanel?.updateLocalization(localizer)
         floatingTerminalPanel?.updateEdge(preferences.floatingPaneEdge)
+        floatingTerminalPanel?.updateASCIIInput(
+            onFocus: preferences.forceASCIIInputOnFocus,
+            scope: preferences.forceASCIIInputScope
+        )
         registerFloatingPaneHotKey(
             enabled: preferences.floatingPaneGlobalHotKeyEnabled,
             binding: preferences.keyBindings[.toggleFloatingPane]

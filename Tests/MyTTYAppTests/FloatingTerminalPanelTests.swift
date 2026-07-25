@@ -5,6 +5,72 @@ import Testing
 
 @testable import MyTTYApp
 
+@Suite("Floating pane ASCII input policy")
+struct FloatingPaneASCIIInputPolicyTests {
+    @Test("stays out of the way when the preference is off")
+    func disabledNeverSwitches() {
+        #expect(!FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: false,
+            scope: .always,
+            shellIsFresh: true,
+            foregroundCommandName: "zsh"
+        ))
+    }
+
+    @Test("the always scope switches whatever is running in the panel")
+    func alwaysScopeIgnoresForegroundProcess() {
+        #expect(FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .always,
+            shellIsFresh: false,
+            foregroundCommandName: "vim"
+        ))
+    }
+
+    @Test("the idle scope leaves a running process's input source alone")
+    func idleScopeSkipsRunningProcess() {
+        #expect(!FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            shellIsFresh: false,
+            foregroundCommandName: "vim"
+        ))
+    }
+
+    @Test("the idle scope switches at a bare prompt")
+    func idleScopeSwitchesAtPrompt() {
+        #expect(FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            shellIsFresh: false,
+            foregroundCommandName: "zsh"
+        ))
+    }
+
+    @Test("a just-created shell counts as idle before it can be read")
+    func freshShellCountsAsIdle() {
+        // The panel's very first open is exactly when this matters -- it's
+        // summoned from another app whose IME is active -- and the shell is
+        // too young for its foreground process to come back.
+        #expect(FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            shellIsFresh: true,
+            foregroundCommandName: nil
+        ))
+    }
+
+    @Test("an unreadable foreground process in an old shell is left alone")
+    func unknownForegroundProcessSkips() {
+        #expect(!FloatingPaneASCIIInputPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            shellIsFresh: false,
+            foregroundCommandName: nil
+        ))
+    }
+}
+
 @Suite("Floating terminal panel")
 struct FloatingTerminalPanelTests {
     @MainActor
