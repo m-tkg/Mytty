@@ -5,20 +5,19 @@ struct ApplicationUpdateControlsView: View {
     @ObservedObject var model: ApplicationUpdateModel
     let localizer: MyTTYLocalizer
     var updatesEnabled = ApplicationIdentity.supportsSelfUpdate
+    /// About shows the running version in its own header, so it suppresses
+    /// this row rather than naming the version twice.
+    var showsCurrentVersion = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            LabeledContent(localizer[.currentVersion]) {
-                // Development builds carry a placeholder version that has no
-                // release page, so they stay plain text.
-                if updatesEnabled {
-                    Link(destination: model.currentReleaseNotesURL) {
-                        Text(verbatim: currentVersionText)
-                    }
-                    .help(localizer[.viewReleaseNotes])
-                } else {
-                    Text(verbatim: currentVersionText)
-                        .foregroundStyle(.secondary)
+            if showsCurrentVersion {
+                LabeledContent(localizer[.currentVersion]) {
+                    CurrentVersionText(
+                        model: model,
+                        localizer: localizer,
+                        linksReleaseNotes: updatesEnabled
+                    )
                 }
             }
 
@@ -74,11 +73,6 @@ struct ApplicationUpdateControlsView: View {
         }
     }
 
-    private var currentVersionText: String {
-        "\(ApplicationIdentity.displayName) "
-            + model.currentVersion.description
-    }
-
     private var isBusy: Bool {
         switch model.phase {
         case .checking, .installing:
@@ -123,6 +117,34 @@ struct ApplicationUpdateControlsView: View {
     }
 }
 
+/// The running version, linked to its release notes where a published
+/// release exists. Development builds carry a placeholder version with no
+/// release page, so they stay plain text.
+private struct CurrentVersionText: View {
+    @ObservedObject var model: ApplicationUpdateModel
+    let localizer: MyTTYLocalizer
+    let linksReleaseNotes: Bool
+    var prefixesDisplayName = true
+
+    var body: some View {
+        if linksReleaseNotes {
+            Link(destination: model.currentReleaseNotesURL) {
+                Text(verbatim: text)
+            }
+            .help(localizer[.viewReleaseNotes])
+        } else {
+            Text(verbatim: text)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var text: String {
+        let version = model.currentVersion.description
+        guard prefixesDisplayName else { return version }
+        return "\(ApplicationIdentity.displayName) \(version)"
+    }
+}
+
 struct UpdatesSettingsView: View {
     @ObservedObject var model: ApplicationUpdateModel
     let localizer: MyTTYLocalizer
@@ -144,6 +166,7 @@ struct UpdatesSettingsView: View {
 struct ApplicationAboutView: View {
     @ObservedObject var model: ApplicationUpdateModel
     let localizer: MyTTYLocalizer
+    var updatesEnabled = ApplicationIdentity.supportsSelfUpdate
 
     var body: some View {
         VStack(spacing: 18) {
@@ -157,18 +180,25 @@ struct ApplicationAboutView: View {
             VStack(spacing: 4) {
                 Text(ApplicationIdentity.displayName)
                     .font(.system(size: 24, weight: .semibold))
-                Text(
-                    verbatim: localizer[.currentVersion] + " "
-                        + model.currentVersion.description
-                )
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Text(localizer[.currentVersion])
+                        .foregroundStyle(.secondary)
+                    CurrentVersionText(
+                        model: model,
+                        localizer: localizer,
+                        linksReleaseNotes: updatesEnabled,
+                        prefixesDisplayName: false
+                    )
+                }
             }
 
             Divider()
 
             ApplicationUpdateControlsView(
                 model: model,
-                localizer: localizer
+                localizer: localizer,
+                updatesEnabled: updatesEnabled,
+                showsCurrentVersion: false
             )
             .frame(maxWidth: .infinity, alignment: .leading)
         }
