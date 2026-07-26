@@ -15,6 +15,10 @@ struct BrowserPaneDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var safariURL: SafariURL?
+    /// The tab this pane lived in per the latest snapshot, so a vanished
+    /// pane can be told apart from a vanished tab (see the snapshot
+    /// onChange below).
+    @State private var owningTabID: String?
 
     private struct SafariURL: Identifiable {
         let id = UUID()
@@ -89,14 +93,29 @@ struct BrowserPaneDetailView: View {
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // The pane closed on the Mac: pop back to the pane list. Only judged
+        // The pane closed on the Mac: pop back to the pane list — unless
+        // the whole tab closed, in which case the pane list pops itself
+        // back to the tab list and takes this view with it. Only judged
         // against a snapshot from a live connection — a reconnect clears
         // `snapshot`, and that must not be read as "the pane is gone".
         .onChange(of: client.snapshot) {
             guard client.isConnected, let snapshot = client.snapshot else {
                 return
             }
-            if snapshot.pane(withID: pane.id) == nil { dismiss() }
+            switch snapshot.paneClosePopAction(
+                paneID: pane.id,
+                tabID: owningTabID
+            ) {
+            case .popToPaneList:
+                dismiss()
+            case .deferToTabList:
+                break
+            case .none:
+                owningTabID = snapshot.location(ofPaneID: pane.id)?.tabID
+            }
+        }
+        .onAppear {
+            owningTabID = client.snapshot?.location(ofPaneID: pane.id)?.tabID
         }
         .navigationTitle(currentPane.title)
         .navigationBarTitleDisplayMode(.inline)
