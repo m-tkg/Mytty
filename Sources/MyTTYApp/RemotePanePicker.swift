@@ -47,8 +47,9 @@ final class RemotePanePickerModel: ObservableObject {
 
     /// The preselection only wins when it names a Mac that is still
     /// paired — a stale ID falls back to the first host, same as no
-    /// preselection at all.
-    static func initialHostID(
+    /// preselection at all. Nonisolated: pure over its arguments, and the
+    /// class's main-actor isolation would otherwise leak into tests.
+    nonisolated static func initialHostID(
         preselected: String?,
         hosts: [PairedMac]
     ) -> String? {
