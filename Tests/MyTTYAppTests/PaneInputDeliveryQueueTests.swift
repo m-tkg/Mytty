@@ -25,6 +25,7 @@ private final class FakeSurface: RemoteInputDeliverable {
     }
 
     func sendText(_ text: String) { log.record("\(id):text:\(text)") }
+    func sendTypedText(_ text: String) { log.record("\(id):typed:\(text)") }
     func sendEnter() { log.record("\(id):enter") }
 }
 
@@ -161,6 +162,48 @@ struct PaneInputDeliveryQueueTests {
         try await waitFor(log, count: 3)
 
         #expect(log.entries == ["p1:text:A1", "p2:text:B1", "p1:enter"])
+    }
+
+    @Test("typed input takes the key-event path, pasted input the paste path")
+    @MainActor
+    func typedInputBypassesThePastePath() async throws {
+        // Typed text must never go out as a bracketed paste: zsh renders a
+        // paste in reverse video, which on the phone looks like a second
+        // cursor sitting on the characters just typed.
+        let log = DeliveryLog()
+        let pane = TerminalSurfaceID()
+        let panes: [TerminalSurfaceID: FakeSurface] = [
+            pane: FakeSurface(id: "p", log: log)
+        ]
+        let queue = PaneInputDeliveryQueue<FakeSurface>(
+            enterDelay: .milliseconds(20),
+            target: { panes[$0] }
+        )
+
+        #expect(
+            queue.deliver(
+                paneID: pane,
+                text: "a",
+                pressEnter: true,
+                paste: false
+            )
+        )
+        // Queued behind the pending Enter, so this also exercises the
+        // replay path keeping each entry's own paste flag.
+        #expect(
+            queue.deliver(
+                paneID: pane,
+                text: "clipboard",
+                pressEnter: false,
+                paste: true
+            )
+        )
+
+        try await waitFor(log, count: 3)
+
+        #expect(
+            log.entries == ["p:typed:a", "p:enter", "p:text:clipboard"]
+        )
     }
 
     @Test("a pane closing while input is queued drops the queue without crashing")

@@ -27,7 +27,17 @@ public enum RemoteMessage: Equatable, Sendable {
         styledLines: [RemoteStyledLine]?,
         altScreen: Bool?
     )
-    case sendInput(paneID: String, text: String, pressEnter: Bool)
+    /// Text typed (or pasted) into a pane. `paste` distinguishes the two:
+    /// `false` delivers the text as typed keyboard input, `true` as a
+    /// clipboard paste (bracketed, so multi-line content is framed for the
+    /// shell). nil comes from older clients that only ever sent pastes;
+    /// the Mac keeps treating those as pastes.
+    case sendInput(
+        paneID: String,
+        text: String,
+        pressEnter: Bool,
+        paste: Bool?
+    )
     /// Scrolls a pane remotely. `deltaY` is in wheel lines (positive =
     /// toward older content), forwarded to the terminal as mouse-wheel
     /// input so full-screen TUIs (which have no scrollback to mirror)
@@ -100,6 +110,7 @@ extension RemoteMessage: Codable {
         case paneID
         case text
         case pressEnter
+        case paste
         case windowID
         case key
         case modifiers
@@ -182,7 +193,8 @@ extension RemoteMessage: Codable {
             self = .sendInput(
                 paneID: try container.decode(String.self, forKey: .paneID),
                 text: try container.decode(String.self, forKey: .text),
-                pressEnter: try container.decode(Bool.self, forKey: .pressEnter)
+                pressEnter: try container.decode(Bool.self, forKey: .pressEnter),
+                paste: try container.decodeIfPresent(Bool.self, forKey: .paste)
             )
         case .sendKey:
             self = .sendKey(
@@ -292,11 +304,12 @@ extension RemoteMessage: Codable {
             try container.encode(MessageType.scrollPane, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
             try container.encode(deltaY, forKey: .deltaY)
-        case let .sendInput(paneID, text, pressEnter):
+        case let .sendInput(paneID, text, pressEnter, paste):
             try container.encode(MessageType.sendInput, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
             try container.encode(text, forKey: .text)
             try container.encode(pressEnter, forKey: .pressEnter)
+            try container.encodeIfPresent(paste, forKey: .paste)
         case let .sendKey(paneID, key, modifiers):
             try container.encode(MessageType.sendKey, forKey: .type)
             try container.encode(paneID, forKey: .paneID)

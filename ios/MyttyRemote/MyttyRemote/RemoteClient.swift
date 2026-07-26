@@ -274,8 +274,23 @@ final class RemoteClient: ObservableObject {
         send(.unwatchPane(paneID: paneID))
     }
 
-    func sendInput(paneID: String, text: String, pressEnter: Bool) {
-        send(.sendInput(paneID: paneID, text: text, pressEnter: pressEnter))
+    /// `paste` tells the Mac whether to deliver the text as a clipboard
+    /// paste or as typed keyboard input; typed is the default because
+    /// everything but the paste key comes from the on-screen keyboard.
+    func sendInput(
+        paneID: String,
+        text: String,
+        pressEnter: Bool,
+        paste: Bool = false
+    ) {
+        send(
+            .sendInput(
+                paneID: paneID,
+                text: text,
+                pressEnter: pressEnter,
+                paste: paste
+            )
+        )
     }
 
     func sendKey(paneID: String, key: String, modifiers: [String]) {

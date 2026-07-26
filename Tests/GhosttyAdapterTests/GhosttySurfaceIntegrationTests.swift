@@ -710,6 +710,65 @@ struct GhosttySurfaceIntegrationTests {
         #expect(intercepted == 1)
     }
 
+    @Test("typed text reaches the shell without the paste path's highlight")
+    @MainActor
+    func typedTextIsNotPasted() async throws {
+        // `sendText` goes through libghostty's clipboard-paste path, which
+        // frames the text as a bracketed paste; zsh then renders the pasted
+        // region in reverse video (SGR 7). On the iOS remote that reverse
+        // video reads as a second cursor sitting on the characters just
+        // typed, so remote keystrokes must use `sendTypedText` instead.
+        try GhosttyLibrary.initializeCurrentProcess()
+        let file = try temporaryConfiguration()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let configuration = try GhosttyConfiguration(file: file)
+        let runtime = try GhosttyRuntime(configuration: configuration)
+        let marker = "mytty-typed-text"
+        let surface = try GhosttySurfaceView(
+            runtime: runtime,
+            workingDirectory: file.deletingLastPathComponent(),
+            initialInput: "printf '\(marker)\\n'\n"
+        )
+
+        for _ in 0..<100 {
+            if surface.visibleText().contains(marker) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        // Let the prompt that follows the marker finish drawing: text sent
+        // into a half-drawn prompt lands before zsh's line editor is ready
+        // and never picks up the highlight this test is about.
+        try await Task.sleep(for: .milliseconds(400))
+
+        surface.sendTypedText("aaa")
+        var promptLine = ""
+        for _ in 0..<100 {
+            // `\r\n` is a single Swift Character, so normalize before
+            // splitting or the whole dump comes back as one line.
+            promptLine = surface.screenVTText()
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .last
+                .map(String.init) ?? ""
+            if promptLine.contains("aaa") { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        // The line editor repaints its highlight a beat after the
+        // characters appear, so read the styling once more after settling.
+        try await Task.sleep(for: .milliseconds(300))
+        promptLine = surface.screenVTText()
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .last
+            .map(String.init) ?? ""
+
+        #expect(surface.visibleText().hasSuffix("aaa"))
+        // The typed characters carry no styling of their own — in
+        // particular no `ESC[7m`, which the shell applies to a bracketed
+        // paste and which renders as a reverse-video block.
+        #expect(promptLine.contains("$ aaa"))
+        #expect(!promptLine.contains("\u{1B}[7m"))
+    }
+
     private func temporaryConfiguration() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

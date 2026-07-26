@@ -98,7 +98,8 @@ final class RemotePaneBridge {
     func deliverInput(
         paneID: TerminalSurfaceID,
         text: String,
-        pressEnter: Bool
+        pressEnter: Bool,
+        paste: Bool = true
     ) -> Bool {
         // `false` still means "no such pane". `true` means the pane exists
         // and the input was accepted for delivery — it may not have been
@@ -107,7 +108,12 @@ final class RemotePaneBridge {
         // follow-up call can't overtake it and scramble the order the PTY
         // sees. Callers that need "already delivered" can't read that off
         // this return value.
-        inputQueue.deliver(paneID: paneID, text: text, pressEnter: pressEnter)
+        inputQueue.deliver(
+            paneID: paneID,
+            text: text,
+            pressEnter: pressEnter,
+            paste: paste
+        )
     }
 
     @discardableResult
