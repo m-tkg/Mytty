@@ -5,6 +5,9 @@ struct HomeView: View {
     let pairedMacs: [PairedMac]
     let onConnect: (PairedMac) -> Void
     let onAddMac: () -> Void
+    let onEdit: (PairedMac) -> Void
+    let onDelete: (PairedMac) -> Void
+    let onMove: (IndexSet, Int) -> Void
 
     var body: some View {
         List {
@@ -15,6 +18,11 @@ struct HomeView: View {
                             onConnect(mac)
                         } label: {
                             HStack(spacing: 12) {
+                                // Affordance for the long-press drag that
+                                // reorders the list; the gesture itself is
+                                // the List's own, from onMove below.
+                                Image(systemName: "line.3.horizontal")
+                                    .foregroundStyle(.tertiary)
                                 Image(systemName: "desktopcomputer")
                                     .foregroundStyle(.secondary)
                                 VStack(alignment: .leading, spacing: 2) {
@@ -32,6 +40,21 @@ struct HomeView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                onDelete(mac)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button {
+                                onEdit(mac)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                        }
+                    }
+                    .onMove { source, destination in
+                        onMove(source, destination)
                     }
                 }
             }
