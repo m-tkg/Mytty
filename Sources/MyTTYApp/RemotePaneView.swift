@@ -184,6 +184,25 @@ final class RemotePaneView: NSView {
         configureComposition()
         configureScrollView()
 
+        // The chrome labels must never dictate the pane's width: their
+        // default hugging and compression resistance (750) outrank
+        // NSSplitView's divider position, so a label pinned to both edges
+        // (composition) pulls the pane toward its own text width and a
+        // long title pushes the divider off the stored ratio. Truncating
+        // or stretching is the right outcome for all of them.
+        for label in [
+            badgeLabel, titleLabel, agentLabel, bannerLabel, compositionLabel,
+        ] {
+            label.setContentCompressionResistancePriority(
+                NSLayoutConstraint.Priority(100),
+                for: .horizontal
+            )
+            label.setContentHuggingPriority(
+                NSLayoutConstraint.Priority(100),
+                for: .horizontal
+            )
+        }
+
         for subview in [header, bannerView, scrollView, compositionLabel] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             addSubview(subview)
@@ -230,6 +249,7 @@ final class RemotePaneView: NSView {
         header.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
 
         badgeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        badgeLabel.lineBreakMode = .byTruncatingTail
         badgeLabel.textColor = .white
         badgeLabel.wantsLayer = true
         badgeLabel.layer?.backgroundColor = NSColor.systemIndigo.cgColor
@@ -348,6 +368,7 @@ final class RemotePaneView: NSView {
 
     private func configureComposition() {
         compositionLabel.font = .systemFont(ofSize: 12)
+        compositionLabel.lineBreakMode = .byTruncatingTail
         compositionLabel.textColor = .labelColor
         compositionLabel.wantsLayer = true
         compositionLabel.layer?.backgroundColor = NSColor
