@@ -150,6 +150,7 @@ struct PaneDetailView: View {
                 // won't fire again — but the Mac forgot the watch with the
                 // old connection and has to be told again.
                 client.watchPane(pane.id)
+                client.acknowledgeAttention(paneID: pane.id)
             }
         }
         // The pane closed on the Mac: pop back to the pane list. Only judged
@@ -159,7 +160,16 @@ struct PaneDetailView: View {
             guard client.isConnected, let snapshot = client.snapshot else {
                 return
             }
-            if snapshot.pane(withID: pane.id) == nil { dismiss() }
+            guard let current = snapshot.pane(withID: pane.id) else {
+                dismiss()
+                return
+            }
+            // The agent asked for attention while this pane is already on
+            // screen: viewing it counts as reading the request, so clear
+            // it on the Mac the way a locally focused pane would.
+            if current.agent?.needsAttention == true {
+                client.acknowledgeAttention(paneID: pane.id)
+            }
         }
         .navigationTitle(currentTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -211,6 +221,10 @@ struct PaneDetailView: View {
         .onAppear {
             rebuildRenderedChunks()
             client.watchPane(pane.id)
+            // Opening the pane is the moment its notification is
+            // considered read, mirroring how focusing a pane on the Mac
+            // clears its Attention items and unread badge.
+            client.acknowledgeAttention(paneID: pane.id)
         }
         .onChange(of: screen) { rebuildRenderedChunks() }
         .onDisappear { client.unwatchPane(pane.id) }
