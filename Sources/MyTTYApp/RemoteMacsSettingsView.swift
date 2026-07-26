@@ -1,10 +1,11 @@
 import MyTTYRemoteKit
 import SwiftUI
 
-/// Settings for the Macs this Mac opens remote panes onto — the client half
-/// of remote access. `RemoteAccessSettingsView` is the other half: the
-/// devices allowed to connect *in*.
-struct RemoteMacsSettingsView: View {
+/// The sections for the Macs this Mac opens remote panes onto — the client
+/// half of remote access. Rendered inside `RemoteAccessSettingsView`'s Form
+/// (the server half: the devices allowed to connect *in*), so both
+/// directions of pairing live on the one Remote Access settings pane.
+struct RemoteMacsSettingsSections: View {
     @ObservedObject var model: RemoteMacsSettingsModel
     let localizer: MyTTYLocalizer
 
@@ -19,7 +20,7 @@ struct RemoteMacsSettingsView: View {
     @State private var renameDraft = ""
 
     var body: some View {
-        Form {
+        Group {
             Section {
                 header
             }
@@ -44,8 +45,6 @@ struct RemoteMacsSettingsView: View {
                 }
             }
         }
-        .formStyle(.grouped)
-        .padding(12)
         .onAppear { model.refresh() }
         .onDisappear { model.stopDiscovery() }
         .onChange(of: isAdding) {

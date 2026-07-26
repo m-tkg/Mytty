@@ -8,7 +8,7 @@ This is the same connection the iOS remote app uses, with a Mac on the client si
 
 On the Mac whose terminals you want to see:
 
-1. Open **Settings > iOS Remote Access** and turn it on.
+1. Open **Settings > Remote Access** and turn it on.
 2. Click **Generate Pairing QR Code**.
 3. Click **Copy Pairing Link**.
 
@@ -16,7 +16,7 @@ The link is a `mytty://pair?...` URL carrying a one-time token. It expires in tw
 
 ## Pair from the Mac you are sitting at
 
-1. Open **Settings > Remote Macs** and click **Add Mac…**.
+1. Open **Settings > Remote Access** and click **Add Mac…** in the Remote Macs section.
 2. Paste the pairing link.
 3. Give the Mac a name — it is what the pane badge and the status bar will show.
 4. Pick the Mac from the address list if it appears there, or enter its address and port by hand. Macs advertising Mytty on the local network show up automatically.
