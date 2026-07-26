@@ -63,10 +63,14 @@ private final class StubSocketServer: @unchecked Sendable {
         try #require(bound == 0)
         try #require(Darwin.listen(listener, 8) == 0)
 
-        let listener = self.listener
+        // Deliberately not named `listener`: a local shadowing the property
+        // makes the `bind` closure above resolve to it, which older Swift
+        // compilers (the CI runner's) reject as a capture before
+        // declaration.
+        let acceptSocket = self.listener
         let thread = Thread { [weak self] in
             while true {
-                let client = Darwin.accept(listener, nil, nil)
+                let client = Darwin.accept(acceptSocket, nil, nil)
                 guard client >= 0 else { return }
                 guard let self else {
                     Darwin.close(client)
