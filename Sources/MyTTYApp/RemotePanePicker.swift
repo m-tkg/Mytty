@@ -32,11 +32,31 @@ final class RemotePanePickerModel: ObservableObject {
 
     private let connections: RemotePaneConnectionCoordinator
 
-    init(connections: RemotePaneConnectionCoordinator) {
+    init(
+        connections: RemotePaneConnectionCoordinator,
+        preselectedHostID: String? = nil
+    ) {
         self.connections = connections
         hosts = connections.hosts()
-        selectedHostID = hosts.first?.deviceID
+        selectedHostID = Self.initialHostID(
+            preselected: preselectedHostID,
+            hosts: hosts
+        )
         browseSelectedHost()
+    }
+
+    /// The preselection only wins when it names a Mac that is still
+    /// paired — a stale ID falls back to the first host, same as no
+    /// preselection at all.
+    static func initialHostID(
+        preselected: String?,
+        hosts: [PairedMac]
+    ) -> String? {
+        if let preselected,
+           hosts.contains(where: { $0.deviceID == preselected }) {
+            return preselected
+        }
+        return hosts.first?.deviceID
     }
 
     var selectedHostName: String {
@@ -166,10 +186,14 @@ final class RemotePanePickerController {
         connections: RemotePaneConnectionCoordinator,
         localizer: MyTTYLocalizer,
         over parent: NSWindow?,
+        preselectedHostID: String? = nil,
         onPick: @escaping (RemotePaneSelection) -> Void
     ) {
         guard let parent else { return }
-        let model = RemotePanePickerModel(connections: connections)
+        let model = RemotePanePickerModel(
+            connections: connections,
+            preselectedHostID: preselectedHostID
+        )
         let view = RemotePanePickerView(
             model: model,
             localizer: localizer,

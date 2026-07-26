@@ -1,6 +1,7 @@
 import AppKit
 import GhosttyAdapter
 import MyTTYCore
+import MyTTYRemoteKit
 
 enum ApplicationWindowLifecycle {
     static func shouldCloseSettings(
@@ -460,6 +461,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windowSessionCoordinator.activeController?.openRemotePane()
     }
 
+    /// The Settings window's per-Mac "Open Remote Pane…" button. The picker
+    /// sheet belongs on a terminal window, so bring one forward first; with
+    /// no terminal window open there is nothing a remote pane could split.
+    private func openRemotePane(preselecting host: PairedMac) {
+        guard let controller = windowSessionCoordinator.activeController
+            ?? windowSessionCoordinator.controllers.first
+        else { return }
+        controller.window?.makeKeyAndOrderFront(nil)
+        controller.openRemotePane(preselectingHostID: host.deviceID)
+    }
+
     @objc func explainPane(_ sender: Any?) {
         windowSessionCoordinator.activeController?.explainFocusedPane()
     }
@@ -588,7 +600,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 remoteAccessModel: remoteAccessCoordinator.settingsModel,
                 remoteMacsModel: RemoteMacsSettingsModel(
                     connections: remotePaneConnections
-                )
+                ),
+                openRemotePane: { [weak self] host in
+                    self?.openRemotePane(preselecting: host)
+                }
             )
         }
         settingsWindowController?.present()
