@@ -8,6 +8,10 @@ import SwiftUI
 struct RemoteMacsSettingsSections: View {
     @ObservedObject var model: RemoteMacsSettingsModel
     let localizer: MyTTYLocalizer
+    /// Opens the remote pane picker on a terminal window, preselecting
+    /// this Mac. Provided by the app delegate because the picker belongs
+    /// to a terminal window, not to the Settings window this view is in.
+    let onOpenPane: (PairedMac) -> Void
 
     @State private var isAdding = false
     @State private var link = ""
@@ -37,6 +41,10 @@ struct RemoteMacsSettingsSections: View {
                 Button(localizer[.addRemoteMac]) {
                     isAdding = true
                 }
+                Text(localizer[.remoteMacsOpenHint])
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if isAdding {
@@ -138,6 +146,10 @@ struct RemoteMacsSettingsSections: View {
                 }
             }
             Spacer()
+            Button(localizer[.openRemotePane]) {
+                onOpenPane(host)
+            }
+            .buttonStyle(.borderless)
             Button(localizer[.renameDevice]) {
                 renameDraft = host.displayName
                 pendingRename = host
@@ -159,10 +171,23 @@ struct RemoteMacsSettingsSections: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
-        TextField(localizer[.pairingLink], text: $link)
-            .textFieldStyle(.roundedBorder)
-        TextField(localizer[.remoteMacName], text: $label)
-            .textFieldStyle(.roundedBorder)
+        // Deliberately not bare labeled TextFields: the grouped Form
+        // would push those to the trailing edge, and pasted pairing links
+        // are long enough to want the full row width.
+        VStack(alignment: .leading, spacing: 4) {
+            Text(localizer[.pairingLink])
+            TextField("mytty://pair?…", text: $link)
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .accessibilityLabel(localizer[.pairingLink])
+        }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(localizer[.remoteMacName])
+            TextField("", text: $label)
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .accessibilityLabel(localizer[.remoteMacName])
+        }
 
         Picker(localizer[.remoteMacAddress], selection: $selectedMacID) {
             ForEach(model.discovered) { mac in

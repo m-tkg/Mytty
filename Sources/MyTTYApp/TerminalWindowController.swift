@@ -570,11 +570,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     /// Asks which pane on which paired Mac to mirror, then opens it beside
     /// the focused pane. Presented as a sheet because the pane list only
     /// arrives once a connection to that Mac is up.
-    func openRemotePane() {
+    func openRemotePane(preselectingHostID hostID: String? = nil) {
         remotePanePicker.present(
             connections: remoteConnections,
             localizer: localizer,
-            over: window
+            over: window,
+            preselectedHostID: hostID
         ) { [weak self] selection in
             self?.addRemotePane(selection, direction: .right)
         }

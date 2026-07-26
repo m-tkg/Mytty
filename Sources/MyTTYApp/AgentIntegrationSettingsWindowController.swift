@@ -1,4 +1,5 @@
 import AppKit
+import MyTTYRemoteKit
 import SwiftUI
 
 @MainActor
@@ -17,7 +18,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         defaultTerminalModel: DefaultTerminalModel,
         commandLineToolInstallModel: CommandLineToolInstallModel,
         remoteAccessModel: RemoteAccessSettingsModel,
-        remoteMacsModel: RemoteMacsSettingsModel
+        remoteMacsModel: RemoteMacsSettingsModel,
+        openRemotePane: @escaping (PairedMac) -> Void
     ) {
         self.settingsModel = settingsModel
         self.integrationsModel = integrationsModel
@@ -32,7 +34,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defaultTerminal: defaultTerminalModel,
             commandLineToolInstall: commandLineToolInstallModel,
             remoteAccess: remoteAccessModel,
-            remoteMacs: remoteMacsModel
+            remoteMacs: remoteMacsModel,
+            onOpenRemotePane: openRemotePane
         )
         let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(

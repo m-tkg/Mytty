@@ -7,6 +7,7 @@ struct RemoteAccessSettingsView: View {
     @ObservedObject var model: RemoteAccessSettingsModel
     @ObservedObject var remoteMacs: RemoteMacsSettingsModel
     let localizer: MyTTYLocalizer
+    let onOpenRemotePane: (PairedMac) -> Void
 
     @State private var copiedLink = false
     @State private var pendingRemoval: RemotePairedDevice?
@@ -46,7 +47,8 @@ struct RemoteAccessSettingsView: View {
             // server being enabled.
             RemoteMacsSettingsSections(
                 model: remoteMacs,
-                localizer: localizer
+                localizer: localizer,
+                onOpenPane: onOpenRemotePane
             )
         }
         .formStyle(.grouped)

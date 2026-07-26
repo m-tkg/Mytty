@@ -1,5 +1,6 @@
 import AppKit
 import MyTTYCore
+import MyTTYRemoteKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -10,6 +11,7 @@ struct SettingsView: View {
     @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     @ObservedObject var remoteAccess: RemoteAccessSettingsModel
     @ObservedObject var remoteMacs: RemoteMacsSettingsModel
+    let onOpenRemotePane: (PairedMac) -> Void
     @State private var selection: SettingsSection? = .general
     @State private var searchText = ""
 
@@ -126,7 +128,8 @@ struct SettingsView: View {
                     settings: settings,
                     model: remoteAccess,
                     remoteMacs: remoteMacs,
-                    localizer: localizer
+                    localizer: localizer,
+                    onOpenRemotePane: onOpenRemotePane
                 )
             case .update:
                 UpdatesSettingsView(
