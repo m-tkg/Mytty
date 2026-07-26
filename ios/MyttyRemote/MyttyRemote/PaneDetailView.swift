@@ -172,17 +172,17 @@ struct PaneDetailView: View {
             ) {
             case .popToPaneList:
                 dismiss()
-                return
             case .deferToTabList:
-                return
+                break
             case .none:
                 owningTabID = snapshot.location(ofPaneID: pane.id)?.tabID
-            }
-            // The agent asked for attention while this pane is already on
-            // screen: viewing it counts as reading the request, so clear
-            // it on the Mac the way a locally focused pane would.
-            if snapshot.pane(withID: pane.id)?.agent?.needsAttention == true {
-                client.acknowledgeAttention(paneID: pane.id)
+                // The agent asked for attention while this pane is already
+                // on screen: viewing it counts as reading the request, so
+                // clear it on the Mac the way a locally focused pane would.
+                if snapshot.pane(withID: pane.id)?.agent?.needsAttention
+                    == true {
+                    client.acknowledgeAttention(paneID: pane.id)
+                }
             }
         }
         .navigationTitle(currentTitle)
