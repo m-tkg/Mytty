@@ -673,6 +673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             deviceStoreURL: paths.remoteDevices,
             deviceDisplayName: Host.current().localizedName ?? "Mytty",
             windowSessionCoordinator: windowSessionCoordinator,
+            attentionCenterProvider: { [weak self] in self?.attentionCenter },
             localizerProvider: { [weak self] in
                 self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
             }
@@ -730,6 +731,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 )
             }
         )
+        // Fanned out from here rather than set per window: the coordinator
+        // is app-wide and holds a single callback, so a window assigning it
+        // would silently take it away from the others.
+        remotePaneConnections.onAgentStatusChanged = { [weak self] in
+            self?.windowSessionCoordinator.controllers.forEach {
+                $0.remoteAgentStatusDidChange()
+            }
+        }
         self.remotePaneConnections = remotePaneConnections
         windowSessionCoordinator.remoteConnections = remotePaneConnections
         let repository = SQLiteSessionRepository(databaseURL: paths.database)

@@ -34,6 +34,12 @@ final class RemotePaneConnectionCoordinator {
         weak var view: RemotePaneView?
     }
 
+    /// The host's agent status for each attached pane, refreshed on every
+    /// snapshot. Held here rather than in `RemotePaneState` because it is
+    /// live data: persisting it would restore a pane claiming an agent was
+    /// running on a Mac this one has not even reconnected to yet.
+    private(set) var agentStatusByPane: [TerminalSurfaceID: RemotePaneAgentStatus] = [:]
+
     private var sessions: [String: HostSession] = [:]
 
     /// The font every remote pane draws with. Mirrored from the terminal
@@ -216,6 +222,7 @@ final class RemotePaneConnectionCoordinator {
         guard var session = sessions[hostID] else { return }
         guard let registration = session.panes.removeValue(forKey: paneID)
         else { return }
+        agentStatusByPane[paneID] = nil
         sessions[hostID] = session
         if session.client.isConnected {
             session.client.unwatchPane(registration.remotePaneID)
@@ -312,14 +319,28 @@ final class RemotePaneConnectionCoordinator {
               session.client.isConnected,
               let snapshot = session.client.snapshot
         else { return }
-        for registration in session.panes.values {
+        for (paneID, registration) in session.panes {
             guard let view = registration.view else { continue }
             guard let pane = snapshot.pane(withID: registration.remotePaneID)
             else {
                 view.markClosedOnHost()
+                agentStatusByPane[paneID] = nil
                 continue
             }
             view.update(title: pane.title)
+            agentStatusByPane[paneID] = pane.agent
+            view.update(agent: pane.agent)
         }
+        onAgentStatusChanged?()
+    }
+
+    /// Fired after each snapshot so the owning window can refresh a status
+    /// bar that is showing a remote pane's agent.
+    var onAgentStatusChanged: (() -> Void)?
+
+    func agentStatus(
+        forPane paneID: TerminalSurfaceID
+    ) -> RemotePaneAgentStatus? {
+        agentStatusByPane[paneID]
     }
 }

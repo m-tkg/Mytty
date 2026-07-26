@@ -151,7 +151,7 @@ private struct PaneListView: View {
     private func paneRow(_ item: PaneListItem) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(
-                systemName: item.kind == .terminal ? "terminal" : "globe"
+                systemName: item.kind.symbolName
             )
             .foregroundStyle(.secondary)
             .frame(width: 18, height: 20)

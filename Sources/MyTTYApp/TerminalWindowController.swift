@@ -2167,6 +2167,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         RemotePaneLabels(
             remoteBadge: localizer[.remotePaneBadge],
             close: localizer[.closeRemotePane],
+            needsAttention: localizer[.remoteNeedsAttention],
             connecting: localizer[.remoteConnecting],
             disconnected: localizer[.remoteDisconnected],
             reconnect: localizer[.remoteReconnect],
@@ -2482,12 +2483,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 paneCount: tab.paneIDs.count,
                 attentionCount: attentionCenter.actionableCount(
                     for: tab.surfaceIDs
-                ),
+                ) + remoteAttentionCount(in: tab),
                 hasRunningAgent: TerminalTabAgentActivity.isProcessing(
                     surfaceIDs: tab.surfaceIDs,
                     foregroundProvidersBySurface: agentStatusPolling.providersBySurface,
                     lifecycleBySurface: lifecycleBySurface
-                ),
+                ) || hasRunningRemoteAgent(in: tab),
                 isRecording: recording.isRecording(tabID: tab.id),
                 hasCollapsedPanes: paneLayout.zoomTarget(for: tab) != nil,
                 resourceURL: state?.workingDirectory ?? browser?.url,
@@ -2499,6 +2500,28 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
         sidebarModel.selectedTabID = session.selectedTabID
         sidebarModel.actionableAttentionCount = attentionCenter.actionableCount
+            + session.tabs.reduce(0) { $0 + remoteAttentionCount(in: $1) }
+    }
+
+    /// Remote panes in a tab whose host says they are waiting on the user.
+    ///
+    /// These are counted live off the newest snapshot rather than recorded
+    /// in `AttentionCenter`: the item belongs to the host, only the host
+    /// can acknowledge it, and writing it into this Mac's event log would
+    /// create a second, unacknowledgeable copy that outlives the host's.
+    /// Counting instead means the badge clears exactly when the host's does.
+    private func remoteAttentionCount(in tab: TabSession) -> Int {
+        tab.root.remoteStates.count {
+            remoteConnections.agentStatus(forPane: $0.id)?.needsAttention
+                == true
+        }
+    }
+
+    private func hasRunningRemoteAgent(in tab: TabSession) -> Bool {
+        tab.root.remoteStates.contains {
+            remoteConnections.agentStatus(forPane: $0.id)?.state
+                == AgentRunState.running.rawValue
+        }
     }
 
     private var agentLifecycleBySurface: [
@@ -3015,9 +3038,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 : $0.absoluteString
         } ?? ""
         let browser = tab.root.browserState(with: focusedID)
-        let resourceSymbolName = browser.map {
-            $0.url.isFileURL ? "doc.richtext" : "globe"
-        } ?? "folder"
+        let remote = tab.root.remoteState(with: focusedID)
+        let resourceSymbolName = if remote != nil {
+            "macwindow.on.rectangle"
+        } else if let browser {
+            browser.url.isFileURL ? "doc.richtext" : "globe"
+        } else {
+            "folder"
+        }
         let agent = TerminalAgentDisplay.resolve(
             foregroundProvider: foregroundAgentProvider
         )
@@ -3039,17 +3067,40 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             display: meterDisplay
         )
         let agentSessionStatus = agentStatusPolling.statusBySurface[focusedID]
+        let remoteAgent = remote == nil
+            ? nil
+            : remoteConnections.agentStatus(forPane: focusedID)
         statusBarModel.content = TerminalStatusBarContent(
-            resource: resource,
+            // A remote pane has no local resource to name. Showing the Mac
+            // it mirrors keeps the status bar honest about where what is on
+            // screen actually lives; every local-only field below stays
+            // empty because nothing here is polled for a remote pane.
+            resource: remote.map {
+                "\(localizer[.remotePaneBadge]): \($0.hostName)"
+            } ?? resource,
             resourceSymbolName: resourceSymbolName,
-            canRevealInFinder: resourceURL?.isFileURL == true,
+            canRevealInFinder: remote == nil
+                && resourceURL?.isFileURL == true,
             repositoryURL: activeRepositoryStatus?.pageURL,
             branchName: activeRepositoryStatus?.branchName,
-            agentName: agent.map { TerminalWindowTitle.name(for: $0.provider) },
-            agentSessionID: activeAgentSessionID,
-            agentModelName: agentSessionStatus?.modelName,
-            agentUsage: agentUsage,
-            agentContext: agentSessionStatus?.contextRemainingPercent.map {
+            // A remote pane's agent comes from the host's snapshot, not
+            // from local polling — this Mac can see neither the process nor
+            // the transcript behind it. Quota meters stay local-only: they
+            // describe this Mac's account, and showing them beside another
+            // Mac's agent would read as that agent's usage.
+            agentName: remote != nil
+                ? RemoteAgentDisplay.providerName(remoteAgent?.provider)
+                : agent.map { TerminalWindowTitle.name(for: $0.provider) },
+            agentSessionID: remote == nil ? activeAgentSessionID : nil,
+            agentModelName: remote != nil
+                ? remoteAgent?.modelName
+                : agentSessionStatus?.modelName,
+            agentUsage: remote == nil ? agentUsage : nil,
+            agentContext: (
+                remote != nil
+                    ? remoteAgent?.contextRemainingPercent
+                    : agentSessionStatus?.contextRemainingPercent
+            ).map {
                 AgentUsageMeterContent(
                     title: localizer[.context],
                     remainingPercent: $0,
@@ -3173,6 +3224,25 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     /// The working directory `mytty-ctl list` reports for a pane; nil for
     /// browser panes and for panes this controller doesn't own.
+    /// The model and remaining context this window's polling has for a
+    /// pane, so the remote-access snapshot can hand a connected client the
+    /// same numbers the status bar draws. Nil for a pane with no agent, or
+    /// one that is not a local terminal.
+    func agentSessionStatus(
+        forPane paneID: TerminalSurfaceID
+    ) -> AgentSessionStatus? {
+        agentStatusPolling.statusBySurface[paneID]
+    }
+
+    /// Called when a host's snapshot changed the agent status of a remote
+    /// pane. The status bar shows it for the focused pane, and the sidebar
+    /// folds its attention count and running-agent flag into the tab rows;
+    /// neither is driven by the local polling that normally refreshes them.
+    func remoteAgentStatusDidChange() {
+        updateStatusBar()
+        refreshSidebarRows()
+    }
+
     func workingDirectory(forPane paneID: TerminalSurfaceID) -> URL? {
         guard let tab = session.tabs.first(where: {
             $0.paneIDs.contains(paneID)

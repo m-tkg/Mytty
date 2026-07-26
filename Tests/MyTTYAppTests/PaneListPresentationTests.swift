@@ -288,6 +288,47 @@ struct PaneListPresentationTests {
         )
     }
 
+    @Test("names a remote pane by the Mac it mirrors")
+    func remotePaneItem() throws {
+        let remote = RemotePaneState(
+            hostID: "host-1",
+            remotePaneID: "pane-1",
+            hostName: "Studio",
+            title: "codex"
+        )
+        var tab = TabSession(
+            initialSurface: TerminalSurfaceState(
+                workingDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true)
+            ),
+            pinnedTitle: "Work"
+        )
+        try tab.split(remote: remote, direction: .right)
+        let session = WindowSession(
+            id: WindowID(),
+            frame: WindowFrame(x: 0, y: 0, width: 900, height: 600),
+            tabs: [tab],
+            selectedTabID: tab.id
+        )
+
+        let items = PaneListPresentation.items(
+            snapshots: [
+                PaneListWindowSnapshot(session: session, commandsByPane: [:]),
+            ],
+            terminalTitle: "Terminal",
+            browserTitle: "Browser",
+            remoteTitle: "Remote",
+            localizer: MyTTYLocalizer(language: .english)
+        )
+
+        let item = try #require(items.first { $0.paneID == remote.id })
+        #expect(item.kind == .remote)
+        #expect(item.command == "Remote")
+        // A remote pane has no local path; the host it mirrors is the
+        // useful thing to show in its place.
+        #expect(item.location == "Studio")
+        #expect(item.kind.symbolName == "macwindow.on.rectangle")
+    }
+
     private func paneItem(command: String) -> PaneListItem {
         PaneListItem(
             windowID: WindowID(),

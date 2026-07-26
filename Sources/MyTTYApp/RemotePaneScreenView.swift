@@ -37,6 +37,8 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
 
     private var font: NSFont
     private var boldFont: NSFont
+    private var italicFont: NSFont
+    private var boldItalicFont: NSFont
     private var cellWidth: CGFloat = 8
     private var lineHeight: CGFloat = 16
     private var baselineOffset: CGFloat = 4
@@ -64,6 +66,14 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
     init(font: NSFont) {
         self.font = font
         boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+        italicFont = NSFontManager.shared.convert(
+            font,
+            toHaveTrait: .italicFontMask
+        )
+        boldItalicFont = NSFontManager.shared.convert(
+            boldFont,
+            toHaveTrait: .italicFontMask
+        )
         super.init(frame: .zero)
         recomputeMetrics()
     }
@@ -83,6 +93,14 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
         guard font != self.font else { return }
         self.font = font
         boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+        italicFont = NSFontManager.shared.convert(
+            font,
+            toHaveTrait: .italicFontMask
+        )
+        boldItalicFont = NSFontManager.shared.convert(
+            boldFont,
+            toHaveTrait: .italicFontMask
+        )
         recomputeMetrics()
         invalidateContentSize()
         needsDisplay = true
@@ -200,10 +218,7 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
             }
             NSAttributedString(
                 string: run.text,
-                attributes: [
-                    .font: run.bold ? boldFont : font,
-                    .foregroundColor: colors.foreground,
-                ]
+                attributes: attributes(for: run, foreground: colors.foreground)
             ).draw(at: NSPoint(x: rect.minX, y: y))
             column += width
         }
@@ -234,6 +249,56 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
             width: CGFloat(end - start) * cellWidth,
             height: lineHeight
         ).fill(using: .sourceOver)
+    }
+
+    private func attributes(
+        for run: RemotePaneRun,
+        foreground: NSColor
+    ) -> [NSAttributedString.Key: Any] {
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: self.font(for: run),
+            .foregroundColor: foreground,
+        ]
+        if let underline = Self.underlineStyle(for: run.underline) {
+            attributes[.underlineStyle] = underline.rawValue
+            // An underline colour the host set apart from the text (SGR 58)
+            // is what makes a curly error underline readable; without it
+            // AppKit draws the underline in the text colour.
+            attributes[.underlineColor] = run.underlineColor
+                .map(Self.color(fromRGB:)) ?? foreground
+        }
+        if run.strikethrough {
+            attributes[.strikethroughStyle] =
+                NSUnderlineStyle.single.rawValue
+            attributes[.strikethroughColor] = foreground
+        }
+        return attributes
+    }
+
+    private func font(for run: RemotePaneRun) -> NSFont {
+        switch (run.bold, run.italic) {
+        case (true, true): boldItalicFont
+        case (true, false): boldFont
+        case (false, true): italicFont
+        case (false, false): font
+        }
+    }
+
+    /// AppKit has no dotted or dashed underline, and no curly one below the
+    /// patterns it does offer — `patternDot`/`patternDash` are the closest
+    /// available, and a curly underline falls back to a plain one rather
+    /// than disappearing.
+    private static func underlineStyle(
+        for style: RemoteUnderlineStyle
+    ) -> NSUnderlineStyle? {
+        switch style {
+        case .none: nil
+        case .single: .single
+        case .double: .double
+        case .curly: .single
+        case .dotted: [.single, .patternDot]
+        case .dashed: [.single, .patternDash]
+        }
     }
 
     private func resolvedColors(

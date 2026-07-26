@@ -8,6 +8,14 @@ enum PaneListItemKind: Equatable {
     /// terminal — working directory, foreground process, agent status —
     /// is absent here on purpose.
     case remote
+
+    var symbolName: String {
+        switch self {
+        case .terminal: "terminal"
+        case .browser: "globe"
+        case .remote: "macwindow.on.rectangle"
+        }
+    }
 }
 
 struct PaneListItem: Identifiable, Equatable {

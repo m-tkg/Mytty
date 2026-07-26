@@ -8,6 +8,7 @@ import MyTTYRemoteKit
 struct RemotePaneLabels: Equatable {
     var remoteBadge = "Remote"
     var close = "Close Remote Pane"
+    var needsAttention = "Needs attention"
     var connecting = "Connecting…"
     var disconnected = "Disconnected"
     var reconnect = "Reconnect"
@@ -46,6 +47,8 @@ final class RemotePaneView: NSView {
 
     private let badgeLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
+    private let agentLabel = NSTextField(labelWithString: "")
+    private let attentionDot = NSImageView()
     private let closeButton: NSButton
     private let scrollView = NSScrollView()
     private let screenView: RemotePaneScreenView
@@ -57,6 +60,10 @@ final class RemotePaneView: NSView {
     private var compositionHeight: NSLayoutConstraint?
 
     private var state: RemoteClient.ConnectionState = .disconnected
+    /// The host's own view of the agent in the mirrored pane. A client
+    /// cannot see the process or read the transcript, so this is the only
+    /// source for it.
+    private var agent: RemotePaneAgentStatus?
     /// True once a live snapshot has been seen that no longer lists this
     /// pane — the host closed it, and no reconnect will bring it back.
     private var isGoneOnHost = false
@@ -139,6 +146,12 @@ final class RemotePaneView: NSView {
 
     func update(font: NSFont) {
         screenView.update(font: font)
+    }
+
+    func update(agent: RemotePaneAgentStatus?) {
+        guard agent != self.agent else { return }
+        self.agent = agent
+        refreshChrome()
     }
 
     /// Marks the pane as gone: the host is connected and its snapshot no
@@ -230,7 +243,21 @@ final class RemotePaneView: NSView {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
 
-        for subview in [badgeLabel, titleLabel, closeButton] {
+        agentLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        agentLabel.textColor = .secondaryLabelColor
+        agentLabel.lineBreakMode = .byTruncatingTail
+
+        attentionDot.image = NSImage(
+            systemSymbolName: "exclamationmark.circle.fill",
+            accessibilityDescription: labels.needsAttention
+        )
+        attentionDot.contentTintColor = .systemOrange
+        attentionDot.isHidden = true
+        attentionDot.setAccessibilityLabel(labels.needsAttention)
+
+        for subview in [
+            badgeLabel, titleLabel, agentLabel, attentionDot, closeButton,
+        ] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             header.addSubview(subview)
         }
@@ -248,9 +275,25 @@ final class RemotePaneView: NSView {
             ),
             titleLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             titleLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: closeButton.leadingAnchor,
+                lessThanOrEqualTo: agentLabel.leadingAnchor,
                 constant: -6
             ),
+
+            agentLabel.trailingAnchor.constraint(
+                equalTo: attentionDot.leadingAnchor,
+                constant: -4
+            ),
+            agentLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+
+            attentionDot.trailingAnchor.constraint(
+                equalTo: closeButton.leadingAnchor,
+                constant: -4
+            ),
+            attentionDot.centerYAnchor.constraint(
+                equalTo: header.centerYAnchor
+            ),
+            attentionDot.widthAnchor.constraint(equalToConstant: 12),
+            attentionDot.heightAnchor.constraint(equalToConstant: 12),
 
             closeButton.trailingAnchor.constraint(
                 equalTo: header.trailingAnchor,
@@ -358,6 +401,20 @@ final class RemotePaneView: NSView {
         badgeLabel.stringValue = " \(labels.remoteBadge): \(hostName) "
         titleLabel.stringValue = title
         titleLabel.toolTip = title
+        agentLabel.stringValue = agentSummary
+        attentionDot.isHidden = agent?.needsAttention != true
+    }
+
+    /// The agent line in the header: what is running on the host and, when
+    /// it reports one, the model. Empty when the host sends no agent
+    /// status — including when it is too old to send any.
+    private var agentSummary: String {
+        guard let agent else { return "" }
+        let parts = [
+            RemoteAgentDisplay.providerName(agent.provider),
+            agent.modelName,
+        ].compactMap { $0 }
+        return parts.joined(separator: " · ")
     }
 
     private func applyState() {

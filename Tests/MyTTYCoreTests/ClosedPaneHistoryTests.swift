@@ -149,6 +149,33 @@ struct ClosedPaneHistoryTests {
         #expect(restored.focusedSurfaceID == restoredBrowserID)
     }
 
+    @MainActor
+    @Test("keeps a closed remote pane, with a fresh id when reopened")
+    func remotePaneRoundTrip() {
+        let history = ClosedPaneHistory()
+        let state = RemotePaneState(
+            hostID: "host-1",
+            remotePaneID: "pane-1",
+            hostName: "Studio",
+            title: "codex"
+        )
+        history.push(.remote(state))
+
+        guard case let .remote(recorded)? = history.entries.first?.record else {
+            Issue.record("expected a remote record")
+            return
+        }
+        #expect(recorded == state)
+
+        let restored = recorded.regeneratingID()
+        #expect(restored.id != state.id)
+        // Reopening must still point at the same pane on the same Mac.
+        #expect(restored.hostID == state.hostID)
+        #expect(restored.remotePaneID == state.remotePaneID)
+        #expect(restored.hostName == state.hostName)
+        #expect(restored.title == state.title)
+    }
+
     private func makeTabID(_ value: UInt8) -> TabID {
         TabID(rawValue: makeUUID(value))
     }

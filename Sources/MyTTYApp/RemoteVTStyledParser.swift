@@ -16,6 +16,19 @@ enum RemoteVTStyledParser {
         var bold = false
         var faint = false
         var inverse = false
+        var italic = false
+        var underline: RemoteUnderlineStyle = .none
+        var underlineColor: Int?
+        var strikethrough = false
+    }
+
+    /// One CSI parameter with its colon-separated subparameters, e.g.
+    /// `4:3` (curly underline) or `38:2:0:255:0` (truecolor). Keeping the
+    /// two apart matters: flattening them would read the `3` of `4:3` as a
+    /// separate "italic" parameter.
+    private struct CSIParameter: Equatable {
+        var value: Int
+        var subparameters: [Int] = []
     }
 
     static func parse(_ vt: String) -> [RemoteStyledLine] {
@@ -39,7 +52,11 @@ enum RemoteVTStyledParser {
                     background: runStyle.background,
                     bold: runStyle.bold,
                     faint: runStyle.faint,
-                    inverse: runStyle.inverse
+                    inverse: runStyle.inverse,
+                    italic: runStyle.italic,
+                    underline: runStyle.underline,
+                    underlineColor: runStyle.underlineColor,
+                    strikethrough: runStyle.strikethrough
                 )
             )
             runText = ""
@@ -110,23 +127,41 @@ enum RemoteVTStyledParser {
     private static func readCSI(
         _ scalars: [Unicode.Scalar],
         from index: inout Int
-    ) -> (params: [Int], final: Unicode.Scalar?) {
+    ) -> (params: [CSIParameter], final: Unicode.Scalar?) {
         var digits = ""
-        var params: [Int] = []
+        var params: [CSIParameter] = []
         var final: Unicode.Scalar?
+
+        func commit(asSubparameter: Bool) {
+            let value = Int(digits) ?? 0
+            digits = ""
+            if asSubparameter, !params.isEmpty {
+                params[params.count - 1].subparameters.append(value)
+            } else {
+                params.append(CSIParameter(value: value))
+            }
+        }
+
+        // Whether the digits being accumulated follow a colon, and so
+        // belong to the parameter before them rather than standing alone.
+        var pendingIsSubparameter = false
+
         while index < scalars.count {
             let scalar = scalars[index]
             index += 1
             switch scalar.value {
             case 0x30...0x39: // 0-9
                 digits.unicodeScalars.append(scalar)
-            case 0x3B, 0x3A: // ; or : parameter separators
-                params.append(Int(digits) ?? 0)
-                digits = ""
+            case 0x3B: // ; starts a new parameter
+                commit(asSubparameter: pendingIsSubparameter)
+                pendingIsSubparameter = false
+            case 0x3A: // : starts a subparameter of the current one
+                commit(asSubparameter: pendingIsSubparameter)
+                pendingIsSubparameter = true
             case 0x40...0x7E: // final byte
                 final = scalar
                 if !digits.isEmpty || !params.isEmpty {
-                    params.append(Int(digits) ?? 0)
+                    commit(asSubparameter: pendingIsSubparameter)
                 }
                 return (params, final)
             default:
@@ -188,7 +223,7 @@ enum RemoteVTStyledParser {
     }
 
     private static func applySGR(
-        _ params: [Int],
+        _ params: [CSIParameter],
         to style: inout Style,
         palette: [Int: Int]
     ) {
@@ -198,8 +233,8 @@ enum RemoteVTStyledParser {
         }
         var i = 0
         while i < params.count {
-            let code = params[i]
-            switch code {
+            let parameter = params[i]
+            switch parameter.value {
             case 0:
                 style = Style()
             case 1:
@@ -209,33 +244,72 @@ enum RemoteVTStyledParser {
             case 22:
                 style.bold = false
                 style.faint = false
+            case 3:
+                style.italic = true
+            case 23:
+                style.italic = false
+            case 4:
+                style.underline = underlineStyle(for: parameter)
+            case 21:
+                style.underline = .double
+            case 24:
+                style.underline = .none
+            case 9:
+                style.strikethrough = true
+            case 29:
+                style.strikethrough = false
             case 7:
                 style.inverse = true
             case 27:
                 style.inverse = false
             case 30...37:
-                style.foreground = palette[code - 30]
+                style.foreground = palette[parameter.value - 30]
             case 90...97:
-                style.foreground = palette[code - 90 + 8]
+                style.foreground = palette[parameter.value - 90 + 8]
             case 39:
                 style.foreground = nil
             case 40...47:
-                style.background = palette[code - 40]
+                style.background = palette[parameter.value - 40]
             case 100...107:
-                style.background = palette[code - 100 + 8]
+                style.background = palette[parameter.value - 100 + 8]
             case 49:
                 style.background = nil
-            case 38, 48:
-                let color = readExtendedColor(params, from: &i, palette: palette)
-                if code == 38 {
-                    style.foreground = color
-                } else {
-                    style.background = color
+            case 38, 48, 58:
+                let color = readExtendedColor(
+                    params,
+                    from: &i,
+                    palette: palette
+                )
+                switch parameter.value {
+                case 38: style.foreground = color
+                case 48: style.background = color
+                default: style.underlineColor = color
                 }
+            case 59:
+                style.underlineColor = nil
             default:
                 break
             }
             i += 1
+        }
+    }
+
+    /// `4` alone is a single underline; `4:n` names the style, with `4:0`
+    /// meaning none. An unrecognized subparameter falls back to a single
+    /// underline rather than dropping the attribute — the host did draw
+    /// *some* underline there.
+    private static func underlineStyle(
+        for parameter: CSIParameter
+    ) -> RemoteUnderlineStyle {
+        guard let sub = parameter.subparameters.first else { return .single }
+        switch sub {
+        case 0: return .none
+        case 1: return .single
+        case 2: return .double
+        case 3: return .curly
+        case 4: return .dotted
+        case 5: return .dashed
+        default: return .single
         }
     }
 
@@ -244,24 +318,51 @@ enum RemoteVTStyledParser {
     /// arguments and returns the resolved 0xRRGGBB, or nil for a malformed
     /// sequence.
     private static func readExtendedColor(
-        _ params: [Int],
+        _ params: [CSIParameter],
         from i: inout Int,
         palette: [Int: Int]
     ) -> Int? {
-        guard i + 1 < params.count else { return nil }
-        let selector = params[i + 1]
-        switch selector {
+        // Colon form: the selector and channels are subparameters of this
+        // parameter (`38:2:r:g:b`), so nothing after it is consumed.
+        let subparameters = params[i].subparameters
+        if !subparameters.isEmpty {
+            return color(from: subparameters, palette: palette)
+        }
+        // Semicolon form: the selector and channels are the parameters
+        // that follow (`38;2;r;g;b`).
+        let following = params[(i + 1)...].map(\.value)
+        guard let selector = following.first else { return nil }
+        let consumed = selector == 5 ? 2 : (selector == 2 ? 4 : 0)
+        guard consumed > 0 else { return nil }
+        guard following.count >= consumed else {
+            i = params.count
+            return nil
+        }
+        i += consumed
+        return color(from: Array(following.prefix(consumed)), palette: palette)
+    }
+
+    /// Resolves `[5, index]` or `[2, r, g, b]` into 0xRRGGBB.
+    ///
+    /// The colon form of a truecolor sequence may carry a colour-space id
+    /// between the selector and the channels (`38:2::r:g:b`, usually left
+    /// empty), so the channels are taken from the end rather than from a
+    /// fixed offset.
+    private static func color(
+        from arguments: [Int],
+        palette: [Int: Int]
+    ) -> Int? {
+        switch arguments.first {
         case 5:
-            guard i + 2 < params.count else { i = params.count; return nil }
-            let index = params[i + 2]
-            i += 2
+            guard arguments.count >= 2 else { return nil }
+            let index = arguments[1]
             return palette[index] ?? xterm256(index)
         case 2:
-            guard i + 4 < params.count else { i = params.count; return nil }
-            let r = params[i + 2] & 0xFF
-            let g = params[i + 3] & 0xFF
-            let b = params[i + 4] & 0xFF
-            i += 4
+            guard arguments.count >= 4 else { return nil }
+            let channels = arguments.suffix(3)
+            let r = channels[channels.startIndex] & 0xFF
+            let g = channels[channels.startIndex + 1] & 0xFF
+            let b = channels[channels.startIndex + 2] & 0xFF
             return (r << 16) | (g << 8) | b
         default:
             return nil

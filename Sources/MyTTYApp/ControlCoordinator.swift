@@ -76,7 +76,12 @@ extension ControlCoordinator: ControlServerDelegate {
             remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
-        return items.map { item in
+        // Remote panes are deliberately absent: mytty-ctl addresses local
+        // panes, and a pane ID here has to be one this Mac can split,
+        // close, or deliver input to. A pane mirroring another Mac's
+        // terminal is none of those, and listing it would hand an
+        // orchestrating agent IDs that every other command rejects.
+        return items.filter { $0.kind != .remote }.map { item in
             let controller = controllers.first {
                 $0.session.id == item.windowID
             }
