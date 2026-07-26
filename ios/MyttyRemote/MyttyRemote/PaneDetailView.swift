@@ -30,6 +30,10 @@ struct PaneDetailView: View {
     /// the snapshot it was opened with, never a stale state value.
     @State private var selectionSnapshot: SelectionSnapshot?
     @State private var showsSchedules = false
+    /// The tab this pane lived in per the latest snapshot, so a vanished
+    /// pane can be told apart from a vanished tab (see the snapshot
+    /// onChange below).
+    @State private var owningTabID: String?
 
     private struct SelectionSnapshot: Identifiable {
         let id = UUID()
@@ -153,21 +157,31 @@ struct PaneDetailView: View {
                 client.acknowledgeAttention(paneID: pane.id)
             }
         }
-        // The pane closed on the Mac: pop back to the pane list. Only judged
+        // The pane closed on the Mac: pop back to the pane list — unless
+        // the whole tab closed, in which case the pane list pops itself
+        // back to the tab list and takes this view with it. Only judged
         // against a snapshot from a live connection — a reconnect clears
         // `snapshot`, and that must not be read as "the pane is gone".
         .onChange(of: client.snapshot) {
             guard client.isConnected, let snapshot = client.snapshot else {
                 return
             }
-            guard let current = snapshot.pane(withID: pane.id) else {
+            switch snapshot.paneClosePopAction(
+                paneID: pane.id,
+                tabID: owningTabID
+            ) {
+            case .popToPaneList:
                 dismiss()
                 return
+            case .deferToTabList:
+                return
+            case .none:
+                owningTabID = snapshot.location(ofPaneID: pane.id)?.tabID
             }
             // The agent asked for attention while this pane is already on
             // screen: viewing it counts as reading the request, so clear
             // it on the Mac the way a locally focused pane would.
-            if current.agent?.needsAttention == true {
+            if snapshot.pane(withID: pane.id)?.agent?.needsAttention == true {
                 client.acknowledgeAttention(paneID: pane.id)
             }
         }
@@ -220,6 +234,7 @@ struct PaneDetailView: View {
         }
         .onAppear {
             rebuildRenderedChunks()
+            owningTabID = client.snapshot?.location(ofPaneID: pane.id)?.tabID
             client.watchPane(pane.id)
             // Opening the pane is the moment its notification is
             // considered read, mirroring how focusing a pane on the Mac
