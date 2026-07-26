@@ -15,7 +15,9 @@ private struct PendingNotificationOpen {
 }
 
 struct RootView: View {
-    @StateObject private var client = RemoteClient()
+    @StateObject private var client = RemoteClient(
+        pushRegistration: PushRegistration.shared
+    )
     @State private var pairedMacs: [PairedMac] = PairedMacStore.loadAll()
     @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase

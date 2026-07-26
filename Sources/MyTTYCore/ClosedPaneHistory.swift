@@ -5,6 +5,7 @@ import Foundation
 public enum ClosedPaneRecord: Equatable, Sendable {
     case terminal(TerminalSurfaceState)
     case browser(BrowserPaneState)
+    case remote(RemotePaneState)
     case tab(TabSession)
 }
 
@@ -83,6 +84,22 @@ extension BrowserPaneState {
     }
 }
 
+extension RemotePaneState {
+    func withID(_ id: TerminalSurfaceID) -> RemotePaneState {
+        RemotePaneState(
+            id: id,
+            hostID: hostID,
+            remotePaneID: remotePaneID,
+            hostName: hostName,
+            title: title
+        )
+    }
+
+    public func regeneratingID() -> RemotePaneState {
+        withID(TerminalSurfaceID())
+    }
+}
+
 extension TabSession {
     /// Rebuilds this tab with a fresh `TabID` and a fresh ID for every
     /// pane, preserving layout (orientation/ratio), scrollback, and
@@ -113,6 +130,8 @@ private extension SplitNode {
             map[state.id] = TerminalSurfaceID()
         case let .browser(state):
             map[state.id] = TerminalSurfaceID()
+        case let .remote(state):
+            map[state.id] = TerminalSurfaceID()
         case let .split(_, _, first, second):
             first.collectPaneIDs(into: &map)
             second.collectPaneIDs(into: &map)
@@ -127,6 +146,8 @@ private extension SplitNode {
             .surface(state.withID(map[state.id] ?? state.id))
         case let .browser(state):
             .browser(state.withID(map[state.id] ?? state.id))
+        case let .remote(state):
+            .remote(state.withID(map[state.id] ?? state.id))
         case let .split(orientation, ratio, first, second):
             .split(
                 orientation: orientation,

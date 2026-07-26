@@ -843,11 +843,7 @@ struct TabPaneProcessListView: View {
             } else {
                 ForEach(items) { item in
                     HStack(alignment: .top, spacing: 8) {
-                        Image(
-                            systemName: item.kind == .terminal
-                                ? "terminal"
-                                : "globe"
-                        )
+                        Image(systemName: item.kind.symbolName)
                         .foregroundStyle(.secondary)
                         .frame(width: 16, height: 16)
 

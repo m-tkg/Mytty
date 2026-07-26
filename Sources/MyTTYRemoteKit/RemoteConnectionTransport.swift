@@ -1,25 +1,24 @@
 import Foundation
 import Network
-import MyTTYRemoteKit
 
-/// Raw Network.framework plumbing for a single outbound connection to the
-/// Mac. Mirrors `RemoteAccessTransport` on the Mac side: this class only
+/// Raw Network.framework plumbing for a single outbound connection to a
+/// Mac. Mirrors `RemoteAccessTransport` on the server side: this class only
 /// moves bytes and frames them, leaving protocol/crypto decisions to
 /// `RemoteClient`.
-final class RemoteConnectionTransport: @unchecked Sendable {
-    var onReady: (@Sendable () -> Void)?
-    var onFrame: (@Sendable (Data) -> Void)?
-    var onClose: (@Sendable (Error?) -> Void)?
+public final class RemoteConnectionTransport: @unchecked Sendable {
+    public var onReady: (@Sendable () -> Void)?
+    public var onFrame: (@Sendable (Data) -> Void)?
+    public var onClose: (@Sendable (Error?) -> Void)?
 
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "dev.mytty.remote-client")
     private var frameReader = RemoteFrameReader()
 
-    init(endpoint: NWEndpoint) {
+    public init(endpoint: NWEndpoint) {
         connection = NWConnection(to: endpoint, using: .tcp)
     }
 
-    func start() {
+    public func start() {
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
@@ -37,11 +36,11 @@ final class RemoteConnectionTransport: @unchecked Sendable {
         receiveLoop()
     }
 
-    func send(_ data: Data) {
+    public func send(_ data: Data) {
         connection.send(content: data, completion: .contentProcessed { _ in })
     }
 
-    func cancel() {
+    public func cancel() {
         connection.cancel()
     }
 

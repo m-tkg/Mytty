@@ -54,7 +54,9 @@ SwiftPM package with strict target boundaries (`Package.swift`):
 - **`MyTTYCore`** — platform-neutral logic (Foundation only): tab/session model (`TabSession`, `SessionSnapshot`), agent event protocol and reducers, SQLite repositories, preferences, and the provider-specific `*SessionInspector`/`*UsageProbe` implementations plus `AgentSessionDatabase`.
 - **`MyTTYAgentHook`** — the `mytty-agent-hook` helper binary that provider hooks invoke; it forwards events to the app.
 - **`MyTTYClamshellHelper`** — the `mytty-clamshell-helper` privileged daemon (SMAppService/XPC) that runs `pmset disablesleep` for lid-closed keep-awake; its testable state machine lives in MyTTYCore (`ClamshellHelperCore`).
-- **`MyTTYRemoteKit`** — shared code for the iOS remote (pairing, secure channel).
+- **`MyTTYRemoteKit`** — the remote protocol plus every client's half of it (pairing, secure channel, message codec, `RemoteClient`, Bonjour discovery, screen renderer), shared by the iOS remote app and by a Mac acting as a client. No UIKit or AppKit here.
+
+Remote panes: a Mac can mirror a terminal on another paired Mac. That pane is its own `SplitNode.remote` case, not a terminal — it has no local process, working directory or Ghostty surface, so agent polling, repository status and `mytty-ctl` all skip it deliberately. `RemotePaneConnectionCoordinator` owns one connection per host app-wide (not per window). Pairing is by link: the host copies a `mytty://pair?...` URL from Settings › iOS Remote Access, the client pastes it under Settings › Remote Macs. See `docs/how-to/open-a-pane-on-another-mac.md`.
 
 ### Agent integration model
 

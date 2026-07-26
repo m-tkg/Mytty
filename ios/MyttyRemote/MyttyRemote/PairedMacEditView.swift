@@ -1,3 +1,4 @@
+import MyTTYRemoteKit
 import SwiftUI
 
 /// Edits one paired Mac's label and how to reach it: the Bonjour service

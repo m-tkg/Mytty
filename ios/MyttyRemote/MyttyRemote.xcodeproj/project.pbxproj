@@ -11,7 +11,6 @@
 		0D33A5E15DD89D5FC2B4EF7B /* SessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F8455379E84BE5CE9B54CD2 /* SessionView.swift */; };
 		103670DA00702D8ABD9A545C /* MyTTYRemoteKit in Frameworks */ = {isa = PBXBuildFile; productRef = 60E6D3077DDAE94151188CB7 /* MyTTYRemoteKit */; };
 		164513ACD60C1E862B1DBF2B /* MyttyRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */; };
-		1BDCC0E23B673954D4ADA3D1 /* RemoteConnectionTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */; };
 		3560DE16932FC0A3E31F6033 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620711CDAE55208289C2B7D0 /* RootView.swift */; };
 		37985407E5A667FF9C250A84 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 486B611105A69F996E033939 /* QRScannerView.swift */; };
 		40C4D5441936E703EE7B29EF /* MyTTYRemoteKit in Frameworks */ = {isa = PBXBuildFile; productRef = 91B79CF80CACAEB40A34B79A /* MyTTYRemoteKit */; };
@@ -19,7 +18,6 @@
 		5277ABFABD30B9995CF78F24 /* TerminalKeyInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */; };
 		52B66DCD48CF4D1EA252BF22 /* ControlKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF3755C591827EC66BBDDDB /* ControlKey.swift */; };
 		593A3ACC2B3D0A43A22ED09B /* PairingQRScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0368079481869A62B083F89D /* PairingQRScanView.swift */; };
-		5DCF79438D6DE91716AE61A7 /* MacDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED23B73DC454862E82D06F36 /* MacDiscovery.swift */; };
 		71C6EF099AFEA0890AA4E1A3 /* BackgroundSessionKeeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4299AF5CC64F8A362BCDE43F /* BackgroundSessionKeeper.swift */; };
 		76ABD08D9E4826505375B62E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CED5F80CB9270934F11FC2B1 /* HomeView.swift */; };
 		76C5ED65FF3F36F8C8C9345D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19F0032493B6608E5D824252 /* Assets.xcassets */; };
@@ -30,7 +28,6 @@
 		9AB9F6E54D50F75ECB98B4FC /* PairedMacEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391900120E29A643CFD654EA /* PairedMacEditView.swift */; };
 		A83FBE84A7FB9C4739A182D9 /* PairedMacStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318CF4B87D5AB659CCD509C7 /* PairedMacStore.swift */; };
 		A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */; };
-		B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */; };
 		C10E44FAE58110C63FBD03C9 /* PaneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABD3A07643D9DC9E91F0B440 /* PaneDetailView.swift */; };
 		C29F0300B64969A7B72924B0 /* PaneScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 702FB6CE19393065515AC8A3 /* PaneScheduleView.swift */; };
 		EA2984E72181A0DF73569E6D /* DeviceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */; };
@@ -68,7 +65,6 @@
 		10CEA16A5A7C93736D4F908D /* MyttyRemote.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MyttyRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1845AA39C4A2E2BE81812C3D /* NotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		19F0032493B6608E5D824252 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteClient.swift; sourceTree = "<group>"; };
 		2646F5D89B99D79E5A36E17E /* mytty */ = {isa = PBXFileReference; lastKnownFileType = folder; name = mytty; path = ../..; sourceTree = SOURCE_ROOT; };
 		2EF3755C591827EC66BBDDDB /* ControlKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKey.swift; sourceTree = "<group>"; };
 		2F8455379E84BE5CE9B54CD2 /* SessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionView.swift; sourceTree = "<group>"; };
@@ -76,7 +72,6 @@
 		391900120E29A643CFD654EA /* PairedMacEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMacEditView.swift; sourceTree = "<group>"; };
 		4299AF5CC64F8A362BCDE43F /* BackgroundSessionKeeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSessionKeeper.swift; sourceTree = "<group>"; };
 		43CB98BDEC38D9DE0CD7E1EB /* ControlKeyBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlKeyBarView.swift; sourceTree = "<group>"; };
-		4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionTransport.swift; sourceTree = "<group>"; };
 		486B611105A69F996E033939 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		620711CDAE55208289C2B7D0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneTextSelectionView.swift; sourceTree = "<group>"; };
@@ -93,7 +88,6 @@
 		BA96B610EB4E285CC4503310 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		CED5F80CB9270934F11FC2B1 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyInputView.swift; sourceTree = "<group>"; };
-		ED23B73DC454862E82D06F36 /* MacDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDiscovery.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,7 +131,6 @@
 				A2D167B522C3A27445D70F55 /* DeviceSettingsView.swift */,
 				CED5F80CB9270934F11FC2B1 /* HomeView.swift */,
 				694D7EF0306FAD4398E8B2CE /* Info.plist */,
-				ED23B73DC454862E82D06F36 /* MacDiscovery.swift */,
 				65F7A5EEE363CDC0CC9D4F3B /* MyttyRemote.entitlements */,
 				928CECFDDE67AD68EAC5B379 /* MyttyRemoteApp.swift */,
 				391900120E29A643CFD654EA /* PairedMacEditView.swift */,
@@ -149,8 +142,6 @@
 				645C61BDE634440D495950F9 /* PaneTextSelectionView.swift */,
 				6F0C9E5A66AA3FDD6C84376C /* PushRegistration.swift */,
 				486B611105A69F996E033939 /* QRScannerView.swift */,
-				1C57E79C55FD8DEB488CB852 /* RemoteClient.swift */,
-				4552F1A84C616D91D8077DEF /* RemoteConnectionTransport.swift */,
 				620711CDAE55208289C2B7D0 /* RootView.swift */,
 				2F8455379E84BE5CE9B54CD2 /* SessionView.swift */,
 				D644A6E210B3EB7767042404 /* TerminalKeyInputView.swift */,
@@ -302,7 +293,6 @@
 				A8CCB58B58229A2CCE755642 /* ControlKeyBarView.swift in Sources */,
 				EA2984E72181A0DF73569E6D /* DeviceSettingsView.swift in Sources */,
 				76ABD08D9E4826505375B62E /* HomeView.swift in Sources */,
-				5DCF79438D6DE91716AE61A7 /* MacDiscovery.swift in Sources */,
 				164513ACD60C1E862B1DBF2B /* MyttyRemoteApp.swift in Sources */,
 				9AB9F6E54D50F75ECB98B4FC /* PairedMacEditView.swift in Sources */,
 				A83FBE84A7FB9C4739A182D9 /* PairedMacStore.swift in Sources */,
@@ -313,8 +303,6 @@
 				7EA8BB1A4EB1CD2CB1C03FCA /* PaneTextSelectionView.swift in Sources */,
 				7EB1BDBD11C543FFF4A6D6B3 /* PushRegistration.swift in Sources */,
 				37985407E5A667FF9C250A84 /* QRScannerView.swift in Sources */,
-				B062348D3EECDAA5573BB9D8 /* RemoteClient.swift in Sources */,
-				1BDCC0E23B673954D4ADA3D1 /* RemoteConnectionTransport.swift in Sources */,
 				3560DE16932FC0A3E31F6033 /* RootView.swift in Sources */,
 				0D33A5E15DD89D5FC2B4EF7B /* SessionView.swift in Sources */,
 				5277ABFABD30B9995CF78F24 /* TerminalKeyInputView.swift in Sources */,

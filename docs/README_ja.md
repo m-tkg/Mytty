@@ -25,6 +25,7 @@ Mytty は AI Agent を使うときに便利な機能を詰め込んだターミ�
 
 - [mytty-ctl でエージェントのチームを動かす](how-to/orchestrate-agents-with-mytty-ctl_ja.md)
 - [iPhone から Mac に接続する](how-to/connect-from-iphone_ja.md)
+- [別の Mac のペインを開く](how-to/open-a-pane-on-another-mac_ja.md)
 - [アプリ内ブラウザを使う](how-to/use-the-builtin-browser_ja.md)
 - [ペインを GIF として録画する](how-to/record-a-gif_ja.md)
 

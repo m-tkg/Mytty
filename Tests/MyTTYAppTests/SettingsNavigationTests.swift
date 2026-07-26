@@ -13,14 +13,15 @@ struct SettingsNavigationTests {
             SettingsSection.allCases
                 == [
                     .general, .shell, .agents, .orchestration, .keyBindings,
-                    .remote, .update,
+                    .remote, .remoteMacs, .update,
                 ]
         )
         #expect(
             SettingsSection.allCases.map { localizer[$0.textKey] }
                 == [
                     "General", "Shell", "Agents", "Orchestration",
-                    "Key Bindings", "iOS Remote Access", "Update",
+                    "Key Bindings", "iOS Remote Access", "Remote Macs",
+                    "Update",
                 ]
         )
     }
@@ -57,6 +58,9 @@ struct SettingsNavigationTests {
         )
         #expect(!SettingsSection.orchestration.matches("cursor", localizer: localizer))
         #expect(SettingsSection.remote.matches("pairing", localizer: localizer))
+        #expect(
+            SettingsSection.remoteMacs.matches("mirror", localizer: localizer)
+        )
         #expect(SettingsSection.update.matches("release", localizer: localizer))
         #expect(!SettingsSection.general.matches("cursor", localizer: localizer))
     }

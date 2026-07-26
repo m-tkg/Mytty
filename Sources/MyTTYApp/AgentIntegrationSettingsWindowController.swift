@@ -8,6 +8,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let defaultTerminalModel: DefaultTerminalModel
     private let commandLineToolInstallModel: CommandLineToolInstallModel
     private let remoteAccessModel: RemoteAccessSettingsModel
+    private let remoteMacsModel: RemoteMacsSettingsModel
 
     init(
         settingsModel: SettingsModel,
@@ -15,20 +16,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         updateModel: ApplicationUpdateModel,
         defaultTerminalModel: DefaultTerminalModel,
         commandLineToolInstallModel: CommandLineToolInstallModel,
-        remoteAccessModel: RemoteAccessSettingsModel
+        remoteAccessModel: RemoteAccessSettingsModel,
+        remoteMacsModel: RemoteMacsSettingsModel
     ) {
         self.settingsModel = settingsModel
         self.integrationsModel = integrationsModel
         self.defaultTerminalModel = defaultTerminalModel
         self.commandLineToolInstallModel = commandLineToolInstallModel
         self.remoteAccessModel = remoteAccessModel
+        self.remoteMacsModel = remoteMacsModel
         let view = SettingsView(
             settings: settingsModel,
             integrations: integrationsModel,
             updates: updateModel,
             defaultTerminal: defaultTerminalModel,
             commandLineToolInstall: commandLineToolInstallModel,
-            remoteAccess: remoteAccessModel
+            remoteAccess: remoteAccessModel,
+            remoteMacs: remoteMacsModel
         )
         let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(
@@ -63,6 +67,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         defaultTerminalModel.refresh()
         commandLineToolInstallModel.refresh()
         remoteAccessModel.refresh()
+        remoteMacsModel.refresh()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -77,5 +82,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // accepting pair requests the user can no longer see or cancel.
     func windowWillClose(_ notification: Notification) {
         remoteAccessModel.cancelPairing()
+        // Same reasoning for the client side: an in-flight pair attempt
+        // the user can no longer see or cancel has to be abandoned, and
+        // the Bonjour browser stopped.
+        remoteMacsModel.cancelPairing()
+        remoteMacsModel.stopDiscovery()
     }
 }

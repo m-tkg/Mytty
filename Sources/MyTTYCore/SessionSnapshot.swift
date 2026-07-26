@@ -278,6 +278,32 @@ public struct WindowSession: Codable, Equatable, Sendable {
         tabs[index] = tab
     }
 
+    /// Records the title the host last reported for a remote pane, so a
+    /// restored pane can name itself before its connection is back.
+    public mutating func updateRemoteTitle(
+        _ title: String,
+        for paneID: TerminalSurfaceID
+    ) throws {
+        guard let index = tabs.firstIndex(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { throw WindowSessionError.surfaceNotFound(paneID) }
+        var tab = tabs[index]
+        try tab.updateRemoteTitle(title, for: paneID)
+        tabs[index] = tab
+    }
+
+    public mutating func splitFocusedRemote(
+        adding remote: RemotePaneState,
+        direction: SplitDirection
+    ) throws {
+        guard let index = tabs.firstIndex(where: {
+            $0.id == selectedTabID
+        }) else { throw WindowSessionError.tabNotFound(selectedTabID) }
+        var tab = tabs[index]
+        try tab.split(remote: remote, direction: direction)
+        tabs[index] = tab
+    }
+
     public mutating func closeSurface(
         _ surfaceID: TerminalSurfaceID
     ) throws {

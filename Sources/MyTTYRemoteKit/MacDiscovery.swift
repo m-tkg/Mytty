@@ -1,26 +1,37 @@
+import Combine
 import Foundation
 import Network
 
-struct DiscoveredMac: Identifiable, Equatable {
-    let id: String
-    let name: String
-    let endpoint: NWEndpoint
+public struct DiscoveredMac: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let endpoint: NWEndpoint
 
-    static func == (lhs: DiscoveredMac, rhs: DiscoveredMac) -> Bool {
+    public init(id: String, name: String, endpoint: NWEndpoint) {
+        self.id = id
+        self.name = name
+        self.endpoint = endpoint
+    }
+
+    public static func == (lhs: DiscoveredMac, rhs: DiscoveredMac) -> Bool {
         lhs.id == rhs.id
     }
 }
 
+/// Browses Bonjour for Macs advertising a Mytty remote-access server, so a
+/// client can offer them by name instead of asking for a host and port.
 @MainActor
-final class MacDiscovery: ObservableObject {
-    @Published private(set) var discovered: [DiscoveredMac] = []
+public final class MacDiscovery: ObservableObject {
+    @Published public private(set) var discovered: [DiscoveredMac] = []
 
     private var browser: NWBrowser?
 
-    func start() {
+    public init() {}
+
+    public func start() {
         stop()
         let browser = NWBrowser(
-            for: .bonjour(type: "_mytty._tcp", domain: nil),
+            for: .bonjour(type: RemoteBonjour.serviceType, domain: nil),
             using: .tcp
         )
         browser.browseResultsChangedHandler = { [weak self] results, _ in
@@ -41,7 +52,7 @@ final class MacDiscovery: ObservableObject {
         self.browser = browser
     }
 
-    func stop() {
+    public func stop() {
         browser?.cancel()
         browser = nil
         discovered = []

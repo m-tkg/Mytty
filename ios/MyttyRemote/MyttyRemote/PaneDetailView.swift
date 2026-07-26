@@ -359,10 +359,40 @@ struct PaneDetailView: View {
                 : foreground
             if let background { attributed.backgroundColor = background }
         }
-        if run.bold {
-            attributed.font = .system(size: 13, weight: .bold, design: .monospaced)
+        var font = Font.system(
+            size: 13,
+            weight: run.bold ? .bold : .regular,
+            design: .monospaced
+        )
+        if run.italic { font = font.italic() }
+        attributed.font = font
+        if run.underline != .none {
+            // The Mac sets an underline colour apart from the text (SGR 58)
+            // for things like a curly error underline; carrying it in the
+            // line style is how SwiftUI takes it.
+            attributed.underlineStyle = Self.underlineStyle(
+                run.underline,
+                color: run.underlineColor.map(Self.color(fromRGB:))
+            )
+        }
+        if run.strikethrough {
+            attributed.strikethroughStyle = .single
         }
         return attributed
+    }
+
+    /// SwiftUI has no curly underline, so it falls back to a plain one
+    /// rather than dropping the mark the Mac drew.
+    private static func underlineStyle(
+        _ style: RemoteUnderlineStyle,
+        color: Color?
+    ) -> Text.LineStyle {
+        let pattern: Text.LineStyle.Pattern = switch style {
+        case .dotted: .dot
+        case .dashed: .dash
+        default: .solid
+        }
+        return Text.LineStyle(pattern: pattern, color: color)
     }
 
     private struct PaneScrollContentFrameKey: PreferenceKey {

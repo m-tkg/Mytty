@@ -4,6 +4,18 @@ import MyTTYCore
 enum PaneListItemKind: Equatable {
     case terminal
     case browser
+    /// A pane mirroring a terminal on another Mac. Everything local to a
+    /// terminal — working directory, foreground process, agent status —
+    /// is absent here on purpose.
+    case remote
+
+    var symbolName: String {
+        switch self {
+        case .terminal: "terminal"
+        case .browser: "globe"
+        case .remote: "macwindow.on.rectangle"
+        }
+    }
 }
 
 struct PaneListItem: Identifiable, Equatable {
@@ -46,6 +58,7 @@ enum PaneListPresentation {
         snapshots: [PaneListWindowSnapshot],
         terminalTitle: String,
         browserTitle: String,
+        remoteTitle: String,
         localizer: MyTTYLocalizer
     ) -> [PaneListItem] {
         snapshots.flatMap { snapshot in
@@ -57,6 +70,7 @@ enum PaneListPresentation {
                         snapshot: snapshot,
                         terminalTitle: terminalTitle,
                         browserTitle: browserTitle,
+                        remoteTitle: remoteTitle,
                         localizer: localizer
                     )
                 }
@@ -72,6 +86,7 @@ enum PaneListPresentation {
         snapshot: PaneListWindowSnapshot,
         terminalTitle: String,
         browserTitle: String,
+        remoteTitle: String,
         localizer: MyTTYLocalizer
     ) -> [PaneListItem] {
         guard let tab = snapshot.session.tabs.first(where: {
@@ -84,6 +99,7 @@ enum PaneListPresentation {
                 snapshot: snapshot,
                 terminalTitle: terminalTitle,
                 browserTitle: browserTitle,
+                remoteTitle: remoteTitle,
                 localizer: localizer
             )
         }
@@ -95,6 +111,7 @@ enum PaneListPresentation {
         snapshot: PaneListWindowSnapshot,
         terminalTitle: String,
         browserTitle: String,
+        remoteTitle: String,
         localizer: MyTTYLocalizer
     ) -> PaneListItem? {
         let isActive = snapshot.session.selectedTabID == tab.id
@@ -126,6 +143,20 @@ enum PaneListPresentation {
                 isActive: isActive
             )
         }
+        if let remote = tab.root.remoteState(with: paneID) {
+            return PaneListItem(
+                windowID: snapshot.session.id,
+                tabID: tab.id,
+                paneID: paneID,
+                tabTitle: tabTitle,
+                command: remoteTitle,
+                // A remote pane has no local location; naming the host it
+                // mirrors is the useful thing to show in its place.
+                location: remote.hostName,
+                kind: .remote,
+                isActive: isActive
+            )
+        }
         return nil
     }
 
@@ -136,7 +167,7 @@ enum PaneListPresentation {
         switch node {
         case let .surface(state):
             state.id == id ? state : nil
-        case .browser:
+        case .browser, .remote:
             nil
         case let .split(_, _, first, second):
             terminalState(in: first, id: id)

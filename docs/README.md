@@ -26,6 +26,7 @@ It's pronounced "mighty".
 
 - [Run a team of agents with mytty-ctl](how-to/orchestrate-agents-with-mytty-ctl.md)
 - [Connect to your Mac from an iPhone](how-to/connect-from-iphone.md)
+- [Open a pane on another Mac](how-to/open-a-pane-on-another-mac.md)
 - [Use the built-in browser](how-to/use-the-builtin-browser.md)
 - [Record a pane as a GIF](how-to/record-a-gif.md)
 

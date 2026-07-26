@@ -9,6 +9,7 @@ struct SettingsView: View {
     @ObservedObject var defaultTerminal: DefaultTerminalModel
     @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     @ObservedObject var remoteAccess: RemoteAccessSettingsModel
+    @ObservedObject var remoteMacs: RemoteMacsSettingsModel
     @State private var selection: SettingsSection? = .general
     @State private var searchText = ""
 
@@ -126,6 +127,11 @@ struct SettingsView: View {
                     model: remoteAccess,
                     localizer: localizer
                 )
+            case .remoteMacs:
+                RemoteMacsSettingsView(
+                    model: remoteMacs,
+                    localizer: localizer
+                )
             case .update:
                 UpdatesSettingsView(
                     model: updates,
@@ -159,6 +165,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case orchestration
     case keyBindings
     case remote
+    case remoteMacs
     case update
 
     var id: Self { self }
@@ -171,6 +178,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .orchestration: .orchestration
         case .keyBindings: .keyBindings
         case .remote: .remote
+        case .remoteMacs: .remoteMacs
         case .update: .update
         }
     }
@@ -183,6 +191,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .orchestration: "person.3"
         case .keyBindings: "keyboard"
         case .remote: "iphone"
+        case .remoteMacs: "macwindow.on.rectangle"
         case .update: "arrow.triangle.2.circlepath"
         }
     }
@@ -230,6 +239,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
             [
                 "ios", "iphone", "ipad", "remote", "pairing", "pair",
                 "bonjour", "network",
+            ]
+        case .remoteMacs:
+            [
+                "remote", "mac", "macs", "host", "pane", "mirror",
+                "pairing", "pair", "link", "bonjour", "network",
             ]
         case .update:
             ["updates", "update", "version", "release", "about"]

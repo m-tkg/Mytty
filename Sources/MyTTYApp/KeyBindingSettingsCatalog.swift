@@ -23,6 +23,7 @@ enum KeyBindingSettingsCatalog {
             .findInPane,
             .composeInput,
             .reloadBrowser,
+            .openRemotePane,
             .closePane,
         ]
         var applicationCommands: [MyTTYCommand] = [

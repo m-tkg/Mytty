@@ -10,6 +10,10 @@ public struct RemotePaneCell: Equatable, Sendable {
     public var bold: Bool
     public var faint: Bool
     public var inverse: Bool
+    public var italic: Bool
+    public var underline: RemoteUnderlineStyle
+    public var underlineColor: Int?
+    public var strikethrough: Bool
 
     public init(
         character: Character,
@@ -17,7 +21,11 @@ public struct RemotePaneCell: Equatable, Sendable {
         background: Int? = nil,
         bold: Bool = false,
         faint: Bool = false,
-        inverse: Bool = false
+        inverse: Bool = false,
+        italic: Bool = false,
+        underline: RemoteUnderlineStyle = .none,
+        underlineColor: Int? = nil,
+        strikethrough: Bool = false
     ) {
         self.character = character
         self.foreground = foreground
@@ -25,6 +33,10 @@ public struct RemotePaneCell: Equatable, Sendable {
         self.bold = bold
         self.faint = faint
         self.inverse = inverse
+        self.italic = italic
+        self.underline = underline
+        self.underlineColor = underlineColor
+        self.strikethrough = strikethrough
     }
 
     fileprivate func hasSameStyle(as other: RemotePaneCell) -> Bool {
@@ -33,6 +45,10 @@ public struct RemotePaneCell: Equatable, Sendable {
             && bold == other.bold
             && faint == other.faint
             && inverse == other.inverse
+            && italic == other.italic
+            && underline == other.underline
+            && underlineColor == other.underlineColor
+            && strikethrough == other.strikethrough
     }
 }
 
@@ -45,6 +61,10 @@ public struct RemotePaneRun: Equatable, Sendable {
     public var bold: Bool
     public var faint: Bool
     public var inverse: Bool
+    public var italic: Bool = false
+    public var underline: RemoteUnderlineStyle = .none
+    public var underlineColor: Int?
+    public var strikethrough: Bool = false
 }
 
 /// Turns a pane's plain text plus its per-cell styling (already resolved to
@@ -109,7 +129,11 @@ public enum RemotePaneScreenRenderer {
                         background: span.background,
                         bold: span.bold,
                         faint: span.faint,
-                        inverse: span.inverse
+                        inverse: span.inverse,
+                        italic: span.italic,
+                        underline: span.underline,
+                        underlineColor: span.underlineColor,
+                        strikethrough: span.strikethrough
                     )
                 )
             }
@@ -142,7 +166,11 @@ public enum RemotePaneScreenRenderer {
                     background: style.background,
                     bold: style.bold,
                     faint: style.faint,
-                    inverse: style.inverse
+                    inverse: style.inverse,
+                    italic: style.italic,
+                    underline: style.underline,
+                    underlineColor: style.underlineColor,
+                    strikethrough: style.strikethrough
                 )
             )
             runText = ""

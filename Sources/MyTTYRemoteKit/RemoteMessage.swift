@@ -358,7 +358,10 @@ public enum RemoteMessageCodec {
     /// replaced it with `registerPushRelay` when pushes moved off a
     /// provider key on the Mac and onto the relay; 4 added the
     /// pane-schedule messages.
-    public static let protocolVersion = 4
+    /// 5 added the per-pane agent status carried in `RemotePane.agent`.
+    /// The field is optional in both directions, so a version-5 client and
+    /// an older host still talk — the client simply sees no agent status.
+    public static let protocolVersion = 5
 
     /// JSON payload only. Wire framing (and, for authenticated
     /// connections, encryption) is applied by `RemoteFrameCodec` /

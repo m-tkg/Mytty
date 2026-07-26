@@ -1,3 +1,4 @@
+import MyTTYRemoteKit
 import SwiftUI
 
 struct DeviceSettingsView: View {

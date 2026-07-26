@@ -30,6 +30,10 @@ final class WindowSessionCoordinator {
     var agentEventServer: AgentEventServer?
     var paneInputScheduler: PaneInputScheduler?
     var settingsModel: SettingsModel?
+    /// Assigned by `AppDelegate` once the application paths are known. Every
+    /// window's remote panes share it, so two panes onto the same Mac use
+    /// one connection no matter which windows they sit in.
+    var remoteConnections: RemotePaneConnectionCoordinator?
     var isRemoteAccessConnected = false
 
     private let updateAgentSleepPrevention: () -> Void
@@ -176,7 +180,8 @@ final class WindowSessionCoordinator {
               let attentionCenter,
               let agentEventServer,
               let paneInputScheduler,
-              let settingsModel
+              let settingsModel,
+              let remoteConnections
         else { return }
 
         let windowID = session.id
@@ -189,6 +194,7 @@ final class WindowSessionCoordinator {
             applicationPreferences: settingsModel.application,
             tabDragCoordinator: tabDragCoordinator,
             closedPaneHistory: closedPaneHistory,
+            remoteConnections: remoteConnections,
             adopting: transfer,
             onSessionChanged: { [weak self] session in
                 self?.rememberedWindowFrame = session.frame

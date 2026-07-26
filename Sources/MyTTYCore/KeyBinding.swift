@@ -36,6 +36,8 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case findInPane = "find-in-pane"
     case reloadBrowser = "reload-browser"
     case showPaneList = "show-pane-list"
+    /// Opens a pane mirroring a terminal on another paired Mac.
+    case openRemotePane = "open-remote-pane"
     case closePane = "close-pane"
     case toggleTabPanel = "toggle-tab-panel"
     case toggleRecording = "toggle-recording"
@@ -124,6 +126,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .swapPanes: "Swap Panes"
         case .findInPane: "Find in Pane"
         case .reloadBrowser: "Reload Page"
+        case .openRemotePane: "Open Remote Pane…"
         case .showPaneList: "Show All Panes"
         case .closePane: "Close Pane"
         case .toggleTabPanel: "Toggle Tab Panels"

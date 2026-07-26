@@ -15,14 +15,20 @@ final class RemoteAccessCoordinator {
     let settingsModel: RemoteAccessSettingsModel
     private let windowSessionCoordinator: WindowSessionCoordinator
     private let localizerProvider: () -> MyTTYLocalizer
+    /// Read only to fill each pane's agent status in the snapshot; this
+    /// coordinator never appends to it. Supplied as a closure because the
+    /// `AttentionCenter` is built after this coordinator during launch.
+    private let attentionCenterProvider: () -> AttentionCenter?
 
     init(
         deviceStoreURL: URL,
         deviceDisplayName: String,
         windowSessionCoordinator: WindowSessionCoordinator,
+        attentionCenterProvider: @escaping () -> AttentionCenter?,
         localizerProvider: @escaping () -> MyTTYLocalizer
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
+        self.attentionCenterProvider = attentionCenterProvider
         self.localizerProvider = localizerProvider
         let server = RemoteAccessServer(
             deviceStore: RemotePairedDeviceStore(fileURL: deviceStoreURL),
@@ -107,6 +113,7 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
             snapshots: snapshots,
             terminalTitle: localizer[.terminal],
             browserTitle: localizer[.browser],
+            remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
         let windows: [RemoteWindow] = snapshots.compactMap { snapshot in
@@ -115,6 +122,11 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
                     .filter {
                         $0.windowID == snapshot.session.id
                             && $0.tabID == tab.id
+                            // A pane already mirroring a third Mac is not
+                            // offered onward: this Mac has no surface to
+                            // read or deliver input to for it, so a client
+                            // would see a pane it could never type into.
+                            && $0.kind != .remote
                     }
                     .map { item in
                         RemotePane(
@@ -124,7 +136,8 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
                             location: item.location,
                             kind: item.kind == .terminal
                                 ? .terminal : .browser,
-                            isActive: item.isActive
+                            isActive: item.isActive,
+                            agent: self.agentStatus(for: item)
                         )
                     }
                 guard !panes.isEmpty else { return nil }
@@ -144,6 +157,31 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
             windows: windows,
             serverProtocolVersion: RemoteMessageCodec.protocolVersion
         )
+    }
+
+    /// The host's own view of the agent in a pane, for clients that cannot
+    /// see the process or read the transcript themselves. Only terminals
+    /// have one: a browser pane runs no agent.
+    private func agentStatus(for item: PaneListItem) -> RemotePaneAgentStatus? {
+        guard item.kind == .terminal,
+              let attentionCenter = attentionCenterProvider()
+        else { return nil }
+        let run = attentionCenter.mostRelevantRun(for: item.paneID)
+        let session = windowSessionCoordinator.controllers
+            .compactMap { $0.agentSessionStatus(forPane: item.paneID) }
+            .first
+        let status = RemotePaneAgentStatus(
+            provider: run?.provider.rawValue,
+            state: run?.state.rawValue,
+            modelName: session?.modelName,
+            contextRemainingPercent: session?.contextRemainingPercent,
+            needsAttention: attentionCenter.items.contains {
+                $0.surfaceID == item.paneID && $0.isActionable
+            }
+        )
+        // Sending an all-nil status would cost a field per pane on every
+        // snapshot and tell the client nothing it does not already assume.
+        return status.isEmpty ? nil : status
     }
 
     func remoteAccessServer(

@@ -1,48 +1,7 @@
 import Foundation
+import MyTTYRemoteKit
 import Network
 import Security
-
-struct PairedMac: Codable, Equatable, Hashable, Identifiable {
-    var deviceID: String
-    var deviceSecretBase64: String
-    /// Bonjour service instance name, used to reconnect via `.service`
-    /// endpoint resolution. Empty when paired via manual host/port entry.
-    var macName: String
-    var manualHost: String?
-    var manualPort: UInt16?
-    var displayName: String
-
-    var id: String { deviceID }
-
-    var deviceSecret: Data {
-        Data(base64Encoded: deviceSecretBase64) ?? Data()
-    }
-
-    var subtitle: String {
-        if !macName.isEmpty { return macName }
-        if let manualHost, let manualPort { return "\(manualHost):\(manualPort)" }
-        return ""
-    }
-
-    func reconnectEndpoint() -> NWEndpoint? {
-        if !macName.isEmpty {
-            return .service(
-                name: macName,
-                type: "_mytty._tcp",
-                domain: "local",
-                interface: nil
-            )
-        }
-        if let manualHost, let manualPort,
-           let port = NWEndpoint.Port(rawValue: manualPort) {
-            return .hostPort(
-                host: NWEndpoint.Host(manualHost),
-                port: port
-            )
-        }
-        return nil
-    }
-}
 
 /// Persists every paired Mac's credentials (and enough addressing info to
 /// reconnect) in the Keychain as a single JSON array, mirroring the

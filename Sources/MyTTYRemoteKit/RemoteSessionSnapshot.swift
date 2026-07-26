@@ -5,6 +5,90 @@ public enum RemotePaneKind: String, Codable, Equatable, Sendable {
     case browser
 }
 
+/// What the host knows about the agent running in a pane. Every field is
+/// optional and absent from servers older than protocol version 5, so a
+/// client must treat "no agent status" and "an older host" the same way:
+/// show nothing rather than guess.
+///
+/// This is the host's own view — the same values its status bar draws —
+/// rather than anything a client could derive. A client cannot see the
+/// pane's foreground process or read its transcript, so without this it
+/// would have no way to tell a busy agent from an idle shell.
+public struct RemotePaneAgentStatus: Codable, Equatable, Sendable {
+    /// The provider's stable identifier ("codex", "claude-code", …).
+    public var provider: String?
+    /// The run state the host's reducer derived ("running", "waiting", …).
+    public var state: String?
+    public var modelName: String?
+    /// 0–100. Already clamped by the host's inspector.
+    public var contextRemainingPercent: Double?
+    /// True when the host has an unacknowledged, actionable Attention item
+    /// for this pane. Deliberately a flag rather than the item itself: a
+    /// client cannot acknowledge on the host's behalf, so anything richer
+    /// would imply an interaction that does not exist.
+    public var needsAttention: Bool
+
+    public init(
+        provider: String? = nil,
+        state: String? = nil,
+        modelName: String? = nil,
+        contextRemainingPercent: Double? = nil,
+        needsAttention: Bool = false
+    ) {
+        self.provider = provider
+        self.state = state
+        self.modelName = modelName
+        self.contextRemainingPercent = contextRemainingPercent
+        self.needsAttention = needsAttention
+    }
+
+    /// Nothing worth showing: no agent, and nothing waiting on the user.
+    public var isEmpty: Bool {
+        provider == nil && state == nil && modelName == nil
+            && contextRemainingPercent == nil && !needsAttention
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case provider = "p"
+        case state = "s"
+        case modelName = "m"
+        case contextRemainingPercent = "c"
+        case needsAttention = "a"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decodeIfPresent(String.self, forKey: .provider)
+        state = try container.decodeIfPresent(String.self, forKey: .state)
+        modelName = try container.decodeIfPresent(
+            String.self,
+            forKey: .modelName
+        )
+        contextRemainingPercent = try container.decodeIfPresent(
+            Double.self,
+            forKey: .contextRemainingPercent
+        )
+        needsAttention = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .needsAttention
+        ) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(provider, forKey: .provider)
+        try container.encodeIfPresent(state, forKey: .state)
+        try container.encodeIfPresent(modelName, forKey: .modelName)
+        try container.encodeIfPresent(
+            contextRemainingPercent,
+            forKey: .contextRemainingPercent
+        )
+        if needsAttention {
+            try container.encode(needsAttention, forKey: .needsAttention)
+        }
+    }
+}
+
 public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
     public let id: String
     public var title: String
@@ -12,6 +96,8 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
     public var location: String
     public var kind: RemotePaneKind
     public var isActive: Bool
+    /// Absent from hosts older than protocol version 5.
+    public var agent: RemotePaneAgentStatus?
 
     public init(
         id: String,
@@ -19,7 +105,8 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
         command: String,
         location: String,
         kind: RemotePaneKind,
-        isActive: Bool
+        isActive: Bool,
+        agent: RemotePaneAgentStatus? = nil
     ) {
         self.id = id
         self.title = title
@@ -27,6 +114,7 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
         self.location = location
         self.kind = kind
         self.isActive = isActive
+        self.agent = agent
     }
 }
 

@@ -309,6 +309,14 @@ enum MainMenuBuilder {
             keyBindings: keyBindings,
             target: target
         )
+        addCommandItem(
+            to: paneMenu,
+            title: localizer.commandTitle(.openRemotePane),
+            action: #selector(AppDelegate.openRemotePane(_:)),
+            command: .openRemotePane,
+            keyBindings: keyBindings,
+            target: target
+        )
         // On-device pane explanation needs Foundation Models (macOS 26+);
         // the menu item must not appear on older systems.
         if #available(macOS 26, *) {
