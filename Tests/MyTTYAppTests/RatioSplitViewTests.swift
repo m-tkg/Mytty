@@ -65,6 +65,9 @@ struct RatioSplitViewTests {
         #expect(
             abs(split.subviews[0].frame.width - available * 0.5) <= 2
         )
+        #expect(
+            abs(split.subviews[1].frame.width - available * 0.5) <= 2
+        )
     }
 
     @Test("preserves a user-adjusted split ratio when the container resizes")

@@ -249,6 +249,7 @@ final class RemotePaneView: NSView {
         header.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
 
         badgeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        badgeLabel.lineBreakMode = .byTruncatingTail
         badgeLabel.textColor = .white
         badgeLabel.wantsLayer = true
         badgeLabel.layer?.backgroundColor = NSColor.systemIndigo.cgColor
@@ -367,6 +368,7 @@ final class RemotePaneView: NSView {
 
     private func configureComposition() {
         compositionLabel.font = .systemFont(ofSize: 12)
+        compositionLabel.lineBreakMode = .byTruncatingTail
         compositionLabel.textColor = .labelColor
         compositionLabel.wantsLayer = true
         compositionLabel.layer?.backgroundColor = NSColor
