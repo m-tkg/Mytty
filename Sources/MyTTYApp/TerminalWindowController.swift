@@ -2989,12 +2989,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func deliverRemoteInput(
         paneID: TerminalSurfaceID,
         text: String,
-        pressEnter: Bool
+        pressEnter: Bool,
+        paste: Bool = true
     ) -> Bool {
         remotePane.deliverInput(
             paneID: paneID,
             text: text,
-            pressEnter: pressEnter
+            pressEnter: pressEnter,
+            paste: paste
         )
     }
 

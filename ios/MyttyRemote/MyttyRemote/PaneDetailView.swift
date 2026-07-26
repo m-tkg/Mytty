@@ -462,7 +462,12 @@ struct PaneDetailView: View {
               !text.isEmpty,
               text.utf8.count <= Self.maxPasteBytes
         else { return }
-        client.sendInput(paneID: pane.id, text: text, pressEnter: false)
+        client.sendInput(
+            paneID: pane.id,
+            text: text,
+            pressEnter: false,
+            paste: true
+        )
         consumeModifiers()
     }
 

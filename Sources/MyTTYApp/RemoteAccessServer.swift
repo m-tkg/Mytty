@@ -23,6 +23,7 @@ protocol RemoteAccessServerDelegate: AnyObject {
         _ server: RemoteAccessServer,
         sendText text: String,
         pressEnter: Bool,
+        paste: Bool,
         toPaneID paneID: String
     )
 
@@ -402,11 +403,14 @@ final class RemoteAccessServer {
             state.watchTracker.unwatch(paneID: paneID)
             connectionStates[id] = state
 
-        case let .sendInput(paneID, text, pressEnter):
+        case let .sendInput(paneID, text, pressEnter, paste):
             delegate?.remoteAccessServer(
                 self,
                 sendText: text,
                 pressEnter: pressEnter,
+                // Clients before the typed/pasted split only ever sent
+                // pastes, so an absent flag stays on the paste path.
+                paste: paste ?? true,
                 toPaneID: paneID
             )
             scheduleEchoPoll()

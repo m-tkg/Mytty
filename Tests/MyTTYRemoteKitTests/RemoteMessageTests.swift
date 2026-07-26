@@ -135,14 +135,35 @@ struct RemoteMessageTests {
 
     @Test
     func encodesAndDecodesSendInput() throws {
-        let message = RemoteMessage.sendInput(
-            paneID: "pane-1",
-            text: "ls -la",
-            pressEnter: true
+        for paste in [nil, true, false] as [Bool?] {
+            let message = RemoteMessage.sendInput(
+                paneID: "pane-1",
+                text: "ls -la",
+                pressEnter: true,
+                paste: paste
+            )
+            let data = try RemoteMessageCodec.encode(message)
+            let decoded = try RemoteMessageCodec.decode(data)
+            #expect(decoded == message)
+        }
+    }
+
+    /// A client built before the typed/pasted split omits the flag; the
+    /// Mac must still decode the message (and treats it as a paste).
+    @Test
+    func decodesSendInputWithoutPasteFlag() throws {
+        let json = """
+        {"type":"sendInput","paneID":"pane-1","text":"ls","pressEnter":false}
+        """
+        let decoded = try RemoteMessageCodec.decode(Data(json.utf8))
+        #expect(
+            decoded == .sendInput(
+                paneID: "pane-1",
+                text: "ls",
+                pressEnter: false,
+                paste: nil
+            )
         )
-        let data = try RemoteMessageCodec.encode(message)
-        let decoded = try RemoteMessageCodec.decode(data)
-        #expect(decoded == message)
     }
 
     @Test

@@ -7,7 +7,12 @@ import MyTTYCore
 /// Ghostty-backed surface.
 @MainActor
 protocol RemoteInputDeliverable: AnyObject {
+    /// Delivers `text` as a paste (bracketed, when the shell asked for it).
     func sendText(_ text: String)
+    /// Delivers `text` as typed keyboard input — never as a paste, so the
+    /// shell doesn't render it in reverse video the way zsh highlights a
+    /// bracketed paste.
+    func sendTypedText(_ text: String)
     func sendEnter()
 }
 
@@ -34,6 +39,7 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
     private struct QueuedInput {
         let text: String
         let pressEnter: Bool
+        let paste: Bool
     }
 
     private let enterDelay: DispatchTimeInterval
@@ -61,15 +67,26 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
     /// and delivered once that Enter fires. Callers that need to know when
     /// delivery actually happened can't infer it from this return value.
     @discardableResult
-    func deliver(paneID: TerminalSurfaceID, text: String, pressEnter: Bool) -> Bool {
+    func deliver(
+        paneID: TerminalSurfaceID,
+        text: String,
+        pressEnter: Bool,
+        paste: Bool = true
+    ) -> Bool {
         guard let target = target(paneID) else { return false }
         guard !pendingEnterPanes.contains(paneID) else {
             queuedByPane[paneID, default: []].append(
-                QueuedInput(text: text, pressEnter: pressEnter)
+                QueuedInput(text: text, pressEnter: pressEnter, paste: paste)
             )
             return true
         }
-        send(to: target, paneID: paneID, text: text, pressEnter: pressEnter)
+        send(
+            to: target,
+            paneID: paneID,
+            text: text,
+            pressEnter: pressEnter,
+            paste: paste
+        )
         return true
     }
 
@@ -77,9 +94,14 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
         to target: Target,
         paneID: TerminalSurfaceID,
         text: String,
-        pressEnter: Bool
+        pressEnter: Bool,
+        paste: Bool
     ) {
-        target.sendText(text)
+        if paste {
+            target.sendText(text)
+        } else {
+            target.sendTypedText(text)
+        }
         guard pressEnter else { return }
         pendingEnterPanes.insert(paneID)
         // The weak captures mean a pane closed within the delay window
@@ -109,6 +131,12 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
             queuedByPane.removeValue(forKey: paneID)
             return
         }
-        send(to: target, paneID: paneID, text: next.text, pressEnter: next.pressEnter)
+        send(
+            to: target,
+            paneID: paneID,
+            text: next.text,
+            pressEnter: next.pressEnter,
+            paste: next.paste
+        )
     }
 }

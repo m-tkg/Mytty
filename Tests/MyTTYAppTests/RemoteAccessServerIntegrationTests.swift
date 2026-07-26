@@ -462,6 +462,7 @@ private final class StubRemoteAccessDelegate: RemoteAccessServerDelegate {
         _ server: RemoteAccessServer,
         sendText text: String,
         pressEnter: Bool,
+        paste: Bool,
         toPaneID paneID: String
     ) {}
 

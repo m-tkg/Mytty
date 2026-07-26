@@ -1487,6 +1487,13 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         ghostty_surface_mouse_scroll(native, 0, deltaY, 0)
     }
 
+    /// Injects `string` as a *paste*: libghostty routes
+    /// `ghostty_surface_text` through its clipboard-paste path, so a shell
+    /// with bracketed paste enabled receives it framed by `ESC[200~` /
+    /// `ESC[201~`. Use this for clipboard content and other multi-line
+    /// text; for text the user typed, use `sendTypedText` instead — zsh
+    /// renders a bracketed paste in reverse video, which looks like a
+    /// second cursor sitting on the freshly typed characters.
     public func sendText(_ string: String) {
         guard let native, !string.isEmpty else { return }
         string.withCString { pointer in
@@ -1496,6 +1503,14 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                 UInt(string.lengthOfBytes(using: .utf8))
             )
         }
+    }
+
+    /// Injects `string` as typed text, on the same path a committed IME
+    /// composition takes: a key event carrying only text, so the terminal
+    /// sees ordinary keyboard input rather than a paste.
+    public func sendTypedText(_ string: String) {
+        guard !string.isEmpty else { return }
+        _ = sendCommittedPreedit(string, action: GHOSTTY_ACTION_PRESS)
     }
 
     public func sendEnter() {

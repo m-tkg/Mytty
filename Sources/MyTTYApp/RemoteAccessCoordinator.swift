@@ -173,6 +173,7 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         _ server: RemoteAccessServer,
         sendText text: String,
         pressEnter: Bool,
+        paste: Bool,
         toPaneID paneID: String
     ) {
         guard let surfaceID = terminalSurfaceID(from: paneID) else { return }
@@ -180,7 +181,8 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
             where controller.deliverRemoteInput(
                 paneID: surfaceID,
                 text: text,
-                pressEnter: pressEnter
+                pressEnter: pressEnter,
+                paste: paste
             ) {
             return
         }
