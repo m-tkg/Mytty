@@ -206,6 +206,80 @@ struct RemoteAccessServerIntegrationTests {
         #expect(afterDelete.contains(created))
     }
 
+    @Test("routes acknowledgeAttention to the delegate over the full pair + hello flow")
+    func routesAcknowledgeAttentionToDelegate() async throws {
+        let delegate = StubRemoteAccessDelegate()
+        delegate.paneText["pane-1"] = "hello from mac"
+
+        let server = RemoteAccessServer(
+            deviceStore: RemotePairedDeviceStore(fileURL: temporaryStoreURL()),
+            deviceDisplayName: testServiceName(),
+            onError: { error in Issue.record("server error: \(error)") }
+        )
+        server.delegate = delegate
+        try server.start()
+        defer { server.stop() }
+
+        let port = try await step("wait for listening port") {
+            try await self.waitForListeningPort(server)
+        }
+        let code = server.pairingCoordinator.beginPairing()
+
+        let pairConnection = TestRemoteConnection(port: port)
+        try await step("pair connection start") { try await pairConnection.start() }
+        let pairingKey = RemotePairing.derivePresharedKey(token: code.value)
+        let approval = try await step("pair exchange") {
+            try await pairConnection.exchange(
+                .pairRequest(deviceName: "Integration iPhone", token: code.value),
+                key: pairingKey
+            )
+        }
+        pairConnection.cancel()
+        guard case let .pairApproved(deviceID, secretBase64) = approval else {
+            Issue.record("expected pairApproved, got \(approval)")
+            return
+        }
+
+        let session = TestRemoteConnection(port: port)
+        try await step("session connection start") { try await session.start() }
+        defer { session.cancel() }
+        let sessionKey = SymmetricKey(
+            data: Data(base64Encoded: secretBase64) ?? Data()
+        )
+        let helloResponse = try await step("hello exchange") {
+            try await session.exchange(
+                .hello(
+                    deviceID: deviceID,
+                    protocolVersion: RemoteMessageCodec.protocolVersion
+                ),
+                key: sessionKey
+            )
+        }
+        guard case .snapshot = helloResponse else {
+            Issue.record("expected snapshot after hello, got \(helloResponse)")
+            return
+        }
+
+        // acknowledgeAttention has no reply of its own, so send it and
+        // then confirm the connection still works with a watchPane
+        // round trip before checking what reached the delegate.
+        try session.send(
+            .acknowledgeAttention(paneID: "pane-1"),
+            key: sessionKey
+        )
+        let watchResponse = try await step("watchPane exchange") {
+            try await session.exchange(
+                .watchPane(paneID: "pane-1"),
+                key: sessionKey
+            )
+        }
+        guard case .paneContent = watchResponse else {
+            Issue.record("expected paneContent after watchPane, got \(watchResponse)")
+            return
+        }
+        #expect(delegate.acknowledgedAttentionPaneIDs == ["pane-1"])
+    }
+
     @Test("wrong-code guesses invalidate the active pairing code after enough attempts, defeating online brute force")
     func wrongCodeGuessesInvalidateActiveCode() async throws {
         let delegate = StubRemoteAccessDelegate()
@@ -442,6 +516,7 @@ struct RemoteAccessServerIntegrationTests {
 private final class StubRemoteAccessDelegate: RemoteAccessServerDelegate {
     var paneText: [String: String] = [:]
     var schedules: [String: [RemotePaneSchedule]] = [:]
+    var acknowledgedAttentionPaneIDs: [String] = []
 
     func remoteAccessServerSnapshot(
         _ server: RemoteAccessServer
@@ -506,6 +581,13 @@ private final class StubRemoteAccessDelegate: RemoteAccessServerDelegate {
     ) {
         schedules[paneID]?.removeAll { $0.id == scheduleID }
     }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        acknowledgeAttentionForPaneID paneID: String
+    ) {
+        acknowledgedAttentionPaneIDs.append(paneID)
+    }
 }
 
 /// Minimal NWConnection-based client mirroring the iOS app's
@@ -568,6 +650,17 @@ private final class TestRemoteConnection: @unchecked Sendable {
 
     func cancel() {
         connection.cancel()
+    }
+
+    /// Encrypts and sends `message` without waiting for any reply, for
+    /// messages the server never answers (e.g. `acknowledgeAttention`).
+    func send(_ message: RemoteMessage, key: SymmetricKey) throws {
+        let payload = try RemoteMessageCodec.encode(message)
+        let sealed = try RemoteSecureChannel.seal(payload, using: key)
+        connection.send(
+            content: RemoteFrameCodec.encode(sealed),
+            completion: .contentProcessed { _ in }
+        )
     }
 
     /// Encrypts and sends `message`, then waits for and decrypts the next

@@ -296,4 +296,28 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
     ) {
         paneScheduleService.delete(scheduleID: scheduleID, forPaneID: paneID)
     }
+
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        acknowledgeAttentionForPaneID paneID: String
+    ) {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let attentionCenter = attentionCenterProvider()
+        else { return }
+        do {
+            // Window controllers observe the AttentionCenter, so the tab
+            // sidebar's unread badges refresh on their own; only remote
+            // clients need the fresh snapshot pushed to drop theirs.
+            let acknowledgedCount = try attentionCenter
+                .acknowledgeActionableItems(for: surfaceID)
+            if acknowledgedCount > 0 {
+                server.broadcastSnapshot()
+            }
+        } catch {
+            WindowSessionCoordinator.reportPersistenceError(
+                error,
+                operation: "remote attention acknowledgement"
+            )
+        }
+    }
 }

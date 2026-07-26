@@ -238,6 +238,14 @@ struct RemoteMessageTests {
     }
 
     @Test
+    func encodesAndDecodesAcknowledgeAttention() throws {
+        let message = RemoteMessage.acknowledgeAttention(paneID: "pane-1")
+        let data = try RemoteMessageCodec.encode(message)
+        let decoded = try RemoteMessageCodec.decode(data)
+        #expect(decoded == message)
+    }
+
+    @Test
     func encodesAndDecodesNewTab() throws {
         let message = RemoteMessage.newTab(windowID: "window-1")
         let data = try RemoteMessageCodec.encode(message)

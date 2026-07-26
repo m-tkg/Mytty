@@ -68,6 +68,13 @@ public final class RemoteClient: ObservableObject {
     /// only needed where the absence has to be told apart from "no agent".
     public var supportsPaneAgentStatus: Bool { serverProtocolVersion >= 5 }
 
+    /// True once the connected Mac understands `acknowledgeAttention`;
+    /// older servers close the connection on an unknown message type, so
+    /// `acknowledgeAttention(paneID:)` silently no-ops without this.
+    public var supportsAttentionAcknowledgement: Bool {
+        serverProtocolVersion >= 6
+    }
+
     private var transport: RemoteConnectionTransport?
     private var sessionKey: SymmetricKey?
     /// The Mac connected to most recently, so views deep in the navigation
@@ -333,6 +340,17 @@ public final class RemoteClient: ObservableObject {
 
     public func newTab(windowID: String) {
         send(.newTab(windowID: windowID))
+    }
+
+    /// Tells the Mac the user is looking at this pane, so its Attention
+    /// items and unread badges clear there just as on a local focus.
+    /// Safe to call unconditionally: it no-ops against servers that
+    /// predate the message.
+    public func acknowledgeAttention(paneID: String) {
+        guard state == .connected, supportsAttentionAcknowledgement else {
+            return
+        }
+        send(.acknowledgeAttention(paneID: paneID))
     }
 
     public func requestPaneSchedules(paneID: String) {
