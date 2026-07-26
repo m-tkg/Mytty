@@ -2,9 +2,8 @@ import Combine
 import CryptoKit
 import Foundation
 import Network
-import MyTTYRemoteKit
 
-enum RemoteClientError: Error {
+public enum RemoteClientError: Error {
     case connectionClosed
     case protocolError
     case noEndpoint
@@ -12,39 +11,62 @@ enum RemoteClientError: Error {
     case timedOut
 }
 
+/// A client session against one Mac's remote-access server: pairing,
+/// reconnecting, mirroring pane content, and sending input back. Shared by
+/// the iOS remote app and by a Mac hosting remote panes, so nothing here
+/// may touch UIKit or AppKit.
 @MainActor
-final class RemoteClient: ObservableObject {
-    enum ConnectionState: Equatable {
+public final class RemoteClient: ObservableObject {
+    public enum ConnectionState: Equatable {
         case disconnected
         case connecting
         case connected
         case failed(String)
     }
 
-    struct PaneScreen: Equatable {
-        var text: String
-        var cursorRow: Int?
-        var cursorColumn: Int?
+    public struct PaneScreen: Equatable {
+        public var text: String
+        public var cursorRow: Int?
+        public var cursorColumn: Int?
         /// Colored lines bottom-aligned to `text`; empty or shorter than
         /// `text` means the top lines render without color.
-        var styledLines: [RemoteStyledLine] = []
+        public var styledLines: [RemoteStyledLine] = []
         /// True when the pane only has a screen-sized buffer (an
         /// alternate-screen TUI): scroll gestures are forwarded to the
         /// Mac instead of scrolling the mirrored text locally.
-        var altScreen = false
+        public var altScreen = false
+
+        public init(
+            text: String,
+            cursorRow: Int? = nil,
+            cursorColumn: Int? = nil,
+            styledLines: [RemoteStyledLine] = [],
+            altScreen: Bool = false
+        ) {
+            self.text = text
+            self.cursorRow = cursorRow
+            self.cursorColumn = cursorColumn
+            self.styledLines = styledLines
+            self.altScreen = altScreen
+        }
     }
 
-    @Published private(set) var state: ConnectionState = .disconnected
-    @Published private(set) var snapshot: RemoteSessionSnapshot?
-    @Published private(set) var paneContent: [String: PaneScreen] = [:]
-    @Published private(set) var paneSchedules: [String: [RemotePaneSchedule]] = [:]
+    @Published public private(set) var state: ConnectionState = .disconnected
+    @Published public private(set) var snapshot: RemoteSessionSnapshot?
+    @Published public private(set) var paneContent: [String: PaneScreen] = [:]
+    @Published public private(set) var paneSchedules: [String: [RemotePaneSchedule]] = [:]
 
-    var isConnected: Bool { state == .connected }
+    public var isConnected: Bool { state == .connected }
 
     /// True once the connected Mac has confirmed it understands the
     /// pane-schedule messages; older servers close the connection on an
     /// unknown message type, so callers must gate on this before sending.
-    var supportsPaneSchedules: Bool { serverProtocolVersion >= 4 }
+    public var supportsPaneSchedules: Bool { serverProtocolVersion >= 4 }
+
+    /// True once the connected Mac reports the agent status and attention
+    /// fields on each pane. Older servers simply leave them nil, so this is
+    /// only needed where the absence has to be told apart from "no agent".
+    public var supportsPaneAgentStatus: Bool { serverProtocolVersion >= 5 }
 
     private var transport: RemoteConnectionTransport?
     private var sessionKey: SymmetricKey?
@@ -56,22 +78,22 @@ final class RemoteClient: ObservableObject {
     private var connectTimeoutTask: Task<Void, Never>?
     /// Connect/pair attempts to unreachable addresses can otherwise sit in
     /// Network.framework's retrying `.waiting` state forever.
-    static let attemptTimeout: Duration = .seconds(30)
+    public static let attemptTimeout: Duration = .seconds(30)
     private var pairingEndpointInfo: (macName: String, host: String?, port: UInt16?)?
     private var pairingLabel = ""
-    private let pushRegistration: PushRegistration
+    private let pushRegistration: RemotePushRegistrationProviding?
     private var pushRegistrationObserver: AnyCancellable?
     /// The version reported by the connected Mac, so features added after
     /// version 1 are only used where they will decode. Older servers close
     /// the connection on an unknown message type.
     private var serverProtocolVersion = 1
 
-    init(pushRegistration: PushRegistration = .shared) {
+    public init(pushRegistration: RemotePushRegistrationProviding? = nil) {
         self.pushRegistration = pushRegistration
         // The token can land after the session is already up (first launch
         // asks for permission), so re-send whenever it changes.
-        pushRegistrationObserver = pushRegistration.$registration
-            .dropFirst()
+        pushRegistrationObserver = pushRegistration?
+            .pushRelayRegistrationChanged
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     self?.sendPushRegistration()
@@ -81,7 +103,7 @@ final class RemoteClient: ObservableObject {
 
     // MARK: Pairing
 
-    func pair(
+    public func pair(
         macName: String?,
         endpoint: NWEndpoint,
         token: String,
@@ -126,7 +148,7 @@ final class RemoteClient: ObservableObject {
 
     /// Abandons an in-flight pairing attempt; the pending `pair` call
     /// throws `RemoteClientError.cancelled`.
-    func cancelPairing() {
+    public func cancelPairing() {
         failPairing(RemoteClientError.cancelled)
         transport?.cancel()
         transport = nil
@@ -196,7 +218,7 @@ final class RemoteClient: ObservableObject {
 
     // MARK: Session
 
-    func connect(mac: PairedMac) {
+    public func connect(mac: PairedMac) {
         disconnect()
         lastConnectedMac = mac
         guard let endpoint = mac.reconnectEndpoint() else {
@@ -242,19 +264,25 @@ final class RemoteClient: ObservableObject {
     /// The navigation stack is left alone: views deep in it re-resolve
     /// themselves against the new snapshot and only pop if what they show
     /// is gone.
-    func reconnect() {
+    public func reconnect() {
         guard let mac = lastConnectedMac else { return }
         connect(mac: mac)
     }
 
-    var canReconnect: Bool { lastConnectedMac != nil }
+    public var canReconnect: Bool { lastConnectedMac != nil }
 
     /// Lets a caller tell whether the session already on screen is the
     /// one it wants, rather than reconnecting and throwing away a live
     /// connection along with the pane content it has already mirrored.
-    var connectedMacID: String? { lastConnectedMac?.deviceID }
+    public var connectedMacID: String? { lastConnectedMac?.deviceID }
 
-    func disconnect() {
+    /// The label the user gave the connected Mac, for chrome that has to
+    /// say which machine a pane is mirroring.
+    public var connectedMacDisplayName: String? {
+        lastConnectedMac?.displayName
+    }
+
+    public func disconnect() {
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
         transport?.cancel()
@@ -266,18 +294,18 @@ final class RemoteClient: ObservableObject {
         paneSchedules = [:]
     }
 
-    func watchPane(_ paneID: String) {
+    public func watchPane(_ paneID: String) {
         send(.watchPane(paneID: paneID))
     }
 
-    func unwatchPane(_ paneID: String) {
+    public func unwatchPane(_ paneID: String) {
         send(.unwatchPane(paneID: paneID))
     }
 
     /// `paste` tells the Mac whether to deliver the text as a clipboard
     /// paste or as typed keyboard input; typed is the default because
     /// everything but the paste key comes from the on-screen keyboard.
-    func sendInput(
+    public func sendInput(
         paneID: String,
         text: String,
         pressEnter: Bool,
@@ -293,21 +321,21 @@ final class RemoteClient: ObservableObject {
         )
     }
 
-    func sendKey(paneID: String, key: String, modifiers: [String]) {
+    public func sendKey(paneID: String, key: String, modifiers: [String]) {
         send(.sendKey(paneID: paneID, key: key, modifiers: modifiers))
     }
 
     /// Forwards a scroll gesture to an alternate-screen pane as
     /// mouse-wheel lines (positive = toward older content).
-    func sendScroll(paneID: String, deltaY: Double) {
+    public func sendScroll(paneID: String, deltaY: Double) {
         send(.scrollPane(paneID: paneID, deltaY: deltaY))
     }
 
-    func newTab(windowID: String) {
+    public func newTab(windowID: String) {
         send(.newTab(windowID: windowID))
     }
 
-    func requestPaneSchedules(paneID: String) {
+    public func requestPaneSchedules(paneID: String) {
         guard state == .connected, supportsPaneSchedules else { return }
         send(.listPaneSchedules(paneID: paneID))
     }
@@ -317,7 +345,7 @@ final class RemoteClient: ObservableObject {
     /// absence — the Mac silently drops an unknown pane or a past date
     /// rather than replying with an error).
     @discardableResult
-    func createPaneSchedule(
+    public func createPaneSchedule(
         paneID: String,
         fireAt: Date,
         text: String,
@@ -339,7 +367,7 @@ final class RemoteClient: ObservableObject {
         return id
     }
 
-    func deletePaneSchedule(paneID: String, scheduleID: String) {
+    public func deletePaneSchedule(paneID: String, scheduleID: String) {
         guard state == .connected, supportsPaneSchedules else { return }
         send(.deletePaneSchedule(paneID: paneID, scheduleID: scheduleID))
     }
@@ -402,13 +430,15 @@ final class RemoteClient: ObservableObject {
     /// connection because iOS can issue a different APNs token at any
     /// launch, and with an empty id when permission is missing so the Mac
     /// stops pushing to a device that would silently drop the alerts.
+    /// A client with no push provider at all (a Mac) sends nothing.
     private func sendPushRegistration() {
+        guard let pushRegistration else { return }
         guard state == .connected, serverProtocolVersion >= 3 else { return }
+        let registration = pushRegistration.currentPushRelayRegistration
         send(
             .registerPushRelay(
-                pushID: pushRegistration.registration?.pushID ?? "",
-                relaySecretBase64: pushRegistration.registration?.relaySecret
-                    ?? ""
+                pushID: registration?.pushID ?? "",
+                relaySecretBase64: registration?.relaySecret ?? ""
             )
         )
     }

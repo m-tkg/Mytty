@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MyTTYRemoteKit
 import Security
@@ -244,5 +245,25 @@ enum PushEnvironmentResolver {
         // Apple spells the sandbox one "development" in the entitlement
         // but "sandbox" in the APNs host; normalise to our wire value.
         return value == "development" ? "sandbox" : "production"
+    }
+}
+
+/// Lets the shared `RemoteClient` read this device's relay registration
+/// without knowing anything about APNs — the Mac client has no equivalent
+/// and passes no provider at all.
+extension PushRegistration: RemotePushRegistrationProviding {
+    var currentPushRelayRegistration: RemotePushRelayRegistration? {
+        guard let registration else { return nil }
+        return RemotePushRelayRegistration(
+            pushID: registration.pushID,
+            relaySecret: registration.relaySecret
+        )
+    }
+
+    var pushRelayRegistrationChanged: AnyPublisher<Void, Never> {
+        $registration
+            .dropFirst()
+            .map { _ in () }
+            .eraseToAnyPublisher()
     }
 }

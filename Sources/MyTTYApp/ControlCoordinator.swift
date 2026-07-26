@@ -73,6 +73,7 @@ extension ControlCoordinator: ControlServerDelegate {
             snapshots: snapshots,
             terminalTitle: localizer[.terminal],
             browserTitle: localizer[.browser],
+            remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
         return items.map { item in

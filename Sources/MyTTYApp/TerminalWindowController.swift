@@ -76,6 +76,14 @@ enum TerminalTabTitle {
                     ? localizer[.browser]
                     : url.absoluteString)
         }
+        if let remote = tab.root.remoteState(with: firstPaneID) {
+            // The host is what distinguishes one remote pane from another,
+            // so it leads; the mirrored pane's own title follows when the
+            // host has reported one.
+            return remote.title.isEmpty
+                ? "\(localizer[.remotePaneBadge]): \(remote.hostName)"
+                : "\(remote.hostName): \(remote.title)"
+        }
         return localizer[.terminal]
     }
 }
@@ -85,6 +93,7 @@ struct TerminalTabTransfer {
     let tab: TabSession
     let surfaces: [TerminalSurfaceID: GhosttySurfaceView]
     let browsers: [TerminalSurfaceID: BrowserPaneView]
+    let remotes: [TerminalSurfaceID: RemotePaneView]
 }
 
 /// How a session save sources each pane's scrollback. Capturing it means
@@ -116,6 +125,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     )
     private var browsers: [TerminalSurfaceID: BrowserPaneView] = [:]
+    private var remotes: [TerminalSurfaceID: RemotePaneView] = [:]
+    private let remoteConnections: RemotePaneConnectionCoordinator
     private var attentionObserver: AnyCancellable?
     private lazy var scheduledInput = ScheduledInputCoordinator(
         scheduler: paneInputScheduler,
@@ -132,6 +143,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         surfaceHost: surfaceHost,
         surfaces: { [weak self] in self?.surfaces ?? [:] },
         browsers: { [weak self] in self?.browsers ?? [:] },
+        remotes: { [weak self] in self?.remotes ?? [:] },
         inactivePaneDimming: { [weak self] in
             CGFloat(self?.applicationPreferences.inactivePaneDimming ?? 0)
         },
@@ -297,6 +309,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         applicationPreferences: ApplicationPreferences,
         tabDragCoordinator: TabDragCoordinator,
         closedPaneHistory: ClosedPaneHistory,
+        remoteConnections: RemotePaneConnectionCoordinator,
         adopting transfer: TerminalTabTransfer? = nil,
         onSessionChanged: @escaping (WindowSession) -> Void,
         onWindowClosed: @escaping (WindowID) -> Void,
@@ -327,6 +340,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
         self.tabDragCoordinator = tabDragCoordinator
         self.closedPaneHistory = closedPaneHistory
+        self.remoteConnections = remoteConnections
         self.onSessionChanged = onSessionChanged
         self.onWindowClosed = onWindowClosed
         self.onNewWindowRequested = onNewWindowRequested
@@ -543,6 +557,53 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 select: true
             )
             browsers[state.id] = browser
+            renderedTabID = nil
+            sessionDidChange()
+            refreshPresentation(focusTerminal: true)
+        } catch {
+            presentActionError(error)
+        }
+    }
+
+    private let remotePanePicker = RemotePanePickerController()
+
+    /// Asks which pane on which paired Mac to mirror, then opens it beside
+    /// the focused pane. Presented as a sheet because the pane list only
+    /// arrives once a connection to that Mac is up.
+    func openRemotePane() {
+        remotePanePicker.present(
+            connections: remoteConnections,
+            localizer: localizer,
+            over: window
+        ) { [weak self] selection in
+            self?.addRemotePane(selection, direction: .right)
+        }
+    }
+
+    private func addRemotePane(
+        _ selection: RemotePaneSelection,
+        direction: SplitDirection
+    ) {
+        let state = RemotePaneState(
+            hostID: selection.hostID,
+            remotePaneID: selection.remotePaneID,
+            hostName: selection.hostName,
+            title: selection.title
+        )
+        do {
+            let remote = makeRemote(for: state)
+            if session.selectedTab == nil {
+                try session.add(
+                    tab: TabSession(initialRemote: state),
+                    select: true
+                )
+            } else {
+                try session.splitFocusedRemote(
+                    adding: state,
+                    direction: direction
+                )
+            }
+            remotes[state.id] = remote
             renderedTabID = nil
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
@@ -1278,6 +1339,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             snapshot: paneListSnapshot(limitedTo: Set(tab.paneIDs)),
             terminalTitle: localizer[.terminal],
             browserTitle: localizer[.browser],
+            remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
     }
@@ -1340,9 +1402,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 autocomplete.removeSession(for: surfaceID)
                 surfaces.removeValue(forKey: surfaceID)?.removeFromSuperview()
             }
-            for browserID in tab.paneIDs
-                where !tab.surfaceIDs.contains(browserID) {
-                browsers.removeValue(forKey: browserID)?.removeFromSuperview()
+            for paneID in tab.paneIDs
+                where !tab.surfaceIDs.contains(paneID) {
+                browsers.removeValue(forKey: paneID)?.removeFromSuperview()
+                detachRemotePane(paneID)
             }
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
@@ -1868,6 +1931,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     browsers[state.id] = makeBrowser(for: state)
                 }
             }
+            for state in tab.root.remoteStates {
+                if let remote = transfer?.remotes[state.id] {
+                    remotes[state.id] = remote
+                    bind(remote: remote, to: state.id)
+                } else {
+                    remotes[state.id] = makeRemote(for: state)
+                }
+            }
         }
     }
 
@@ -2040,6 +2111,76 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         browser.onClose = { [weak self] in
             self?.closeBrowserPane(paneID)
         }
+    }
+
+    private func makeRemote(for state: RemotePaneState) -> RemotePaneView {
+        let remote = RemotePaneView(
+            paneID: state.id,
+            hostID: state.hostID,
+            remotePaneID: state.remotePaneID,
+            hostName: state.hostName,
+            title: state.title,
+            font: remotePaneFont,
+            labels: makeRemotePaneLabels()
+        )
+        bind(remote: remote, to: state.id)
+        // Attaching opens (or joins) the session to that Mac and starts the
+        // content flowing; the view itself holds no connection.
+        remoteConnections.attach(remote)
+        return remote
+    }
+
+    private func bind(
+        remote: RemotePaneView,
+        to paneID: TerminalSurfaceID
+    ) {
+        remote.onFocus = { [weak self] in
+            self?.focusBrowserPane(paneID)
+        }
+        remote.onClose = { [weak self] in
+            self?.closePaneOrContainingTab(paneID)
+        }
+        remote.onTitleChanged = { [weak self] title in
+            guard let self else { return }
+            do {
+                try self.session.updateRemoteTitle(title, for: paneID)
+                self.sessionDidChange()
+                self.refreshPresentation(focusTerminal: false)
+            } catch {
+                // A title that cannot be recorded is not worth interrupting
+                // the user for: the pane still shows the host's title, it
+                // just will not survive a restart.
+                remoteAccessLog.notice(
+                    "could not record remote pane title: \(String(describing: error), privacy: .public)"
+                )
+            }
+        }
+    }
+
+    /// Remote panes draw with the same font as local terminals, so a screen
+    /// mirrored from another Mac lines up with the panes beside it.
+    private var remotePaneFont: NSFont {
+        remoteConnections.paneFont
+    }
+
+    private func makeRemotePaneLabels() -> RemotePaneLabels {
+        RemotePaneLabels(
+            remoteBadge: localizer[.remotePaneBadge],
+            close: localizer[.closeRemotePane],
+            connecting: localizer[.remoteConnecting],
+            disconnected: localizer[.remoteDisconnected],
+            reconnect: localizer[.remoteReconnect],
+            inputDisabled: localizer[.remoteInputDisabled],
+            paneClosedOnHost: localizer[.remotePaneClosedOnHost]
+        )
+    }
+
+    /// Drops a remote pane's view and tells the connection coordinator, so
+    /// a host with no panes left stops holding a connection open.
+    private func detachRemotePane(_ paneID: TerminalSurfaceID) {
+        guard let remote = remotes.removeValue(forKey: paneID) else { return }
+        remoteConnections.detach(paneID: paneID, hostID: remote.hostID)
+        remote.removeFromSuperview()
     }
 
     private func makeTerminalSearchLabels() -> GhosttySearchLabels {
@@ -2492,6 +2633,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = session.selectedTab else { return }
         if let surface = surfaces[tab.focusedSurfaceID] {
             window?.makeFirstResponder(surface)
+        } else if let remote = remotes[tab.focusedSurfaceID] {
+            remote.focusScreen()
         } else {
             browsers[tab.focusedSurfaceID]?.focusContent()
         }
@@ -2702,6 +2845,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         paneLayout.removeZoom(tabID: id)
         var movedSurfaces: [TerminalSurfaceID: GhosttySurfaceView] = [:]
         var movedBrowsers: [TerminalSurfaceID: BrowserPaneView] = [:]
+        var movedRemotes: [TerminalSurfaceID: RemotePaneView] = [:]
         for paneID in tab.paneIDs {
             if let surface = surfaces.removeValue(forKey: paneID) {
                 surface.onEvent = nil
@@ -2711,6 +2855,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             }
             if let browser = browsers.removeValue(forKey: paneID) {
                 movedBrowsers[paneID] = browser
+            }
+            if let remote = remotes.removeValue(forKey: paneID) {
+                // The connection is app-wide, not window-scoped, so a pane
+                // moving between windows keeps mirroring without a reconnect.
+                movedRemotes[paneID] = remote
             }
         }
         renderedTabID = nil
@@ -2726,7 +2875,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return TerminalTabTransfer(
             tab: tab,
             surfaces: movedSurfaces,
-            browsers: movedBrowsers
+            browsers: movedBrowsers,
+            remotes: movedRemotes
         )
     }
 
@@ -2751,6 +2901,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             browsers[paneID] = browser
             bind(browser: browser, to: paneID)
             browser.updateFindLabels(makeBrowserFindLabels())
+        }
+        for (paneID, remote) in transfer.remotes {
+            remotes[paneID] = remote
+            bind(remote: remote, to: paneID)
+            remote.update(font: remotePaneFont)
         }
         renderedTabID = nil
         sessionDidChange()
@@ -3087,6 +3242,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             autocomplete.removeSession(for: paneID)
             surfaces.removeValue(forKey: paneID)?.removeFromSuperview()
             browsers.removeValue(forKey: paneID)?.removeFromSuperview()
+            detachRemotePane(paneID)
             renderedTabID = nil
             sessionDidChange()
             refreshPresentation(focusTerminal: true)
@@ -3117,6 +3273,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             closedPaneHistory.push(.terminal(state))
         } else if let browserState = tab.root.browserState(with: paneID) {
             closedPaneHistory.push(.browser(browserState))
+        } else if let remoteState = tab.root.remoteState(with: paneID) {
+            closedPaneHistory.push(.remote(remoteState))
         }
     }
 
@@ -3155,6 +3313,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             reopenTerminal(state, entryID: entry.id)
         case let .browser(state):
             reopenBrowser(state, entryID: entry.id)
+        case let .remote(state):
+            reopenRemote(state, entryID: entry.id)
         case let .tab(tab):
             reopenTab(tab, entryID: entry.id)
         }
@@ -3208,6 +3368,27 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    private func reopenRemote(
+        _ state: RemotePaneState,
+        entryID: UUID
+    ) {
+        let restored = state.regeneratingID()
+        do {
+            let remote = makeRemote(for: restored)
+            try session.splitFocusedRemote(
+                adding: restored,
+                direction: .right
+            )
+            remotes[restored.id] = remote
+            renderedTabID = nil
+            sessionDidChange()
+            refreshPresentation(focusTerminal: true)
+            closedPaneHistory.remove(id: entryID)
+        } catch {
+            presentActionError(error)
+        }
+    }
+
     private func reopenTab(_ tab: TabSession, entryID: UUID) {
         let restored = tab.regeneratingIDs()
         var createdSurfaceIDs: [TerminalSurfaceID] = []
@@ -3221,6 +3402,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 }
                 for state in restored.root.browserStates {
                     browsers[state.id] = makeBrowser(for: state)
+                }
+                for state in restored.root.remoteStates {
+                    remotes[state.id] = makeRemote(for: state)
                 }
             } catch {
                 for surfaceID in createdSurfaceIDs {
@@ -3381,7 +3565,7 @@ private extension SplitNode {
         switch self {
         case let .surface(state):
             [state]
-        case .browser:
+        case .browser, .remote:
             []
         case let .split(_, _, first, second):
             first.surfaceStates + second.surfaceStates
@@ -3390,12 +3574,23 @@ private extension SplitNode {
 
     var browserStates: [BrowserPaneState] {
         switch self {
-        case .surface:
+        case .surface, .remote:
             []
         case let .browser(state):
             [state]
         case let .split(_, _, first, second):
             first.browserStates + second.browserStates
+        }
+    }
+
+    var remoteStates: [RemotePaneState] {
+        switch self {
+        case .surface, .browser:
+            []
+        case let .remote(state):
+            [state]
+        case let .split(_, _, first, second):
+            first.remoteStates + second.remoteStates
         }
     }
 
@@ -3405,7 +3600,7 @@ private extension SplitNode {
         switch self {
         case let .surface(state):
             state.id == id ? state : nil
-        case .browser:
+        case .browser, .remote:
             nil
         case let .split(_, _, first, second):
             first.surfaceState(with: id) ?? second.surfaceState(with: id)

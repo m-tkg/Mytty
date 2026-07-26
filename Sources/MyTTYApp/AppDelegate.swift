@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var agentEventServer: AgentEventServer?
     private var controlCoordinator: ControlCoordinator?
     private var remoteAccessCoordinator: RemoteAccessCoordinator?
+    /// The client half of remote access: the Macs *this* Mac opens remote
+    /// panes onto. Separate from `remoteAccessCoordinator`, which serves
+    /// the devices connecting in.
+    private var remotePaneConnections: RemotePaneConnectionCoordinator?
     private var attentionNotifier: AttentionNotifier?
     private var remotePushNotifier: RemoteAttentionPushNotifier?
     private var agentIntegrationSettingsModel: AgentIntegrationSettingsModel?
@@ -380,6 +384,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ?? (state.url.absoluteString.isEmpty
                     ? localizer[.browser]
                     : state.url.absoluteString)
+        case let .remote(state):
+            // Name the Mac rather than the pane: several remote panes onto
+            // the same host would otherwise be indistinguishable in the
+            // reopen menu, and the host is what identifies them.
+            return state.hostName.isEmpty
+                ? localizer[.remotePaneBadge]
+                : "\(localizer[.remotePaneBadge]): \(state.hostName)"
         case let .tab(tab):
             let baseName = tab.pinnedTitle
                 ?? TerminalTabTitle.defaultTitle(for: tab, localizer: localizer)
@@ -443,6 +454,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func reloadBrowser(_ sender: Any?) {
         windowSessionCoordinator.activeController?.reloadFocusedBrowser()
+    }
+
+    @objc func openRemotePane(_ sender: Any?) {
+        windowSessionCoordinator.activeController?.openRemotePane()
     }
 
     @objc func explainPane(_ sender: Any?) {
@@ -510,6 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             terminalTitle: localizer[.terminal],
             browserTitle: localizer[.browser],
+            remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
         if paneListWindowController == nil {
@@ -559,7 +575,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func showSettings(_ sender: Any?) {
         guard let settingsModel,
               let agentIntegrationSettingsModel,
-              let remoteAccessCoordinator
+              let remoteAccessCoordinator,
+              let remotePaneConnections
         else { return }
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController(
@@ -568,7 +585,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 updateModel: applicationUpdateModel,
                 defaultTerminalModel: defaultTerminalModel,
                 commandLineToolInstallModel: commandLineToolInstallModel,
-                remoteAccessModel: remoteAccessCoordinator.settingsModel
+                remoteAccessModel: remoteAccessCoordinator.settingsModel,
+                remoteMacsModel: RemoteMacsSettingsModel(
+                    connections: remotePaneConnections
+                )
             )
         }
         settingsWindowController?.present()
@@ -698,6 +718,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             terminalConfiguration: paths.terminalConfiguration
         )
         windowSessionCoordinator.settingsModel = settingsModel
+        let remotePaneConnections = RemotePaneConnectionCoordinator(
+            store: RemoteHostStore(fileURL: paths.remoteHosts),
+            paneFont: RemotePaneConnectionCoordinator.font(
+                for: settingsModel?.terminal ?? TerminalPreferences()
+            ),
+            onError: { error in
+                WindowSessionCoordinator.reportPersistenceError(
+                    error,
+                    operation: "remote hosts"
+                )
+            }
+        )
+        self.remotePaneConnections = remotePaneConnections
+        windowSessionCoordinator.remoteConnections = remotePaneConnections
         let repository = SQLiteSessionRepository(databaseURL: paths.database)
         let paneInputScheduler = PaneInputScheduler(
             repository: SQLitePaneInputScheduleRepository(
@@ -1067,6 +1101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyTerminalPresentation(
         _ preferences: TerminalPreferences
     ) {
+        // Remote panes draw with their own renderer rather than through
+        // Ghostty, so the font change has to be handed to them separately.
+        remotePaneConnections?.update(
+            paneFont: RemotePaneConnectionCoordinator.font(for: preferences)
+        )
         terminalAppearance = preferences.appearance
         NSApplication.shared.appearance = preferences.appearance.appKitAppearance
         syncGhosttyColorScheme()

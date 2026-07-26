@@ -54,6 +54,7 @@ struct PaneListPresentationTests {
             ],
             terminalTitle: "Terminal",
             browserTitle: "Browser",
+            remoteTitle: "Remote",
             localizer: MyTTYLocalizer(language: .english)
         )
 
@@ -123,6 +124,7 @@ struct PaneListPresentationTests {
             snapshot: snapshot,
             terminalTitle: "Terminal",
             browserTitle: "Browser",
+            remoteTitle: "Remote",
             localizer: MyTTYLocalizer(language: .english)
         )
 
@@ -137,6 +139,7 @@ struct PaneListPresentationTests {
             snapshot: snapshot,
             terminalTitle: "Terminal",
             browserTitle: "Browser",
+            remoteTitle: "Remote",
             localizer: MyTTYLocalizer(language: .english)
         )
         #expect(missing.isEmpty)
@@ -163,6 +166,7 @@ struct PaneListPresentationTests {
             ],
             terminalTitle: "Terminal",
             browserTitle: "Browser",
+            remoteTitle: "Remote",
             localizer: MyTTYLocalizer(language: .english)
         )
 

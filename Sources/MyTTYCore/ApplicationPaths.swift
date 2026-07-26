@@ -38,6 +38,11 @@ public struct ApplicationPaths: Sendable {
     public let applicationSupportDirectory: URL
     public let database: URL
     public let remoteDevices: URL
+    /// Macs *this* Mac has paired with as a client, so it can open remote
+    /// panes onto them. Kept apart from `remoteDevices`, which records the
+    /// devices allowed to connect *in* — the two directions have separate
+    /// credentials and either can be empty.
+    public let remoteHosts: URL
     public let logDirectory: URL
     public let controlSocket: URL
     public let aiControlSocket: URL
@@ -65,6 +70,8 @@ public struct ApplicationPaths: Sendable {
             .appendingPathComponent("mytty.sqlite", isDirectory: false)
         remoteDevices = applicationSupportDirectory
             .appendingPathComponent("remote-devices.json", isDirectory: false)
+        remoteHosts = applicationSupportDirectory
+            .appendingPathComponent("remote-hosts.json", isDirectory: false)
         logDirectory = homeDirectory
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Logs", isDirectory: true)

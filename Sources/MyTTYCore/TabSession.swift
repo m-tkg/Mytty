@@ -114,6 +114,41 @@ public struct BrowserPaneState: Codable, Equatable, Sendable {
     }
 }
 
+/// A pane mirroring a terminal that lives on another Mac. It has no local
+/// process, working directory or Ghostty surface — everything it shows
+/// arrives over the remote protocol — which is why it is a pane kind of its
+/// own rather than a terminal with a different command. Local-only concerns
+/// (agent status polling, repository status, mytty-ctl addressing) all skip
+/// this kind deliberately.
+public struct RemotePaneState: Codable, Equatable, Sendable {
+    public let id: TerminalSurfaceID
+    /// The paired Mac this pane mirrors, as recorded by `RemoteHostStore`.
+    public var hostID: String
+    /// The pane's ID *on that Mac*. The remote window and tab are not
+    /// stored: the host rearranges its own layout freely, and every
+    /// protocol message is addressed by pane ID alone.
+    public var remotePaneID: String
+    /// The host's display label, kept locally so a restored pane can name
+    /// itself before the connection is back.
+    public var hostName: String
+    /// The pane title last seen on the host, for the same reason.
+    public var title: String
+
+    public init(
+        id: TerminalSurfaceID = TerminalSurfaceID(),
+        hostID: String,
+        remotePaneID: String,
+        hostName: String,
+        title: String
+    ) {
+        self.id = id
+        self.hostID = hostID
+        self.remotePaneID = remotePaneID
+        self.hostName = hostName
+        self.title = title
+    }
+}
+
 public enum SplitOrientation: String, Codable, Equatable, Sendable {
     case horizontal
     case vertical
@@ -141,6 +176,7 @@ public enum SplitPathComponent: String, Codable, Equatable, Sendable {
 public indirect enum SplitNode: Codable, Equatable, Sendable {
     case surface(TerminalSurfaceState)
     case browser(BrowserPaneState)
+    case remote(RemotePaneState)
     case split(
         orientation: SplitOrientation,
         ratio: Double,
@@ -152,7 +188,7 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
         switch self {
         case let .surface(surface):
             [surface.id]
-        case .browser:
+        case .browser, .remote:
             []
         case let .split(_, _, first, second):
             first.surfaceIDs + second.surfaceIDs
@@ -165,6 +201,8 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             [surface.id]
         case let .browser(browser):
             [browser.id]
+        case let .remote(remote):
+            [remote.id]
         case let .split(_, _, first, second):
             first.paneIDs + second.paneIDs
         }
@@ -174,12 +212,25 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
         with id: TerminalSurfaceID
     ) -> BrowserPaneState? {
         switch self {
-        case .surface:
+        case .surface, .remote:
             nil
         case let .browser(browser):
             browser.id == id ? browser : nil
         case let .split(_, _, first, second):
             first.browserState(with: id) ?? second.browserState(with: id)
+        }
+    }
+
+    public func remoteState(
+        with id: TerminalSurfaceID
+    ) -> RemotePaneState? {
+        switch self {
+        case .surface, .browser:
+            nil
+        case let .remote(remote):
+            remote.id == id ? remote : nil
+        case let .split(_, _, first, second):
+            first.remoteState(with: id) ?? second.remoteState(with: id)
         }
     }
 
@@ -189,6 +240,8 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             surface.id == id
         case let .browser(browser):
             browser.id == id
+        case let .remote(remote):
+            remote.id == id
         case let .split(_, _, first, second):
             first.contains(id) || second.contains(id)
         }
@@ -200,6 +253,8 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             return surface.id == id ? self : nil
         case let .browser(browser):
             return browser.id == id ? self : nil
+        case let .remote(remote):
+            return remote.id == id ? self : nil
         case let .split(_, _, first, second):
             return first.leaf(for: id) ?? second.leaf(for: id)
         }
@@ -219,6 +274,10 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
         case let .browser(browser):
             if browser.id == firstID { return firstReplacement }
             if browser.id == secondID { return secondReplacement }
+            return self
+        case let .remote(remote):
+            if remote.id == firstID { return firstReplacement }
+            if remote.id == secondID { return secondReplacement }
             return self
         case let .split(orientation, ratio, first, second):
             return .split(
@@ -251,6 +310,9 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
         case let .browser(browser):
             guard browser.id == id else { return nil }
             return transform(self)
+        case let .remote(remote):
+            guard remote.id == id else { return nil }
+            return transform(self)
         case let .split(orientation, ratio, first, second):
             if let replacement = first.replacing(pane: id, with: transform) {
                 return .split(
@@ -281,7 +343,7 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             guard surface.id == id else { return nil }
             return transform(surface)
 
-        case .browser:
+        case .browser, .remote:
             return nil
 
         case let .split(orientation, ratio, first, second):
@@ -321,6 +383,10 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
 
         case let .browser(browser):
             guard browser.id == id else { return nil }
+            return SplitRemoval(node: nil, focusCandidate: nil)
+
+        case let .remote(remote):
+            guard remote.id == id else { return nil }
             return SplitRemoval(node: nil, focusCandidate: nil)
 
         case let .split(orientation, ratio, first, second):
@@ -407,7 +473,7 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
 
     fileprivate func equalized() -> SplitNode {
         switch self {
-        case .surface, .browser:
+        case .surface, .browser, .remote:
             return self
         case let .split(orientation, _, first, second):
             let firstWeight = first.weight(for: orientation)
@@ -424,7 +490,7 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
 
     private func weight(for orientation: SplitOrientation) -> Int {
         switch self {
-        case .surface, .browser:
+        case .surface, .browser, .remote:
             return 1
         case let .split(nodeOrientation, _, first, second):
             guard nodeOrientation == orientation else { return 1 }
@@ -495,6 +561,8 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             return [PaneLayout(id: surface.id, frame: frame)]
         case let .browser(browser):
             return [PaneLayout(id: browser.id, frame: frame)]
+        case let .remote(remote):
+            return [PaneLayout(id: remote.id, frame: frame)]
         case let .split(orientation, ratio, first, second):
             switch orientation {
             case .horizontal:
@@ -583,6 +651,19 @@ public struct TabSession: Codable, Equatable, Sendable {
         self.id = id
         self.root = .browser(initialBrowser)
         self.focusedSurfaceID = initialBrowser.id
+        self.pinnedTitle = pinnedTitle
+        self.createdAt = createdAt
+    }
+
+    public init(
+        id: TabID = TabID(),
+        initialRemote: RemotePaneState,
+        pinnedTitle: String? = nil,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.root = .remote(initialRemote)
+        self.focusedSurfaceID = initialRemote.id
         self.pinnedTitle = pinnedTitle
         self.createdAt = createdAt
     }
@@ -679,6 +760,18 @@ public struct TabSession: Codable, Equatable, Sendable {
             pane: focusedSurfaceID,
             adding: .browser(browser),
             id: browser.id,
+            direction: direction
+        )
+    }
+
+    public mutating func split(
+        remote: RemotePaneState,
+        direction: SplitDirection
+    ) throws {
+        try split(
+            pane: focusedSurfaceID,
+            adding: .remote(remote),
+            id: remote.id,
             direction: direction
         )
     }
@@ -848,6 +941,20 @@ public struct TabSession: Codable, Equatable, Sendable {
             browser.url = url
             return .browser(browser)
         }), root.browserState(with: id) != nil else {
+            throw TabSessionError.surfaceNotFound(id)
+        }
+        root = replacement
+    }
+
+    public mutating func updateRemoteTitle(
+        _ title: String,
+        for id: TerminalSurfaceID
+    ) throws {
+        guard let replacement = root.replacing(pane: id, with: { node in
+            guard case var .remote(remote) = node else { return node }
+            remote.title = title
+            return .remote(remote)
+        }), root.remoteState(with: id) != nil else {
             throw TabSessionError.surfaceNotFound(id)
         }
         root = replacement

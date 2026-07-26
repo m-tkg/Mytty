@@ -37,6 +37,7 @@ final class PaneLayoutController {
     private let surfaceHost: NSView
     private let surfaces: () -> [TerminalSurfaceID: GhosttySurfaceView]
     private let browsers: () -> [TerminalSurfaceID: BrowserPaneView]
+    private let remotes: () -> [TerminalSurfaceID: RemotePaneView]
     private let inactivePaneDimming: () -> CGFloat
     private let activePaneBorder: () -> PaneActiveBorderStyle
     private let isLiveResizing: () -> Bool
@@ -51,6 +52,7 @@ final class PaneLayoutController {
         surfaceHost: NSView,
         surfaces: @escaping () -> [TerminalSurfaceID: GhosttySurfaceView],
         browsers: @escaping () -> [TerminalSurfaceID: BrowserPaneView],
+        remotes: @escaping () -> [TerminalSurfaceID: RemotePaneView],
         inactivePaneDimming: @escaping () -> CGFloat,
         activePaneBorder: @escaping () -> PaneActiveBorderStyle,
         isLiveResizing: @escaping () -> Bool,
@@ -60,6 +62,7 @@ final class PaneLayoutController {
         self.surfaceHost = surfaceHost
         self.surfaces = surfaces
         self.browsers = browsers
+        self.remotes = remotes
         self.inactivePaneDimming = inactivePaneDimming
         self.activePaneBorder = activePaneBorder
         self.isLiveResizing = isLiveResizing
@@ -127,6 +130,14 @@ final class PaneLayoutController {
             paneHosts[state.id] = pane
             return pane
 
+        case let .remote(state):
+            guard let remote = remotes()[state.id] else { return nil }
+            remote.removeFromSuperview()
+            let pane = PaneHostView(content: remote)
+            pane.updateInactiveDimming(inactivePaneDimming())
+            paneHosts[state.id] = pane
+            return pane
+
         case let .split(orientation, ratio, first, second):
             guard let firstView = makeSplitView(
                 first,
@@ -160,7 +171,9 @@ final class PaneLayoutController {
               let pane = paneHosts[paneID]
         else { return false }
 
-        let content: NSView? = surfaces()[paneID] ?? browsers()[paneID]
+        let content: NSView? = surfaces()[paneID]
+            ?? browsers()[paneID]
+            ?? remotes()[paneID]
         guard let content else { return false }
         let shown = zoomPresentation.show(
             paneID: paneID,

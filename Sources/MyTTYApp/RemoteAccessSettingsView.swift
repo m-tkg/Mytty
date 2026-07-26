@@ -1,3 +1,4 @@
+import AppKit
 import MyTTYRemoteKit
 import SwiftUI
 
@@ -6,6 +7,7 @@ struct RemoteAccessSettingsView: View {
     @ObservedObject var model: RemoteAccessSettingsModel
     let localizer: MyTTYLocalizer
 
+    @State private var copiedLink = false
     @State private var pendingRemoval: RemotePairedDevice?
     @State private var pendingRename: RemotePairedDevice?
     @State private var renameDraft = ""
@@ -183,8 +185,19 @@ struct RemoteAccessSettingsView: View {
                     }
                     HStack {
                         Button(localizer[.generatePairingCode]) {
+                            copiedLink = false
                             model.generateCode()
                         }
+                        // A Mac pairing with this one has no camera in the
+                        // loop, so it needs the same token as text.
+                        Button(
+                            copiedLink
+                                ? localizer[.pairingLinkCopied]
+                                : localizer[.copyPairingLink]
+                        ) {
+                            copyPairingLink(code.value)
+                        }
+                        .disabled(remaining == 0)
                         Button(localizer[.cancelPairing]) {
                             model.cancelPairing()
                         }
@@ -196,6 +209,19 @@ struct RemoteAccessSettingsView: View {
                 model.generateCode()
             }
         }
+    }
+
+    /// Puts the pairing token on the clipboard as the same
+    /// `mytty://pair?...` URL the QR code encodes, so another Mac can paste
+    /// it in Settings › Remote Macs.
+    private func copyPairingLink(_ token: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(
+            RemotePairingPayload(token: token).urlString(),
+            forType: .string
+        )
+        copiedLink = true
     }
 
     private func deviceRow(_ device: RemotePairedDevice) -> some View {

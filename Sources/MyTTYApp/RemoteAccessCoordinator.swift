@@ -107,6 +107,7 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
             snapshots: snapshots,
             terminalTitle: localizer[.terminal],
             browserTitle: localizer[.browser],
+            remoteTitle: localizer[.remotePaneBadge],
             localizer: localizer
         )
         let windows: [RemoteWindow] = snapshots.compactMap { snapshot in
