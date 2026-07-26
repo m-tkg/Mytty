@@ -74,6 +74,13 @@ public enum RemoteMessage: Equatable, Sendable {
     /// contain it.
     case createPaneSchedule(paneID: String, schedule: RemotePaneSchedule)
     case deletePaneSchedule(paneID: String, scheduleID: String)
+    /// The user viewed this pane on a remote client (e.g. after tapping an
+    /// Attention push), so the Mac should clear the pane's Attention items
+    /// and unread badges just as if the pane had been focused locally.
+    /// Fire-and-forget: the Mac sends no reply. Older servers close the
+    /// connection on this, which is why clients gate it on the version in
+    /// the snapshot.
+    case acknowledgeAttention(paneID: String)
     case failure(code: String)
 }
 
@@ -96,6 +103,7 @@ extension RemoteMessage: Codable {
         case paneSchedules
         case createPaneSchedule
         case deletePaneSchedule
+        case acknowledgeAttention
         case failure
     }
 
@@ -251,6 +259,10 @@ extension RemoteMessage: Codable {
                     forKey: .scheduleID
                 )
             )
+        case .acknowledgeAttention:
+            self = .acknowledgeAttention(
+                paneID: try container.decode(String.self, forKey: .paneID)
+            )
         case .failure:
             self = .failure(
                 code: try container.decode(String.self, forKey: .code)
@@ -345,6 +357,9 @@ extension RemoteMessage: Codable {
             try container.encode(MessageType.deletePaneSchedule, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
             try container.encode(scheduleID, forKey: .scheduleID)
+        case let .acknowledgeAttention(paneID):
+            try container.encode(MessageType.acknowledgeAttention, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
         case let .failure(code):
             try container.encode(MessageType.failure, forKey: .type)
             try container.encode(code, forKey: .code)
@@ -361,7 +376,9 @@ public enum RemoteMessageCodec {
     /// 5 added the per-pane agent status carried in `RemotePane.agent`.
     /// The field is optional in both directions, so a version-5 client and
     /// an older host still talk — the client simply sees no agent status.
-    public static let protocolVersion = 5
+    /// 6 added `acknowledgeAttention`, so a client viewing a pane can
+    /// clear that pane's Attention items on the Mac.
+    public static let protocolVersion = 6
 
     /// JSON payload only. Wire framing (and, for authenticated
     /// connections, encryption) is applied by `RemoteFrameCodec` /

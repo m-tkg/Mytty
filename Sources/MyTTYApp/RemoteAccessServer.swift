@@ -67,6 +67,13 @@ protocol RemoteAccessServerDelegate: AnyObject {
         deleteScheduleID scheduleID: String,
         forPaneID paneID: String
     )
+
+    /// The user viewed this pane on a remote client — clear its Attention
+    /// items and unread badges as if the pane had been focused locally.
+    func remoteAccessServer(
+        _ server: RemoteAccessServer,
+        acknowledgeAttentionForPaneID paneID: String
+    )
 }
 
 enum RemoteAccessServerError: Error {
@@ -436,6 +443,12 @@ final class RemoteAccessServer {
             delegate?.remoteAccessServer(
                 self,
                 createTabInWindowID: windowID
+            )
+
+        case let .acknowledgeAttention(paneID):
+            delegate?.remoteAccessServer(
+                self,
+                acknowledgeAttentionForPaneID: paneID
             )
 
         case let .registerPushRelay(pushID, relaySecretBase64):
