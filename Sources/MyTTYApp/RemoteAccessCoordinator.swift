@@ -101,6 +101,25 @@ final class RemoteAccessCoordinator {
     }
 }
 
+/// Chooses which agent a pane's remote status names. The provider the
+/// host's own status bar shows — the polled foreground process — outranks
+/// the event log: after switching agents in one pane, runs from the
+/// previous provider linger there and must not label the new one. The
+/// run (and so the reported state) always belongs to the chosen provider;
+/// with none of its runs on record the state is simply absent.
+enum RemoteHostAgentSelection {
+    static func select(
+        detected: AgentProvider?,
+        latestRunForDetected: AgentRun?,
+        mostRelevantRun: AgentRun?
+    ) -> (provider: AgentProvider?, run: AgentRun?) {
+        if let detected {
+            return (detected, latestRunForDetected)
+        }
+        return (mostRelevantRun?.provider, mostRelevantRun)
+    }
+}
+
 extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
     func remoteAccessServerSnapshot(
         _ server: RemoteAccessServer
@@ -166,13 +185,22 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         guard item.kind == .terminal,
               let attentionCenter = attentionCenterProvider()
         else { return nil }
-        let run = attentionCenter.mostRelevantRun(for: item.paneID)
+        let detected = windowSessionCoordinator.controllers
+            .compactMap { $0.foregroundAgentProvider(forPane: item.paneID) }
+            .first
+        let selected = RemoteHostAgentSelection.select(
+            detected: detected,
+            latestRunForDetected: detected.flatMap {
+                attentionCenter.latestRun(for: item.paneID, provider: $0)
+            },
+            mostRelevantRun: attentionCenter.mostRelevantRun(for: item.paneID)
+        )
         let session = windowSessionCoordinator.controllers
             .compactMap { $0.agentSessionStatus(forPane: item.paneID) }
             .first
         let status = RemotePaneAgentStatus(
-            provider: run?.provider.rawValue,
-            state: run?.state.rawValue,
+            provider: selected.provider?.rawValue,
+            state: selected.run?.state.rawValue,
             modelName: session?.modelName,
             contextRemainingPercent: session?.contextRemainingPercent,
             needsAttention: attentionCenter.items.contains {

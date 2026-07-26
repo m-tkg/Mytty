@@ -3235,6 +3235,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         agentStatusPolling.statusBySurface[paneID]
     }
 
+    /// The agent the 0.5s process poll currently sees in this pane's
+    /// foreground — the same source the local status bar names, so a
+    /// remote client's header agrees with it.
+    func foregroundAgentProvider(
+        forPane paneID: TerminalSurfaceID
+    ) -> AgentProvider? {
+        agentStatusPolling.foregroundProvider(for: paneID)
+    }
+
     /// Called when a host's snapshot changed the agent status of a remote
     /// pane. The status bar shows it for the focused pane, and the sidebar
     /// folds its attention count and running-agent flag into the tab rows;
