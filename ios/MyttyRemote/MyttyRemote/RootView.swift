@@ -2,7 +2,9 @@ import MyTTYRemoteKit
 import SwiftUI
 
 private struct AddMacRoute: Hashable {}
-private struct DeviceSettingsRoute: Hashable {}
+private struct EditMacRoute: Hashable {
+    let deviceID: String
+}
 
 /// A tapped notification still being navigated to. The Mac is kept
 /// alongside the pane so the whole path — session, tab, pane — can be
@@ -50,18 +52,18 @@ struct RootView: View {
                     client.connect(mac: mac)
                     path.append(mac)
                 },
-                onAddMac: { path.append(AddMacRoute()) }
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        path.append(DeviceSettingsRoute())
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Settings")
+                onAddMac: { path.append(AddMacRoute()) },
+                onEdit: { mac in
+                    path.append(EditMacRoute(deviceID: mac.deviceID))
+                },
+                onDelete: { mac in
+                    pairedMacs = PairedMacStore.remove(id: mac.deviceID)
+                },
+                onMove: { source, destination in
+                    pairedMacs.move(fromOffsets: source, toOffset: destination)
+                    PairedMacStore.replaceAll(pairedMacs)
                 }
-            }
+            )
             .navigationDestination(for: PairedMac.self) { mac in
                 SessionView(mac: mac, client: client)
             }
@@ -81,8 +83,17 @@ struct RootView: View {
                     path.removeLast()
                 }
             }
-            .navigationDestination(for: DeviceSettingsRoute.self) { _ in
-                DeviceSettingsView(pairedMacs: $pairedMacs)
+            .navigationDestination(for: EditMacRoute.self) { route in
+                // Resolved by ID at presentation time: the row index can
+                // shift under an open editor when another device's list
+                // change syncs in, and a deleted Mac simply has no editor.
+                if let index = pairedMacs.firstIndex(where: {
+                    $0.deviceID == route.deviceID
+                }) {
+                    PairedMacEditView(mac: $pairedMacs[index]) {
+                        PairedMacStore.replaceAll(pairedMacs)
+                    }
+                }
             }
         }
         // SessionView and everything pushed below it (tabs, panes, pane
