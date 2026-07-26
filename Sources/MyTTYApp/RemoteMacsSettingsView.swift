@@ -178,14 +178,12 @@ struct RemoteMacsSettingsSections: View {
             Text(localizer[.pairingLink])
             TextField("mytty://pair?…", text: $link)
                 .textFieldStyle(.roundedBorder)
-                .labelsHidden()
                 .accessibilityLabel(localizer[.pairingLink])
         }
         VStack(alignment: .leading, spacing: 4) {
             Text(localizer[.remoteMacName])
             TextField("", text: $label)
                 .textFieldStyle(.roundedBorder)
-                .labelsHidden()
                 .accessibilityLabel(localizer[.remoteMacName])
         }
 
