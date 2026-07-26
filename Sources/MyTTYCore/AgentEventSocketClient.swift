@@ -55,9 +55,20 @@ public struct AgentEventServerResponse: Codable, Equatable, Sendable {
 
 public struct AgentEventSocketClient: Sendable {
     private static let maximumResponseSize = 64 * 1024
-    private static let operationTimeoutSeconds = 5
+    private static let defaultOperationTimeout: Double = 5
 
-    public init() {}
+    /// How long a send or receive may block before the socket gives up.
+    /// Fixed in production; injectable so tests can exercise the timeout
+    /// path without waiting seconds for it.
+    private let operationTimeout: Double
+
+    public init() {
+        self.init(operationTimeout: Self.defaultOperationTimeout)
+    }
+
+    init(operationTimeout: Double) {
+        self.operationTimeout = operationTimeout
+    }
 
     public func send(
         _ envelope: AgentEventEnvelope,
@@ -72,13 +83,24 @@ public struct AgentEventSocketClient: Sendable {
         do {
             responseData = try sendRequest(request, to: socketURL.path)
         } catch AgentEventSocketClientError.socketOperation(let code)
-            where code == EPIPE || code == ECONNRESET {
-            // The server times out a connection whose request hasn't
-            // arrived within a couple of seconds and closes it without a
-            // response; when this process is starved right after
-            // connecting (heavy load), the delayed write then hits
-            // EPIPE/ECONNRESET. Events are idempotent by protocol, so
-            // retry once on a fresh connection.
+            where Self.isRetryable(code) {
+            // Three ways a healthy server still fails one attempt under
+            // load, all of them transient:
+            //
+            // EPIPE/ECONNRESET — the server closes a connection whose
+            // request has not arrived within a couple of seconds, so a
+            // process starved right after connecting writes into a socket
+            // the server has already given up on.
+            //
+            // EAGAIN — `operationTimeout` expired on the send or the
+            // receive. A blocking socket carrying SO_SNDTIMEO/SO_RCVTIMEO
+            // reports a timeout this way, so it means "the server did not
+            // answer in time", not "there is no server".
+            //
+            // Events are idempotent by protocol (the server dedupes by
+            // event id), so a retry on a fresh connection is safe even
+            // when the first attempt did reach the server and only the
+            // response was lost.
             responseData = try sendRequest(request, to: socketURL.path)
         }
         do {
@@ -89,6 +111,16 @@ public struct AgentEventSocketClient: Sendable {
         } catch {
             throw AgentEventSocketClientError.invalidResponse
         }
+    }
+
+    /// Whether one failed attempt is worth repeating on a fresh
+    /// connection. EWOULDBLOCK is the same value as EAGAIN on Darwin; both
+    /// are named so the intent survives a reader who knows only one.
+    static func isRetryable(_ code: Int32) -> Bool {
+        code == EPIPE
+            || code == ECONNRESET
+            || code == EAGAIN
+            || code == EWOULDBLOCK
     }
 
     private func sendRequest(
@@ -108,10 +140,7 @@ public struct AgentEventSocketClient: Sendable {
             socklen_t(MemoryLayout<Int32>.size)
         ) == 0 else { throw socketError() }
 
-        var timeout = timeval(
-            tv_sec: Self.operationTimeoutSeconds,
-            tv_usec: 0
-        )
+        var timeout = Self.timeval(seconds: operationTimeout)
         guard setsockopt(
             descriptor,
             SOL_SOCKET,
@@ -216,6 +245,14 @@ public struct AgentEventSocketClient: Sendable {
             }
         }
         return address
+    }
+
+    private static func timeval(seconds: Double) -> Darwin.timeval {
+        let whole = seconds.rounded(.down)
+        return Darwin.timeval(
+            tv_sec: Int(whole),
+            tv_usec: Int32(((seconds - whole) * 1_000_000).rounded())
+        )
     }
 
     private func socketError() -> AgentEventSocketClientError {

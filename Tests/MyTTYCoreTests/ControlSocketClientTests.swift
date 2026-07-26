@@ -25,6 +25,18 @@ struct ControlSocketClientErrorTests {
         #expect(!description.contains("sandbox"))
     }
 
+    @Test("A timeout says so instead of quoting strerror")
+    func socketOperationTimeoutMessage() {
+        let description = "\(ControlSocketClientError.socketOperation(EAGAIN))"
+        #expect(description.contains("timed out"))
+        #expect(description.contains("control socket"))
+        // A `wait` that ran out of time used to report "Resource
+        // temporarily unavailable", which describes neither the cause nor
+        // the fix.
+        #expect(!description.contains("Resource temporarily unavailable"))
+        #expect(description.contains("\(EAGAIN)"))
+    }
+
     @Test("Non-socketOperation cases are unaffected by the new description")
     func otherCasesDescription() {
         #expect(

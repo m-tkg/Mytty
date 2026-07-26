@@ -26,6 +26,19 @@ struct AgentEventSocketClientErrorTests {
         #expect(!description.contains("sandbox"))
     }
 
+    @Test("A timeout says so instead of quoting strerror")
+    func socketOperationTimeoutMessage() {
+        let description =
+            "\(AgentEventSocketClientError.socketOperation(EAGAIN))"
+        #expect(description.contains("timed out"))
+        #expect(description.contains("agent-event socket"))
+        // strerror(EAGAIN) reads "Resource temporarily unavailable", which
+        // sends whoever hits it looking for a resource shortage that is not
+        // there. The numeric code stays for anyone matching on it.
+        #expect(!description.contains("Resource temporarily unavailable"))
+        #expect(description.contains("\(EAGAIN)"))
+    }
+
     @Test("Non-socketOperation cases are unaffected by the new description")
     func otherCasesDescription() {
         #expect(

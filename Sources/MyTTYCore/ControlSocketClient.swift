@@ -47,7 +47,19 @@ extension ControlSocketClientError: CustomStringConvertible {
 /// Shared with `AgentEventSocketClientError`, whose `.socketOperation` case
 /// fails the exact same way when a provider's hook runs inside a sandbox.
 enum ControlSocketErrorFormatting {
+    /// A blocking socket carrying SO_SNDTIMEO/SO_RCVTIMEO reports an
+    /// expired timeout as EAGAIN, whose strerror text ("Resource
+    /// temporarily unavailable") reads like a resource shortage and sends
+    /// whoever hits it looking in the wrong place. Say what happened
+    /// instead, while keeping the code for anyone matching on it.
+    static func timeoutDescription(_ what: String) -> String {
+        "socketOperation(\(EAGAIN)): timed out waiting for \(what)"
+    }
+
     static func socketOperationDescription(_ code: Int32) -> String {
+        if code == EAGAIN || code == EWOULDBLOCK {
+            return timeoutDescription("the Mytty control socket to respond")
+        }
         guard code == EPERM else {
             return "socketOperation(\(code)): "
                 + "\(String(cString: strerror(code)))"
@@ -62,6 +74,11 @@ enum ControlSocketErrorFormatting {
     }
 
     static func hookSocketOperationDescription(_ code: Int32) -> String {
+        if code == EAGAIN || code == EWOULDBLOCK {
+            return timeoutDescription(
+                "Mytty's agent-event socket to respond"
+            )
+        }
         guard code == EPERM else {
             return "socketOperation(\(code)): "
                 + "\(String(cString: strerror(code)))"
