@@ -5,6 +5,7 @@ import SwiftUI
 struct RemoteAccessSettingsView: View {
     @ObservedObject var settings: SettingsModel
     @ObservedObject var model: RemoteAccessSettingsModel
+    @ObservedObject var remoteMacs: RemoteMacsSettingsModel
     let localizer: MyTTYLocalizer
 
     @State private var copiedLink = false
@@ -38,6 +39,15 @@ struct RemoteAccessSettingsView: View {
                     pushEnableRow
                 }
             }
+
+            // The client half — the Macs this Mac opens panes onto — lives
+            // on the same pane because both directions share the one
+            // pairing-link flow, and does not depend on this Mac's own
+            // server being enabled.
+            RemoteMacsSettingsSections(
+                model: remoteMacs,
+                localizer: localizer
+            )
         }
         .formStyle(.grouped)
         .padding(12)

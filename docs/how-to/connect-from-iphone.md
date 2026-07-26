@@ -4,7 +4,7 @@ You can access Mytty on your Mac from an iPhone or iPad using the MyttyRemote iO
 
 ## Pair your iPhone
 
-Set up the iOS connection on the Mac from **Settings > iOS Remote Access**.
+Set up the iOS connection on the Mac from **Settings > Remote Access**.
 
 ## Work in a pane from your iPhone
 

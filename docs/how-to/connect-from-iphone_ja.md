@@ -4,7 +4,7 @@ MyttyRemote という iOS アプリを使って Mac の Mytty に iPhone や iPa
 
 ## iPhone をペアリングする
 
-iOS との連携は、Mac 側で **設定 > iOS Remote Access** から行います。
+iOS との連携は、Mac 側で **設定 > リモートアクセス** から行います。
 
 ## iPhone からペインを操作する
 
