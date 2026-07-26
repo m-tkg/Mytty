@@ -176,14 +176,22 @@ struct RemoteMacsSettingsSections: View {
         // are long enough to want the full row width.
         VStack(alignment: .leading, spacing: 4) {
             Text(localizer[.pairingLink])
+            // labelsHidden is NOT redundant here: even inside a manual
+            // VStack, the grouped Form renders the TextField's title as a
+            // leading label and pushes the field itself to the trailing
+            // edge — exactly the right-aligned layout this form exists to
+            // avoid. Hiding the label leaves the title as placeholder and
+            // accessibility text only, and the field fills the row.
             TextField("mytty://pair?…", text: $link)
                 .textFieldStyle(.roundedBorder)
+                .labelsHidden()
                 .accessibilityLabel(localizer[.pairingLink])
         }
         VStack(alignment: .leading, spacing: 4) {
             Text(localizer[.remoteMacName])
             TextField("", text: $label)
                 .textFieldStyle(.roundedBorder)
+                .labelsHidden()
                 .accessibilityLabel(localizer[.remoteMacName])
         }
 
