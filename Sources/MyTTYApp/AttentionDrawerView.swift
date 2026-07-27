@@ -214,7 +214,9 @@ private extension AttentionItemKind {
     }
 }
 
-private extension AgentProvider {
+/// Shared with `RemoteAccessSettingsView`'s per-provider push toggles, so
+/// both list the same product names.
+extension AgentProvider {
     var title: String {
         switch self {
         case .codex: "Codex"

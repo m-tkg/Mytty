@@ -20,7 +20,7 @@ public struct AttentionAcknowledgement: Codable, Equatable, Sendable {
     }
 }
 
-public enum AttentionItemKind: String, Codable, Equatable, Sendable {
+public enum AttentionItemKind: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case approvalRequest = "approval-request"
     case inputRequest = "input-request"
     case failure

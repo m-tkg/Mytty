@@ -807,9 +807,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remotePushNotifier = RemoteAttentionPushNotifier(
             deviceStore: RemotePairedDeviceStore(fileURL: paths.remoteDevices),
             localizer: localizer,
-            isEnabled: { [weak self] in
-                self?.settingsModel?.application
-                    .remotePushNotificationsEnabled ?? false
+            shouldNotify: { [weak self] item in
+                guard let application = self?.settingsModel?.application,
+                      application.remotePushNotificationsEnabled
+                else { return false }
+                return !application.remotePushMutedKinds.contains(item.kind)
+                    && !application.remotePushMutedProviders.contains(
+                        item.provider
+                    )
             },
             onError: { error in
                 WindowSessionCoordinator.reportPersistenceError(

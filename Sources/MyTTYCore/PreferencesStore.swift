@@ -133,6 +133,13 @@ public struct ApplicationPreferences: Equatable, Sendable {
     /// pushes need no live connection; pairing (and therefore remote
     /// access) is still the way a device gets registered.
     public var remotePushNotificationsEnabled: Bool
+    /// Attention kinds excluded from the iOS push (empty = every kind is
+    /// pushed). Kinds not present in a saved value are always pushed, so a
+    /// future kind is on by default rather than silently muted.
+    public var remotePushMutedKinds: Set<AttentionItemKind>
+    /// Providers excluded from the iOS push (empty = every provider is
+    /// pushed), for the same reason.
+    public var remotePushMutedProviders: Set<AgentProvider>
     public var inactivePaneDimming: Double
     /// Whether holding a split shortcut past the hold threshold splits at
     /// the outer edge of the whole tab instead of inside the focused pane.
@@ -185,6 +192,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         paneTeamPointersEnabled: Bool = true,
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
+        remotePushMutedKinds: Set<AttentionItemKind> = [],
+        remotePushMutedProviders: Set<AgentProvider> = [],
         inactivePaneDimming: Double = 0.32,
         outerSplitOnHold: Bool = false,
         activePaneBorderEnabled: Bool = true,
@@ -221,6 +230,8 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.paneTeamPointersEnabled = paneTeamPointersEnabled
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
+        self.remotePushMutedKinds = remotePushMutedKinds
+        self.remotePushMutedProviders = remotePushMutedProviders
         self.inactivePaneDimming = inactivePaneDimming
         self.outerSplitOnHold = outerSplitOnHold
         self.activePaneBorderEnabled = activePaneBorderEnabled
@@ -366,6 +377,9 @@ public struct ApplicationPreferencesStore {
             "tab.show-uptime",
             "agents.pane-team-pointers",
             "remote.access-enabled",
+            "remote.push-notifications",
+            "remote.push-muted-kinds",
+            "remote.push-muted-providers",
             "pane.inactive-dimming",
             "pane.outer-split-on-hold",
             "pane.active-border",
@@ -577,6 +591,18 @@ public struct ApplicationPreferencesStore {
             }
             preferences.remotePushNotificationsEnabled = enabled
         }
+        if let value = document.lastValue(for: "remote.push-muted-kinds") {
+            preferences.remotePushMutedKinds = try mutedSet(
+                from: value,
+                key: "remote.push-muted-kinds"
+            )
+        }
+        if let value = document.lastValue(for: "remote.push-muted-providers") {
+            preferences.remotePushMutedProviders = try mutedSet(
+                from: value,
+                key: "remote.push-muted-providers"
+            )
+        }
         if let value = document.lastValue(for: "pane.inactive-dimming") {
             guard let dimming = Double(value),
                   (0...1).contains(dimming),
@@ -755,6 +781,8 @@ public struct ApplicationPreferencesStore {
             "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",
+            "remote.push-muted-kinds = \(quoted(serializedRawValues(preferences.remotePushMutedKinds)))",
+            "remote.push-muted-providers = \(quoted(serializedRawValues(preferences.remotePushMutedProviders)))",
             "pane.inactive-dimming = \(quoted(decimal(preferences.inactivePaneDimming)))",
             "pane.outer-split-on-hold = \(quoted(String(preferences.outerSplitOnHold)))",
             "pane.active-border = \(quoted(String(preferences.activePaneBorderEnabled)))",
@@ -785,6 +813,25 @@ public struct ApplicationPreferencesStore {
 
     private func invalid(key: String, value: String) -> Error {
         PreferencesStoreError.invalidValue(key: key, value: value)
+    }
+
+    /// Parses a comma-separated set of rawValues, rejecting any entry an
+    /// unknown case would silently swallow. An empty string is the empty
+    /// set (nothing muted), not a set containing an empty rawValue.
+    private func mutedSet<Value: RawRepresentable & Hashable>(
+        from value: String,
+        key: String
+    ) throws -> Set<Value> where Value.RawValue == String {
+        guard !value.isEmpty else { return [] }
+        var result: Set<Value> = []
+        for rawValue in value.split(separator: ",") {
+            let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
+            guard let parsed = Value(rawValue: trimmed) else {
+                throw invalid(key: key, value: value)
+            }
+            result.insert(parsed)
+        }
+        return result
     }
 }
 
@@ -1175,6 +1222,14 @@ private struct ConfigurationDocument {
         }
         return (key, value)
     }
+}
+
+/// Sorts rawValues before joining so the written line is stable regardless
+/// of `Set` iteration order, keeping round trips byte-identical.
+private func serializedRawValues<Value: RawRepresentable>(
+    _ values: Set<Value>
+) -> String where Value.RawValue == String {
+    values.map(\.rawValue).sorted().joined(separator: ",")
 }
 
 private func quoted(_ value: String) -> String {

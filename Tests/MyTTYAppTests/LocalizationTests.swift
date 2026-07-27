@@ -655,4 +655,17 @@ struct LocalizationTests {
                 == "この QR コードは失効しました。新しいものを生成してください。"
         )
     }
+
+    @Test("localizes the push notification filter section titles")
+    func pushNotificationFilterText() {
+        let english = MyTTYLocalizer(language: .english)
+        let japanese = MyTTYLocalizer(language: .japanese)
+
+        #expect(
+            english[.pushNotifiedAttentionKinds] == "Attention Types to Notify"
+        )
+        #expect(english[.pushNotifiedAgents] == "Agents to Notify")
+        #expect(japanese[.pushNotifiedAttentionKinds] == "通知する Attention")
+        #expect(japanese[.pushNotifiedAgents] == "通知するエージェント")
+    }
 }

@@ -340,6 +340,69 @@ struct PreferencesStoreTests {
         #expect(try store.load(from: harness.appConfiguration) == preferences)
     }
 
+    @Test("round trips the muted push kinds and providers, defaulting to empty")
+    func remotePushMutedFilters() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(preferences.remotePushMutedKinds.isEmpty)
+        #expect(preferences.remotePushMutedProviders.isEmpty)
+
+        preferences.remotePushMutedKinds = [.completion, .failure]
+        preferences.remotePushMutedProviders = [.cursor, .codex]
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(
+            contents.contains(
+                "remote.push-muted-kinds = \"completion,failure\""
+            )
+        )
+        #expect(
+            contents.contains(
+                "remote.push-muted-providers = \"codex,cursor\""
+            )
+        )
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        preferences.remotePushMutedKinds = []
+        preferences.remotePushMutedProviders = []
+        try store.save(preferences, to: harness.appConfiguration)
+        let clearedContents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(clearedContents.contains("remote.push-muted-kinds = \"\""))
+        #expect(clearedContents.contains("remote.push-muted-providers = \"\""))
+        #expect(try store.load(from: harness.appConfiguration) == preferences)
+
+        try """
+        remote.push-muted-kinds = "completion,not-a-kind"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+
+        try """
+        remote.push-muted-providers = "codex,not-a-provider"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("migrates the legacy recording key setting to the unified setting")
     func legacyRecordingKeyPreference() throws {
         let harness = try Harness()

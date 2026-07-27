@@ -1,4 +1,5 @@
 import AppKit
+import MyTTYCore
 import MyTTYRemoteKit
 import SwiftUI
 
@@ -38,6 +39,11 @@ struct RemoteAccessSettingsView: View {
 
                 Section(localizer[.pushNotifications]) {
                     pushEnableRow
+
+                    if settings.application.remotePushNotificationsEnabled {
+                        pushMutedKindRows
+                        pushMutedProviderRows
+                    }
                 }
             }
 
@@ -164,6 +170,62 @@ struct RemoteAccessSettingsView: View {
             .accessibilityLabel(localizer[.enablePushNotifications])
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var pushMutedKindRows: some View {
+        Text(localizer[.pushNotifiedAttentionKinds])
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+        ForEach(AttentionItemKind.allCases, id: \.self) { kind in
+            Toggle(
+                kind.notificationTitle(localizer: localizer),
+                isOn: Binding(
+                    get: {
+                        !settings.application.remotePushMutedKinds
+                            .contains(kind)
+                    },
+                    set: { notify in
+                        settings.updateApplication {
+                            if notify {
+                                $0.remotePushMutedKinds.remove(kind)
+                            } else {
+                                $0.remotePushMutedKinds.insert(kind)
+                            }
+                        }
+                    }
+                )
+            )
+            .toggleStyle(.switch)
+        }
+    }
+
+    @ViewBuilder
+    private var pushMutedProviderRows: some View {
+        Text(localizer[.pushNotifiedAgents])
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+        ForEach(AgentProvider.allCases, id: \.self) { provider in
+            Toggle(
+                provider.title,
+                isOn: Binding(
+                    get: {
+                        !settings.application.remotePushMutedProviders
+                            .contains(provider)
+                    },
+                    set: { notify in
+                        settings.updateApplication {
+                            if notify {
+                                $0.remotePushMutedProviders.remove(provider)
+                            } else {
+                                $0.remotePushMutedProviders.insert(provider)
+                            }
+                        }
+                    }
+                )
+            )
+            .toggleStyle(.switch)
+        }
     }
 
     @ViewBuilder

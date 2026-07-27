@@ -350,7 +350,8 @@ struct RemoteAttentionPushNotifierTests {
     private static func makeNotifier(
         localizer: MyTTYLocalizer,
         hostName: @escaping () -> String?,
-        capture: RequestCapture
+        capture: RequestCapture,
+        shouldNotify: @escaping (AttentionItem) -> Bool = { _ in true }
     ) throws -> RemoteAttentionPushNotifier {
         RemoteAttentionPushNotifier(
             deviceStore: try makeStore(),
@@ -367,7 +368,7 @@ struct RemoteAttentionPushNotifierTests {
                 )
             }),
             localizer: localizer,
-            isEnabled: { true },
+            shouldNotify: shouldNotify,
             hostName: hostName,
             onError: { _ in }
         )
@@ -444,6 +445,51 @@ struct RemoteAttentionPushNotifierTests {
         let alert = try Self.decodeAlert(from: await capture.waitForRequest())
         #expect(alert.body == "デプロイ\nBash の承認が必要です")
     }
+
+    @Test("sends nothing when the injected filter rejects the item")
+    func skipsWhenFilterRejectsItem() async throws {
+        let capture = RequestCapture()
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .english),
+            hostName: { "MacBook Pro" },
+            capture: capture,
+            shouldNotify: { _ in false }
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: "Deploy"
+        )
+
+        // `notify` returns before scheduling any work when the filter
+        // rejects the item, so a brief wait is enough to be confident
+        // nothing was (incorrectly) sent in the background.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await capture.hasRequest == false)
+    }
+
+    @Test("passes the item through to the injected filter")
+    func passesItemToFilter() async throws {
+        let capture = RequestCapture()
+        var seenKind: AttentionItemKind?
+        let notifier = try Self.makeNotifier(
+            localizer: MyTTYLocalizer(language: .english),
+            hostName: { "MacBook Pro" },
+            capture: capture,
+            shouldNotify: { item in
+                seenKind = item.kind
+                return true
+            }
+        )
+
+        notifier.notify(
+            Self.makeItem(kind: .approvalRequested, toolName: "Bash"),
+            tabTitle: "Deploy"
+        )
+
+        _ = try Self.decodeAlert(from: await capture.waitForRequest())
+        #expect(seenKind == .approvalRequest)
+    }
 }
 
 /// Captures the single request a `PushRelayClient.send` fires, letting an
@@ -468,4 +514,6 @@ private actor RequestCapture {
         }
         return await withCheckedContinuation { continuation = $0 }
     }
+
+    var hasRequest: Bool { stored != nil }
 }

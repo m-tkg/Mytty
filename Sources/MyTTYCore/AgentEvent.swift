@@ -16,7 +16,7 @@ public struct AgentRunID: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-public enum AgentProvider: String, Codable, Equatable, Hashable, Sendable {
+public enum AgentProvider: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case codex
     case claudeCode = "claude-code"
     case openCode = "opencode"
