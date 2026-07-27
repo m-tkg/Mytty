@@ -206,6 +206,61 @@ struct PaneInputDeliveryQueueTests {
         )
     }
 
+    @Test("multi-line typed text is routed through the paste path")
+    @MainActor
+    func multiLineTypedTextTakesThePastePath() {
+        // A client can commit a multi-line string with `paste: false` when
+        // it came from the keyboard's own paste (iOS QuickType, hardware
+        // Cmd+V) rather than the toolbar paste key. Raw newlines hitting
+        // the PTY as typed input would each act as Enter, so this must
+        // still land via `sendText`, not `sendTypedText`.
+        let log = DeliveryLog()
+        let pane = TerminalSurfaceID()
+        let panes: [TerminalSurfaceID: FakeSurface] = [
+            pane: FakeSurface(id: "p", log: log)
+        ]
+        let queue = PaneInputDeliveryQueue<FakeSurface>(
+            enterDelay: .milliseconds(20),
+            target: { panes[$0] }
+        )
+
+        #expect(
+            queue.deliver(
+                paneID: pane,
+                text: "echo a\necho b",
+                pressEnter: false,
+                paste: false
+            )
+        )
+
+        #expect(log.entries == ["p:text:echo a\necho b"])
+    }
+
+    @Test("single-line typed text still takes the key-event path")
+    @MainActor
+    func singleLineTypedTextStaysTyped() {
+        let log = DeliveryLog()
+        let pane = TerminalSurfaceID()
+        let panes: [TerminalSurfaceID: FakeSurface] = [
+            pane: FakeSurface(id: "p", log: log)
+        ]
+        let queue = PaneInputDeliveryQueue<FakeSurface>(
+            enterDelay: .milliseconds(20),
+            target: { panes[$0] }
+        )
+
+        #expect(
+            queue.deliver(
+                paneID: pane,
+                text: "a",
+                pressEnter: false,
+                paste: false
+            )
+        )
+
+        #expect(log.entries == ["p:typed:a"])
+    }
+
     @Test("a pane closing while input is queued drops the queue without crashing")
     @MainActor
     func closedPaneDropsQueuedInput() async throws {

@@ -450,6 +450,24 @@ struct PaneDetailView: View {
             consumeModifiers()
             return
         }
+        // A committed string with an embedded newline can only come from
+        // the system keyboard's paste (a QuickType paste suggestion, or
+        // Cmd+V on a hardware keyboard) — a typed return arrives above as
+        // its own "\n" commit. Route it through the paste path so the Mac
+        // frames it as a bracketed paste instead of raw newlines acting as
+        // Enter at the PTY, with the same size cap as the toolbar paste
+        // key (dropped whole rather than truncated).
+        if text.contains(where: \.isNewline) {
+            guard text.utf8.count <= Self.maxPasteBytes else { return }
+            client.sendInput(
+                paneID: pane.id,
+                text: text,
+                pressEnter: false,
+                paste: true
+            )
+            consumeModifiers()
+            return
+        }
         // With Ctrl/Option armed the keystroke must become a real key
         // event (Ctrl+C as injected text bytes is invisible to TUIs
         // using the kitty keyboard protocol).
