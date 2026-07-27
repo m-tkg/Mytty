@@ -97,7 +97,13 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
         pressEnter: Bool,
         paste: Bool
     ) {
-        if paste {
+        // Typed text never legitimately contains a newline — the client
+        // turns the return key into `pressEnter` instead. An embedded
+        // newline means it came through a client's paste path anyway (e.g.
+        // iOS QuickType paste, or Cmd+V on a hardware keyboard) with
+        // `paste: false` set in error, so deliver it as a paste: raw "\n"
+        // at the PTY acts as Enter per line, executing each pasted line.
+        if paste || text.contains(where: \.isNewline) {
             target.sendText(text)
         } else {
             target.sendTypedText(text)
