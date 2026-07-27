@@ -27,7 +27,7 @@ final class RemoteAttentionPushNotifier {
     private let deviceStore: RemotePairedDeviceStore
     private let client: PushRelayClient
     private var localizer: MyTTYLocalizer
-    private let isEnabled: () -> Bool
+    private let shouldNotify: (AttentionItem) -> Bool
     private let hostName: () -> String?
     private let onError: (Error) -> Void
 
@@ -35,14 +35,14 @@ final class RemoteAttentionPushNotifier {
         deviceStore: RemotePairedDeviceStore,
         client: PushRelayClient = PushRelayClient(),
         localizer: MyTTYLocalizer,
-        isEnabled: @escaping () -> Bool,
+        shouldNotify: @escaping (AttentionItem) -> Bool,
         hostName: @escaping () -> String? = { Host.current().localizedName },
         onError: @escaping (Error) -> Void
     ) {
         self.deviceStore = deviceStore
         self.client = client
         self.localizer = localizer
-        self.isEnabled = isEnabled
+        self.shouldNotify = shouldNotify
         self.hostName = hostName
         self.onError = onError
     }
@@ -52,7 +52,8 @@ final class RemoteAttentionPushNotifier {
     }
 
     func notify(_ item: AttentionItem, tabTitle: String?) {
-        guard isEnabled(), let devices = try? deviceStore.load() else { return }
+        guard shouldNotify(item), let devices = try? deviceStore.load()
+        else { return }
         let targets = devices.compactMap(PushRelayTarget.init(device:))
         guard !targets.isEmpty else { return }
 

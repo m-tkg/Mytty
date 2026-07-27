@@ -332,16 +332,6 @@ struct AgentIntegrationSettingsView: View {
 }
 
 private extension AgentProvider {
-    var title: String {
-        switch self {
-        case .codex: "Codex"
-        case .claudeCode: "Claude Code"
-        case .openCode: "OpenCode"
-        case .antigravity: "Gemini (Antigravity)"
-        case .cursor: "Cursor"
-        }
-    }
-
     var symbolName: String {
         switch self {
         case .codex: "terminal"

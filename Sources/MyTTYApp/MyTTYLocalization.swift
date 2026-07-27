@@ -417,6 +417,8 @@ enum MyTTYText: String {
     case pushNotificationsDescription = "Alert paired iPhones when an agent needs you and the Mac is not in use, even if the Mytty app is closed. Alert text is encrypted with the pairing key before it leaves this Mac."
     case devicePushRegistered = "Push registered"
     case devicePushNotRegistered = "Push not registered"
+    case pushNotifiedAttentionKinds = "Attention Types to Notify"
+    case pushNotifiedAgents = "Agents to Notify"
     case finderOpenNothingToOpen = "No folder was available to open."
     case unsafePasteTitle = "Potentially Unsafe Paste"
     case unsafePasteMessage =
@@ -949,6 +951,8 @@ struct MyTTYLocalizer: Equatable {
         case .pushNotificationsDescription: "Agent が応答を待っていて Mac を操作していないとき、ペアリング済みの iPhone に通知します。Mytty アプリが終了していても届きます。本文はこの Mac を出る前にペアリング鍵で暗号化されます。"
         case .devicePushRegistered: "プッシュ登録済み"
         case .devicePushNotRegistered: "プッシュ未登録"
+        case .pushNotifiedAttentionKinds: "通知する Attention"
+        case .pushNotifiedAgents: "通知するエージェント"
         case .finderOpenNothingToOpen: "開けるフォルダがありませんでした"
         case .unsafePasteTitle: "安全でない可能性があるペースト"
         case .unsafePasteMessage: "このテキストには複数行または制御文字が含まれており、ペーストすると自動的にコマンドが実行される可能性があります。"
