@@ -7,46 +7,48 @@ struct AgentIntegrationSettingsView: View {
     let localizer: MyTTYLocalizer
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            attentionUnreadOnlyRow
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                attentionUnreadOnlyRow
 
-            Divider()
-                .padding(.leading, 44)
+                Divider()
+                    .padding(.leading, 44)
 
-            contextWarningRow
+                contextWarningRow
 
-            Divider()
-                .padding(.leading, 44)
+                Divider()
+                    .padding(.leading, 44)
 
-            meterDisplayRow
+                meterDisplayRow
 
-            Divider()
-                .padding(.leading, 44)
+                Divider()
+                    .padding(.leading, 44)
 
-            sleepPreventionRow
+                sleepPreventionRow
 
-            Divider()
-                .padding(.leading, 44)
+                Divider()
+                    .padding(.leading, 44)
 
-            ForEach(model.states) { state in
-                integrationRow(state)
-                if state.id != model.states.last?.id {
-                    Divider()
-                        .padding(.leading, 44)
+                ForEach(model.states) { state in
+                    integrationRow(state)
+                    if state.id != model.states.last?.id {
+                        Divider()
+                            .padding(.leading, 44)
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor))
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor))
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
             model.refresh()
         }
