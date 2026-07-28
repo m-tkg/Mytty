@@ -2122,7 +2122,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             hostName: state.hostName,
             title: state.title,
             font: remotePaneFont,
-            labels: makeRemotePaneLabels()
+            labels: makeRemotePaneLabels(),
+            contextMenuLabels: makeTerminalContextMenuLabels()
         )
         bind(remote: remote, to: state.id)
         // Attaching opens (or joins) the session to that Mac and starts the
@@ -2140,6 +2141,19 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
         remote.onClose = { [weak self] in
             self?.closePaneOrContainingTab(paneID)
+        }
+        remote.onPaste = { [weak self] in
+            guard let self,
+                  let text = NSPasteboard.general.string(forType: .string),
+                  let remote = self.remotes[paneID]
+            else { return }
+            self.remoteConnections.paste(text, into: remote)
+        }
+        remote.contextMenuMoveTargets = { [weak self] in
+            self?.movePaneTargets(for: paneID) ?? []
+        }
+        remote.onMovePane = { [weak self] destination in
+            self?.movePane(paneID, toTab: destination)
         }
         remote.onTitleChanged = { [weak self] title in
             guard let self else { return }
