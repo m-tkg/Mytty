@@ -1,4 +1,5 @@
 import AppKit
+import GhosttyAdapter
 import MyTTYRemoteKit
 
 /// Draws a mirrored remote screen on a fixed character grid and turns local
@@ -26,6 +27,20 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
     /// mirrored grid (the next frame from the host would wipe it), so the
     /// pane shows it in its own chrome instead.
     var onCompositionChanged: ((String) -> Void)?
+    /// A clipboard paste, from the context menu, Edit > Paste, or Cmd+V.
+    var onPaste: (() -> Void)?
+    /// The user chose "Close Pane" from the context menu.
+    var onClosePane: (() -> Void)?
+    /// The user chose "Move to Tab" from the context menu, picking one of
+    /// the window's other tabs as the destination.
+    var onMovePane: ((UUID) -> Void)?
+    /// Supplies the "Move to Tab" submenu contents on demand; empty (or
+    /// nil) hides the submenu entirely.
+    var contextMenuMoveTargets: (() -> [GhosttyContextMenuMoveTarget])?
+
+    private let contextMenuLabels: GhosttyContextMenuLabels
+    private var contextMenuLocation = NSPoint.zero
+    private var contextMenuSharingPicker: NSSharingServicePicker?
 
     private(set) var isInputEnabled = false {
         didSet { needsDisplay = true }
@@ -63,8 +78,12 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
         }
     }
 
-    init(font: NSFont) {
+    init(
+        font: NSFont,
+        contextMenuLabels: GhosttyContextMenuLabels = GhosttyContextMenuLabels()
+    ) {
         self.font = font
+        self.contextMenuLabels = contextMenuLabels
         boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
         italicFont = NSFontManager.shared.convert(
             font,
@@ -543,6 +562,11 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
         }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        super.rightMouseDown(with: event)
+    }
+
     override func scrollWheel(with event: NSEvent) {
         // An alternate-screen pane has no scrollback to mirror: the host
         // scrolls its own view instead, so the TUI (an agent's history
@@ -587,6 +611,200 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
             selectionAnchor = nil
             selectionHead = nil
         }
+    }
+
+    // MARK: - Context menu
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard event.type == .rightMouseDown else { return nil }
+        return makeContextMenu(
+            selectionText: selectedText(),
+            location: convert(event.locationInWindow, from: nil)
+        )
+    }
+
+    private func makeContextMenu(
+        selectionText: String?,
+        location: NSPoint
+    ) -> NSMenu {
+        contextMenuLocation = location
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let moveTargets = contextMenuMoveTargets?() ?? []
+        for action in GhosttySurfaceView.contextMenuActions(
+            selectionText: selectionText,
+            hasMoveTargets: !moveTargets.isEmpty
+        ) {
+            switch action {
+            case .lookUp:
+                guard let selectionText else { continue }
+                let preview = GhosttySurfaceView.contextMenuSelectionPreview(
+                    selectionText
+                )
+                let item = contextMenuItem(
+                    title: String(
+                        format: contextMenuLabels.lookUpSelectionFormat,
+                        locale: Locale.current,
+                        preview
+                    ),
+                    action: #selector(lookUpSelectionFromMenu(_:))
+                )
+                item.representedObject = selectionText
+                menu.addItem(item)
+            case .searchWeb:
+                guard let selectionText else { continue }
+                let item = contextMenuItem(
+                    title: contextMenuLabels.searchWithGoogle,
+                    action: #selector(searchSelectionFromMenu(_:))
+                )
+                item.representedObject = selectionText
+                menu.addItem(item)
+            case .separator:
+                menu.addItem(.separator())
+            case .copy:
+                menu.addItem(contextMenuItem(
+                    title: contextMenuLabels.copy,
+                    action: #selector(copy(_:)),
+                    isEnabled: selectionText != nil
+                ))
+            case .paste:
+                menu.addItem(contextMenuItem(
+                    title: contextMenuLabels.paste,
+                    action: #selector(paste(_:)),
+                    isEnabled: isInputEnabled
+                        && NSPasteboard.general.string(forType: .string) != nil
+                ))
+            case .selectAll:
+                menu.addItem(contextMenuItem(
+                    title: contextMenuLabels.selectAll,
+                    action: #selector(selectAll(_:))
+                ))
+            case .share:
+                guard let selectionText else { continue }
+                let picker = NSSharingServicePicker(
+                    items: [selectionText as NSString]
+                )
+                contextMenuSharingPicker = picker
+                let item = picker.standardShareMenuItem
+                item.title = contextMenuLabels.share
+                menu.addItem(item)
+            case .services:
+                let servicesMenu = NSMenu(title: contextMenuLabels.services)
+                let item = NSMenuItem(
+                    title: contextMenuLabels.services,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                item.submenu = servicesMenu
+                item.isEnabled = true
+                NSApplication.shared.registerServicesMenuSendTypes(
+                    [.string],
+                    returnTypes: []
+                )
+                NSApplication.shared.servicesMenu = servicesMenu
+                menu.addItem(item)
+            case .moveToTab:
+                let item = NSMenuItem(
+                    title: contextMenuLabels.moveToTab,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                item.isEnabled = true
+                let submenu = NSMenu(title: contextMenuLabels.moveToTab)
+                submenu.autoenablesItems = false
+                for target in moveTargets {
+                    let targetItem = contextMenuItem(
+                        title: target.title,
+                        action: #selector(movePaneToTabFromMenu(_:))
+                    )
+                    targetItem.representedObject = target.id
+                    submenu.addItem(targetItem)
+                }
+                item.submenu = submenu
+                menu.addItem(item)
+            case .closePane:
+                menu.addItem(contextMenuItem(
+                    title: contextMenuLabels.closePane,
+                    action: #selector(closePaneFromMenu(_:))
+                ))
+            }
+        }
+        return menu
+    }
+
+    private func contextMenuItem(
+        title: String,
+        action: Selector,
+        isEnabled: Bool = true
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title,
+            action: action,
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.isEnabled = isEnabled
+        return item
+    }
+
+    @objc private func lookUpSelectionFromMenu(_ sender: NSMenuItem) {
+        guard let selectionText = sender.representedObject as? String else {
+            return
+        }
+        showDefinition(
+            for: NSAttributedString(string: selectionText),
+            at: contextMenuLocation
+        )
+    }
+
+    @objc private func searchSelectionFromMenu(_ sender: NSMenuItem) {
+        guard let selectionText = sender.representedObject as? String,
+              let url = GhosttySurfaceView.contextMenuSearchURL(
+                  for: selectionText
+              )
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func movePaneToTabFromMenu(_ sender: NSMenuItem) {
+        guard let destination = sender.representedObject as? UUID else {
+            return
+        }
+        onMovePane?(destination)
+    }
+
+    @objc private func closePaneFromMenu(_ sender: Any?) {
+        onClosePane?()
+    }
+
+    /// A clipboard paste routed through the standard responder chain, so
+    /// the context menu's Paste item, the Edit menu, and Cmd+V all reach
+    /// the same place.
+    @objc func paste(_ sender: Any?) {
+        guard isInputEnabled else { return }
+        onPaste?()
+    }
+
+    override func validRequestor(
+        forSendType sendType: NSPasteboard.PasteboardType?,
+        returnType: NSPasteboard.PasteboardType?
+    ) -> Any? {
+        if sendType == .string, returnType == nil, selectedText() != nil {
+            return self
+        }
+        return super.validRequestor(forSendType: sendType, returnType: returnType)
+    }
+
+    @objc(writeSelectionToPasteboard:types:)
+    func writeSelection(
+        to pasteboard: NSPasteboard,
+        types: [NSPasteboard.PasteboardType]
+    ) -> Bool {
+        guard types.contains(.string), let text = selectedText() else {
+            return false
+        }
+        pasteboard.clearContents()
+        return pasteboard.setString(text, forType: .string)
     }
 
     // MARK: - Copy

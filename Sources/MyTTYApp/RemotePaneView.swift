@@ -1,4 +1,5 @@
 import AppKit
+import GhosttyAdapter
 import MyTTYCore
 import MyTTYRemoteKit
 
@@ -36,6 +37,15 @@ final class RemotePaneView: NSView {
     var onSendKey: ((String, [String]) -> Void)?
     var onSendScroll: ((Double) -> Void)?
     var onReconnect: (() -> Void)?
+    /// A clipboard paste from the context menu, Edit > Paste, or Cmd+V.
+    var onPaste: (() -> Void)?
+    /// The user chose "Move to Tab" from the context menu.
+    var onMovePane: ((UUID) -> Void)?
+    /// Supplies the "Move to Tab" submenu contents on demand; empty (or
+    /// nil) hides the submenu entirely.
+    var contextMenuMoveTargets: (() -> [GhosttyContextMenuMoveTarget])? {
+        didSet { screenView.contextMenuMoveTargets = contextMenuMoveTargets }
+    }
 
     let paneID: TerminalSurfaceID
     let hostID: String
@@ -75,7 +85,8 @@ final class RemotePaneView: NSView {
         hostName: String,
         title: String,
         font: NSFont,
-        labels: RemotePaneLabels = RemotePaneLabels()
+        labels: RemotePaneLabels = RemotePaneLabels(),
+        contextMenuLabels: GhosttyContextMenuLabels = GhosttyContextMenuLabels()
     ) {
         self.paneID = paneID
         self.hostID = hostID
@@ -83,7 +94,10 @@ final class RemotePaneView: NSView {
         self.hostName = hostName
         self.title = title
         self.labels = labels
-        screenView = RemotePaneScreenView(font: font)
+        screenView = RemotePaneScreenView(
+            font: font,
+            contextMenuLabels: contextMenuLabels
+        )
         closeButton = Self.makeChromeButton(
             symbol: "xmark",
             accessibilityLabel: labels.close
@@ -397,6 +411,15 @@ final class RemotePaneView: NSView {
         }
         screenView.onFocusChanged = { [weak self] focused in
             if focused { self?.onFocus?() }
+        }
+        screenView.onPaste = { [weak self] in
+            self?.onPaste?()
+        }
+        screenView.onClosePane = { [weak self] in
+            self?.onClose?()
+        }
+        screenView.onMovePane = { [weak self] destination in
+            self?.onMovePane?(destination)
         }
     }
 

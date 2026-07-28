@@ -137,7 +137,7 @@ public struct GhosttyContextMenuMoveTarget: Equatable, Sendable {
     }
 }
 
-enum GhosttyContextMenuAction: Equatable, Sendable {
+public enum GhosttyContextMenuAction: Equatable, Sendable {
     case lookUp
     case searchWeb
     case separator
@@ -1045,7 +1045,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         return Self.decodedText(text)
     }
 
-    nonisolated static func contextMenuActions(
+    public nonisolated static func contextMenuActions(
         selectionText: String?,
         hasMoveTargets: Bool
     ) -> [GhosttyContextMenuAction] {
@@ -1077,7 +1077,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         ] + trailing
     }
 
-    nonisolated static func contextMenuSelectionPreview(
+    public nonisolated static func contextMenuSelectionPreview(
         _ selectionText: String
     ) -> String {
         let collapsed = selectionText
@@ -1088,7 +1088,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         return String(collapsed.prefix(maximumLength - 1)) + "…"
     }
 
-    nonisolated static func contextMenuSearchURL(
+    public nonisolated static func contextMenuSearchURL(
         for selectionText: String
     ) -> URL? {
         var components = URLComponents(
