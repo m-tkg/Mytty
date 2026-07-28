@@ -221,6 +221,19 @@ struct GhosttySurfaceIntegrationTests {
             runtime: runtime,
             initialSize: NSSize(width: 320, height: 240)
         )
+        // Geometry updates are skipped while detached from a window (see
+        // `updateSurfaceGeometry`), so attach to a real one -- as every
+        // surface is in practice -- before resizing.
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 240))
+        let window = NSWindow(
+            contentRect: host.bounds,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        host.addSubview(surface)
+        surface.frame = host.bounds
         let initialGrid = surface.terminalGridSize
 
         #expect(initialGrid.columns > 0)
@@ -230,6 +243,50 @@ struct GhosttySurfaceIntegrationTests {
 
         #expect(surface.terminalGridSize.columns > initialGrid.columns)
         #expect(surface.terminalGridSize.rows == initialGrid.rows)
+    }
+
+    @Test("skips geometry updates while detached, then applies them and syncs the layer scale on reattach")
+    @MainActor
+    func geometryUpdateSkippedWhileDetached() throws {
+        try GhosttyLibrary.initializeCurrentProcess()
+        let file = try temporaryConfiguration()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let configuration = try GhosttyConfiguration(file: file)
+        let runtime = try GhosttyRuntime(configuration: configuration)
+        let surface = try GhosttySurfaceView(
+            runtime: runtime,
+            initialSize: NSSize(width: 320, height: 240)
+        )
+        let initialGrid = surface.terminalGridSize
+
+        // No window yet, as happens mid-reparent during a pane rebuild.
+        // The fallback scale/backing-size pair `updateSurfaceGeometry`
+        // would otherwise compute while detached is mismatched, so this
+        // resize must not reach Ghostty at all.
+        surface.setFrameSize(NSSize(width: 900, height: 700))
+        #expect(surface.terminalGridSize == initialGrid)
+
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
+        let window = NSWindow(
+            contentRect: host.bounds,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        host.addSubview(surface)
+        surface.frame = host.bounds
+
+        // `viewDidMoveToWindow` re-applies the pending geometry once
+        // reattached with real values.
+        #expect(surface.terminalGridSize.columns > initialGrid.columns)
+        #expect(surface.terminalGridSize.rows > initialGrid.rows)
+
+        // Ghostty's Metal renderer makes this a layer-hosting view, so
+        // AppKit never syncs `contentsScale` for it on its own --
+        // `viewDidMoveToWindow` must set it explicitly or every frame
+        // the renderer presents gets discarded.
+        #expect(surface.layer?.contentsScale == window.backingScaleFactor)
     }
 
     @Test("reports the foreground process for its PTY")

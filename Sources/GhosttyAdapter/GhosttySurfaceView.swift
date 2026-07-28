@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import GhosttyKit
+import QuartzCore
 
 public enum GhosttySurfaceEvent: Equatable, Sendable {
     case titleChanged(String)
@@ -383,12 +384,31 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        updateLayerContentsScale()
         updateSurfaceGeometry()
     }
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
+        updateLayerContentsScale()
         updateSurfaceGeometry()
+    }
+
+    /// Ghostty's Metal renderer makes this view layer-hosting (it assigns
+    /// its own `CALayer` before turning on `wantsLayer`, per
+    /// `Metal.zig`'s `initSurface`), so AppKit never syncs the layer's
+    /// `contentsScale` the way it does for an ordinary layer-backed view.
+    /// Left stale after a display change or a reparent onto a
+    /// differently-scaled window, `contentsScale` disagrees with the
+    /// surface size Ghostty presents and `IOSurfaceLayer`'s present path
+    /// discards every frame, leaving the pane permanently blank. Mirrors
+    /// upstream's `SurfaceView_AppKit.viewDidChangeBackingProperties`.
+    private func updateLayerContentsScale() {
+        guard let window else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.contentsScale = window.backingScaleFactor
+        CATransaction.commit()
     }
 
     public override func setFrameSize(_ newSize: NSSize) {
@@ -419,9 +439,20 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     private func updateSurfaceGeometry() {
         guard let native else { return }
-        let scale = window?.backingScaleFactor
-            ?? NSScreen.main?.backingScaleFactor
-            ?? 1
+        // A pane rebuild (e.g. `PaneLayoutController.makeSplitView` after
+        // closing a sibling pane) reparents this view by removing it from
+        // its old host and adding it to a new one, which briefly detaches
+        // it from any window. `window` is nil for that gap, so `scale`
+        // would fall back to `NSScreen.main` (often not the actual
+        // display) while `convertToBacking` falls back to an identity
+        // (1x) transform -- a mismatched scale/size pair that sends
+        // Ghostty a bogus resize. `viewDidMoveToWindow` unconditionally
+        // re-runs this once the view lands in its new host with real
+        // values, so skipping while detached is safe and avoids that
+        // spurious resize (which can make an Ink-based TUI like Claude
+        // Code drop a redraw and stay blank).
+        guard let window else { return }
+        let scale = window.backingScaleFactor
         ghostty_surface_set_content_scale(native, scale, scale)
 
         let backingSize = convertToBacking(bounds).size
@@ -472,6 +503,14 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     }
 
     func receiveCellSize(width: UInt32, height: UInt32) {
+        // Like `updateSurfaceGeometry`, `convertFromBacking` needs a
+        // window to know the real backing scale; without one it silently
+        // assumes 1x, which would record a `cellSize` that doesn't match
+        // reality. Keep the last known cell size while detached --
+        // Ghostty resends this action when it next matters (e.g. after a
+        // font-size change), and any pending resize is re-applied with
+        // correct values once `viewDidMoveToWindow` fires anyway.
+        guard window != nil else { return }
         let backing = CGSize(width: Int(width), height: Int(height))
         cellSize = convertFromBacking(backing)
         positionAutocompleteSuggestion()
