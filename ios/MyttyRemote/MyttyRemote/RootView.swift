@@ -23,18 +23,31 @@ struct RootView: View {
     @State private var pairedMacs: [PairedMac] = PairedMacStore.loadAll()
     @State private var path = NavigationPath()
     @Environment(\.scenePhase) private var scenePhase
-    /// Armed when the app comes back to the foreground inside a session, so
-    /// the connection iOS tore down while suspended is re-established. The
-    /// first attempt often races the network coming back after resume (Wi-Fi
-    /// re-associates a moment later, so the connect fails instantly), so a
-    /// failed attempt is retried a few times with a short delay — but only
-    /// a bounded number, so an unreachable Mac doesn't spin in a retry loop.
-    @State private var pendingForegroundReconnect = false
-    @State private var foregroundReconnectAttempts = 0
-    @State private var foregroundReconnectRetryTask: Task<Void, Never>?
-    private static let maxForegroundReconnectAttempts = 3
-    private static let foregroundReconnectRetryDelay: Duration = .seconds(2)
+    /// Armed either when the app comes back to the foreground inside a
+    /// session (so the connection iOS tore down while suspended is
+    /// re-established), or when a live session simply drops while the app
+    /// stays active. The first attempt often races the network still
+    /// settling (Wi-Fi re-associates a moment later, so the connect fails
+    /// instantly), so a failed attempt is retried a few times with a short
+    /// delay — but only a bounded number, so an unreachable Mac doesn't
+    /// spin in a retry loop.
+    @State private var pendingAutoReconnect = false
+    @State private var autoReconnectAttempts = 0
+    @State private var autoReconnectRetryTask: Task<Void, Never>?
+    private static let maxAutoReconnectAttempts = 3
+    private static let autoReconnectRetryDelay: Duration = .seconds(2)
     @ObservedObject private var pushRegistration = PushRegistration.shared
+    /// Surfaces the auto-reconnect loop above, which is otherwise
+    /// invisible: the session UI underneath just shows a spinner or a
+    /// stale screen while attempts fire in the background, so this is the
+    /// only signal the user gets that something is retrying, or that it
+    /// gave up and sent them back to Home.
+    private enum ReconnectToast: Equatable {
+        case reconnecting
+        case disconnected(macName: String?)
+    }
+    @State private var toast: ReconnectToast?
+    @State private var toastDismissTask: Task<Void, Never>?
     /// A tapped notification whose pane cannot be located yet, because
     /// the session it belongs to is still connecting. Resolved against
     /// the first snapshot that arrives.
@@ -96,6 +109,19 @@ struct RootView: View {
                 }
             }
         }
+        // A toast overlay rather than anything inline in the pushed views:
+        // the drop can happen on any screen in the stack (tab list, pane
+        // list, pane detail), and the retry/give-up story is the same no
+        // matter where it caught the user.
+        .overlay(alignment: .bottom) {
+            if let toast {
+                reconnectToastView(toast)
+                    .transition(
+                        .move(edge: .bottom).combined(with: .opacity)
+                    )
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: toast)
         // SessionView and everything pushed below it (tabs, panes, pane
         // detail) all share this one stack, so their own onAppear/
         // onDisappear fire on every push/pop within the mac's session —
@@ -109,27 +135,74 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                foregroundReconnectAttempts = 0
-                pendingForegroundReconnect = !path.isEmpty
-                reconnectAfterForegroundIfNeeded()
+                autoReconnectAttempts = 0
+                pendingAutoReconnect = !path.isEmpty
+                autoReconnectIfNeeded()
             case .background:
-                pendingForegroundReconnect = false
-                foregroundReconnectRetryTask?.cancel()
-                foregroundReconnectRetryTask = nil
-                foregroundReconnectAttempts = 0
+                pendingAutoReconnect = false
+                autoReconnectRetryTask?.cancel()
+                autoReconnectRetryTask = nil
+                autoReconnectAttempts = 0
+                if toast == .reconnecting {
+                    toast = nil
+                }
+                toastDismissTask?.cancel()
+                toastDismissTask = nil
             default:
                 break
             }
         }
         // The connection often still looks alive the instant the app
         // resumes and only fails a moment later, so the armed reconnect is
-        // re-evaluated on every state change too.
-        .onChange(of: client.state) { reconnectAfterForegroundIfNeeded() }
+        // re-evaluated on every state change too. A session that was live
+        // and then drops on its own — as opposed to the deliberate
+        // disconnect from navigating back to Home, which the path.count
+        // handler above already covers — gets armed here too.
+        .onChange(of: client.state) { oldValue, newValue in
+            if oldValue == .connected, !path.isEmpty {
+                switch newValue {
+                case .disconnected, .failed:
+                    autoReconnectAttempts = 0
+                    pendingAutoReconnect = true
+                case .connecting, .connected:
+                    break
+                }
+            }
+            autoReconnectIfNeeded()
+        }
         .onChange(of: pushRegistration.pendingOpen) { openTappedNotification() }
         .onAppear { openTappedNotification() }
         // The pane cannot be located until the Mac has sent a snapshot,
         // which is always after the tap; finish the navigation then.
         .onChange(of: client.snapshot) { openPendingPaneIfPossible() }
+    }
+
+    /// A rounded, non-interactive banner for the auto-reconnect states —
+    /// there is nothing to tap, so it never competes with the screen
+    /// underneath for input.
+    @ViewBuilder
+    private func reconnectToastView(_ toast: ReconnectToast) -> some View {
+        HStack(spacing: 8) {
+            switch toast {
+            case .reconnecting:
+                ProgressView()
+                    .tint(.white)
+                Text("Reconnecting…")
+            case .disconnected(let macName):
+                Image(systemName: "wifi.slash")
+                Text(
+                    macName.map { "Disconnected from \($0)" }
+                        ?? "Disconnected"
+                )
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.8), in: Capsule())
+        .padding(.bottom, 24)
+        .allowsHitTesting(false)
     }
 
     /// Navigates to what a tapped Attention notification points at:
@@ -156,8 +229,8 @@ struct RootView: View {
             // scene-phase handler has already run and found nothing to
             // arm. Arm it here so a stale connection heals instead of
             // leaving the pane spinning forever.
-            foregroundReconnectAttempts = 0
-            pendingForegroundReconnect = true
+            autoReconnectAttempts = 0
+            pendingAutoReconnect = true
         }
         pendingNotificationOpen = PendingNotificationOpen(
             mac: mac,
@@ -212,8 +285,8 @@ struct RootView: View {
         path = rebuilt
     }
 
-    private func reconnectAfterForegroundIfNeeded() {
-        guard pendingForegroundReconnect,
+    private func autoReconnectIfNeeded() {
+        guard pendingAutoReconnect,
               scenePhase == .active,
               !path.isEmpty,
               client.canReconnect
@@ -221,32 +294,44 @@ struct RootView: View {
         switch client.state {
         case .connected:
             // Reconnected (or the stale session turned out alive): done.
-            pendingForegroundReconnect = false
-            foregroundReconnectAttempts = 0
+            pendingAutoReconnect = false
+            autoReconnectAttempts = 0
+            if toast == .reconnecting {
+                toast = nil
+            }
         case .connecting:
             break
         case .disconnected, .failed:
-            guard foregroundReconnectRetryTask == nil else { return }
+            guard autoReconnectRetryTask == nil else { return }
             guard
-                foregroundReconnectAttempts
-                    < Self.maxForegroundReconnectAttempts
+                autoReconnectAttempts < Self.maxAutoReconnectAttempts
             else {
-                // Out of attempts: stop, leaving the visible disconnected
-                // state and its Reconnect button as the way back in.
-                pendingForegroundReconnect = false
+                // Out of attempts: rather than leave the pane stuck on a
+                // dead session showing only its own Reconnect button, bail
+                // all the way out to Mac selection and say so — a toast
+                // that outlives the pop, since the screen it would have
+                // sat on is gone.
+                pendingAutoReconnect = false
+                let macName = client.connectedMacDisplayName
+                toast = .disconnected(macName: macName)
+                path = NavigationPath()
+                scheduleToastDismiss(for: .disconnected(macName: macName))
                 return
             }
-            foregroundReconnectAttempts += 1
+            toast = .reconnecting
+            toastDismissTask?.cancel()
+            toastDismissTask = nil
+            autoReconnectAttempts += 1
             // The first attempt fires immediately; later ones wait out the
             // window where the network is still coming back after resume.
             let delay: Duration =
-                foregroundReconnectAttempts == 1
-                ? .zero : Self.foregroundReconnectRetryDelay
-            foregroundReconnectRetryTask = Task {
+                autoReconnectAttempts == 1
+                ? .zero : Self.autoReconnectRetryDelay
+            autoReconnectRetryTask = Task {
                 if delay > .zero { try? await Task.sleep(for: delay) }
-                foregroundReconnectRetryTask = nil
+                autoReconnectRetryTask = nil
                 guard !Task.isCancelled,
-                      pendingForegroundReconnect,
+                      pendingAutoReconnect,
                       scenePhase == .active,
                       !path.isEmpty,
                       client.canReconnect
@@ -258,6 +343,18 @@ struct RootView: View {
                     break
                 }
             }
+        }
+    }
+
+    /// Clears the "gave up" toast a few seconds after it appears, but only
+    /// if it is still the same toast — a fresh connect attempt (from the
+    /// user picking a Mac again) may have already replaced it with
+    /// something else by the time this fires.
+    private func scheduleToastDismiss(for shown: ReconnectToast) {
+        toastDismissTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled, toast == shown else { return }
+            toast = nil
         }
     }
 }
