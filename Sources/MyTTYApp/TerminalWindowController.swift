@@ -2624,16 +2624,26 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
         if requiresFullRender {
             paneLayout.dismissZoomPresentation()
-            for surface in surfaces.values
-                where surface.isDescendant(of: surfaceHost) {
-                surface.removeFromSuperview()
-            }
-            surfaceHost.subviews.forEach { $0.removeFromSuperview() }
+            // Build the new tree before tearing down the old one: `surfaces`/
+            // `browsers`/`remotes` can momentarily disagree with `tab.root`
+            // (e.g. a pane close racing this render), and `makeSplitView`
+            // returns nil in that case. Wiping the old subviews first used
+            // to leave `surfaceHost` with nothing in it until the next
+            // render happened to succeed. `resetHosts()` still has to run
+            // before `makeSplitView` populates it for the new tree; the old
+            // view hierarchy stays untouched until `makeSplitView` succeeds,
+            // since it reparents each content view (surface/browser/remote)
+            // out of its old host into the new one as it builds.
             paneLayout.resetHosts()
             guard let rootView = paneLayout.makeSplitView(tab.root, path: []) else {
                 renderedTabID = nil
                 return
             }
+            for surface in surfaces.values
+                where surface.isDescendant(of: surfaceHost) {
+                surface.removeFromSuperview()
+            }
+            surfaceHost.subviews.forEach { $0.removeFromSuperview() }
             rootView.translatesAutoresizingMaskIntoConstraints = false
             surfaceHost.addSubview(rootView)
             NSLayoutConstraint.activate([
