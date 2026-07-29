@@ -503,10 +503,16 @@ struct GhosttySurfaceIntegrationTests {
             }
             try await Task.sleep(for: .milliseconds(50))
         }
-        try await Task.sleep(for: .milliseconds(200))
+        // The marker's newline hands the screen back to the shell, but the
+        // next prompt paints a moment later — a fixed settle loses that
+        // race when the whole suite is loading the machine, leaving the
+        // cursor still at column 0. Wait for the prompt to move it.
+        var position = try #require(surface.terminalCursorPosition)
+        for _ in 0..<100 where position.column == 0 {
+            try await Task.sleep(for: .milliseconds(50))
+            position = try #require(surface.terminalCursorPosition)
+        }
         contents = surface.visibleText()
-
-        let position = try #require(surface.terminalCursorPosition)
         let grid = surface.terminalGridSize
         FileHandle.standardError.write(Data(
             "[cursor] row=\(position.row) col=\(position.column) grid=\(grid) lines=\(contents.split(separator: "\n", omittingEmptySubsequences: false).count)\n".utf8
