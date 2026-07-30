@@ -1,9 +1,13 @@
 import Foundation
 import SQLite3
 
-/// Reads the model name Cursor most recently used in a chat conversation.
-/// Cursor does not persist a usable context window budget locally, so
-/// `contextRemainingPercent` is always `nil`.
+/// Reads the model name and context-window usage Cursor most recently
+/// recorded for a chat conversation. The model name comes from a message
+/// blob's `providerOptions.cursor.modelName` field; the context budget
+/// comes from the newest "root" blob, which carries a small protobuf
+/// record (used tokens / context window total) alongside the
+/// conversation's metadata. Older Cursor CLI versions never write that
+/// root blob, so `contextRemainingPercent` is `nil` in that case.
 public enum CursorSessionInspector {
     public static func status(
         sessionID: String?,
@@ -17,10 +21,11 @@ public enum CursorSessionInspector {
             workingDirectory: workingDirectory,
             chatsDirectory: chatsDirectory
         ) else { return nil }
-        guard let modelName = latestModelName(
+        let details = latestSessionDetails(
             storeDatabaseURL: conversationDirectory
                 .appendingPathComponent("store.db")
-        ) else { return nil }
+        )
+        guard let modelName = details.modelName else { return nil }
 
         let resolvedSessionID = AgentSessionValidation.identifier(sessionID)
             ?? AgentSessionValidation.identifier(
@@ -29,7 +34,15 @@ public enum CursorSessionInspector {
         return AgentSessionStatus(
             sessionID: resolvedSessionID,
             modelName: modelName,
-            contextRemainingPercent: nil
+            contextRemainingPercent: details.contextUsage.map { usage in
+                // Match Claude Code's convention: round the *used* share to
+                // a whole percent and subtract it, rather than rounding the
+                // remainder (see ClaudeCodeSessionInspector.status(from:)).
+                100 - min(
+                    100,
+                    max(0, (usage.used / usage.total * 100).rounded())
+                )
+            }
         )
     }
 
@@ -51,6 +64,147 @@ public enum CursorSessionInspector {
             return nil
         }
         return AgentSessionValidation.label(String(remainder[..<endQuote]))
+    }
+
+    /// Parses the context-usage record Cursor CLI writes into a
+    /// conversation's newest "root" blob. That blob's top-level field 5
+    /// (length-delimited) contains a nested message with field 1 (varint,
+    /// used tokens) and field 2 (varint, context window total); other
+    /// top-level and nested fields are ignored. This is untrusted data read
+    /// from a local database, so every step is bounds-checked and malformed
+    /// input yields `nil` rather than trapping.
+    static func extractContextUsage(
+        from data: Data
+    ) -> (used: Double, total: Double)? {
+        guard let field5 = topLevelField5(in: [UInt8](data)) else {
+            return nil
+        }
+        return parseContextUsageMessage(field5)
+    }
+
+    /// Scans the top-level fields of a protobuf message for field 5
+    /// (wire type 2) and returns its raw bytes. Returns `nil` if field 5
+    /// is absent or the buffer is malformed.
+    private static func topLevelField5(in bytes: [UInt8]) -> [UInt8]? {
+        var index = 0
+        while index < bytes.count {
+            guard let (key, keyLength) = readVarint(bytes, at: index) else {
+                return nil
+            }
+            index += keyLength
+            let fieldNumber = key >> 3
+            let wireType = key & 0x7
+
+            switch wireType {
+            case 0: // varint
+                guard let (_, length) = readVarint(bytes, at: index) else {
+                    return nil
+                }
+                index += length
+            case 1: // 64-bit
+                guard index + 8 <= bytes.count else { return nil }
+                index += 8
+            case 2: // length-delimited
+                guard let (rawLength, lengthLength) = readVarint(
+                    bytes,
+                    at: index
+                ) else { return nil }
+                index += lengthLength
+                guard rawLength <= UInt64(bytes.count - index) else {
+                    return nil
+                }
+                let length = Int(rawLength)
+                if fieldNumber == 5 {
+                    return Array(bytes[index..<(index + length)])
+                }
+                index += length
+            case 5: // 32-bit
+                guard index + 4 <= bytes.count else { return nil }
+                index += 4
+            default: // 3, 4, 6, 7: not used by this format
+                return nil
+            }
+        }
+        return nil
+    }
+
+    /// Parses the field-5 sub-message for the used/total token counts.
+    private static func parseContextUsageMessage(
+        _ bytes: [UInt8]
+    ) -> (used: Double, total: Double)? {
+        var used: UInt64?
+        var total: UInt64?
+        var index = 0
+
+        while index < bytes.count {
+            guard let (key, keyLength) = readVarint(bytes, at: index) else {
+                return nil
+            }
+            index += keyLength
+            let fieldNumber = key >> 3
+            let wireType = key & 0x7
+
+            switch wireType {
+            case 0: // varint
+                guard let (value, length) = readVarint(bytes, at: index)
+                else { return nil }
+                index += length
+                if fieldNumber == 1 {
+                    used = value
+                } else if fieldNumber == 2 {
+                    total = value
+                }
+            case 1: // 64-bit
+                guard index + 8 <= bytes.count else { return nil }
+                index += 8
+            case 2: // length-delimited (e.g. field 3, per-category breakdown)
+                guard let (rawLength, lengthLength) = readVarint(
+                    bytes,
+                    at: index
+                ) else { return nil }
+                index += lengthLength
+                guard rawLength <= UInt64(bytes.count - index) else {
+                    return nil
+                }
+                index += Int(rawLength)
+            case 5: // 32-bit
+                guard index + 4 <= bytes.count else { return nil }
+                index += 4
+            default:
+                return nil
+            }
+        }
+
+        guard let used, let total,
+              total > 0,
+              total <= 100_000_000
+        else { return nil }
+        return (Double(used), Double(total))
+    }
+
+    /// Bounds-checked protobuf varint reader: reads at most 10 bytes (the
+    /// maximum encoding length of a 64-bit value) starting at `start`, and
+    /// never reads past the end of `bytes`. Returns `nil` on truncation or
+    /// an over-long varint rather than trapping.
+    private static func readVarint(
+        _ bytes: [UInt8],
+        at start: Int
+    ) -> (value: UInt64, length: Int)? {
+        var value: UInt64 = 0
+        var shift: UInt64 = 0
+        var offset = 0
+        while offset < 10 {
+            let position = start + offset
+            guard position < bytes.count else { return nil }
+            let byte = bytes[position]
+            value |= UInt64(byte & 0x7F) << shift
+            offset += 1
+            if byte & 0x80 == 0 {
+                return (value, offset)
+            }
+            shift += 7
+        }
+        return nil
     }
 
     private static func conversationDirectory(
@@ -128,10 +282,23 @@ public enum CursorSessionInspector {
         return best?.directory
     }
 
-    private static func latestModelName(storeDatabaseURL: URL) -> String? {
+    /// Scans a conversation's blobs newest-first for the model name and the
+    /// context-usage record, stopping as soon as both have been found. The
+    /// two facts may live in different blobs (a message blob for the model
+    /// name, the newest root blob for context usage), so a single pass
+    /// tracks whichever is still missing rather than scanning twice.
+    private static func latestSessionDetails(
+        storeDatabaseURL: URL
+    ) -> (
+        modelName: String?,
+        contextUsage: (used: Double, total: Double)?
+    ) {
         AgentSessionDatabase.withReadOnlyConnection(
             at: storeDatabaseURL
-        ) { database in
+        ) { database -> (
+            modelName: String?,
+            contextUsage: (used: Double, total: Double)?
+        )? in
             guard AgentSessionDatabase.hasTable("blobs", database: database)
             else { return nil }
 
@@ -145,17 +312,29 @@ public enum CursorSessionInspector {
             ) == SQLITE_OK else { return nil }
             defer { sqlite3_finalize(statement) }
 
+            var modelName: String?
+            var contextUsage: (used: Double, total: Double)?
+
             while sqlite3_step(statement) == SQLITE_ROW {
                 guard let bytes = sqlite3_column_blob(statement, 0) else {
                     continue
                 }
                 let length = Int(sqlite3_column_bytes(statement, 0))
                 let data = Data(bytes: bytes, count: length)
-                if let modelName = extractModelName(from: data) {
-                    return modelName
+
+                if modelName == nil,
+                   let name = extractModelName(from: data) {
+                    modelName = name
+                }
+                if contextUsage == nil,
+                   let usage = extractContextUsage(from: data) {
+                    contextUsage = usage
+                }
+                if modelName != nil && contextUsage != nil {
+                    break
                 }
             }
-            return nil
-        }
+            return (modelName, contextUsage)
+        } ?? (nil, nil)
     }
 }

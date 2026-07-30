@@ -222,6 +222,248 @@ struct CursorSessionInspectorTests {
         )
     }
 
+    @Test("extracts context usage from a root blob's field-5 record and computes remaining percent")
+    func extractsContextUsage() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cursorHome = root.appendingPathComponent(".cursor", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let conversationDirectory = cursorHome
+            .appendingPathComponent(
+                "chats/workspace-hash/context-session",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: conversationDirectory,
+            withIntermediateDirectories: true
+        )
+        try makeStoreDatabase(
+            at: conversationDirectory.appendingPathComponent("store.db")
+        ) { database in
+            try insertBlob(
+                into: database,
+                id: "blob-1",
+                json: """
+                {"providerOptions":{"cursor":{"modelName":"context-model"}}}
+                """
+            )
+            try insertRootBlob(
+                into: database,
+                id: "blob-2",
+                usedTokens: 13509,
+                totalTokens: 256_000
+            )
+        }
+
+        let status = CursorSessionInspector.status(
+            sessionID: "context-session",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(status?.modelName == "context-model")
+        // 13509 / 256000 * 100 = 5.277... -> rounded 5 -> 100 - 5 = 95
+        #expect(status?.contextRemainingPercent == 95)
+    }
+
+    @Test("returns a nil percent when no root blob carries context usage")
+    func noRootBlobMeansNilPercent() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cursorHome = root.appendingPathComponent(".cursor", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let conversationDirectory = cursorHome
+            .appendingPathComponent(
+                "chats/workspace-hash/no-root-session",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: conversationDirectory,
+            withIntermediateDirectories: true
+        )
+        try makeStoreDatabase(
+            at: conversationDirectory.appendingPathComponent("store.db")
+        ) { database in
+            try insertBlob(
+                into: database,
+                id: "blob-1",
+                json: """
+                {"providerOptions":{"cursor":{"modelName":"only-model"}}}
+                """
+            )
+        }
+
+        let status = CursorSessionInspector.status(
+            sessionID: "no-root-session",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(status?.modelName == "only-model")
+        #expect(status?.contextRemainingPercent == nil)
+    }
+
+    @Test("newer root blob wins over an older one")
+    func newestRootBlobWins() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cursorHome = root.appendingPathComponent(".cursor", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let conversationDirectory = cursorHome
+            .appendingPathComponent(
+                "chats/workspace-hash/rowid-order-session",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: conversationDirectory,
+            withIntermediateDirectories: true
+        )
+        try makeStoreDatabase(
+            at: conversationDirectory.appendingPathComponent("store.db")
+        ) { database in
+            // Inserted first -> lower rowid -> older.
+            try insertRootBlob(
+                into: database,
+                id: "blob-older",
+                usedTokens: 1_000,
+                totalTokens: 100_000
+            )
+            // Inserted second -> higher rowid -> newer, should win.
+            try insertRootBlob(
+                into: database,
+                id: "blob-newer",
+                usedTokens: 13509,
+                totalTokens: 256_000
+            )
+            try insertBlob(
+                into: database,
+                id: "blob-model",
+                json: """
+                {"providerOptions":{"cursor":{"modelName":"rowid-model"}}}
+                """
+            )
+        }
+
+        let status = CursorSessionInspector.status(
+            sessionID: "rowid-order-session",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(status?.contextRemainingPercent == 95)
+    }
+
+    @Test("extractContextUsage rejects malformed or edge-case protobuf data")
+    func extractContextUsageEdgeCases() {
+        // Truncated varint (continuation bit set, buffer ends).
+        #expect(
+            CursorSessionInspector.extractContextUsage(
+                from: Data([0x2A, 0x02, 0x08, 0x80])
+            ) == nil
+        )
+
+        // Declared length exceeds remaining buffer.
+        #expect(
+            CursorSessionInspector.extractContextUsage(
+                from: Data([0x2A, 0x7F, 0x08, 0x01])
+            ) == nil
+        )
+
+        // total == 0 -> nil.
+        let zeroTotal = encodeRootBlob(usedTokens: 100, totalTokens: 0)
+        #expect(CursorSessionInspector.extractContextUsage(from: zeroTotal) == nil)
+
+        // used > total -> percent clamps to 0, still returns a usage pair.
+        let overUsed = encodeRootBlob(usedTokens: 300_000, totalTokens: 256_000)
+        let usage = CursorSessionInspector.extractContextUsage(from: overUsed)
+        #expect(usage != nil)
+        if let usage {
+            let percent = 100 - min(
+                100,
+                max(0, (usage.used / usage.total * 100).rounded())
+            )
+            #expect(percent == 0)
+        }
+
+        // Plain JSON blob (starts with '{' = 0x7B) has no field-5 message.
+        #expect(
+            CursorSessionInspector.extractContextUsage(
+                from: Data("""
+                {"role":"assistant","providerOptions":{"cursor":{"modelName":"x"}}}
+                """.utf8)
+            ) == nil
+        )
+    }
+
+    private func encodeVarint(_ value: UInt64) -> [UInt8] {
+        var value = value
+        var bytes: [UInt8] = []
+        repeat {
+            var byte = UInt8(value & 0x7F)
+            value >>= 7
+            if value != 0 {
+                byte |= 0x80
+            }
+            bytes.append(byte)
+        } while value != 0
+        return bytes
+    }
+
+    private func encodeKey(fieldNumber: Int, wireType: Int) -> [UInt8] {
+        encodeVarint(UInt64((fieldNumber << 3) | wireType))
+    }
+
+    /// Encodes a root blob's field-5 sub-message
+    /// (1: usedTokens, 2: totalTokens) wrapped as a top-level field 5,
+    /// mirroring the real Cursor store.db root blob layout.
+    private func encodeRootBlob(
+        usedTokens: UInt64,
+        totalTokens: UInt64
+    ) -> Data {
+        var inner: [UInt8] = []
+        inner += encodeKey(fieldNumber: 1, wireType: 0)
+        inner += encodeVarint(usedTokens)
+        inner += encodeKey(fieldNumber: 2, wireType: 0)
+        inner += encodeVarint(totalTokens)
+
+        var outer: [UInt8] = []
+        outer += encodeKey(fieldNumber: 5, wireType: 2)
+        outer += encodeVarint(UInt64(inner.count))
+        outer += inner
+        return Data(outer)
+    }
+
+    private func insertRootBlob(
+        into database: OpaquePointer,
+        id: String,
+        usedTokens: UInt64,
+        totalTokens: UInt64
+    ) throws {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO blobs (id, data) VALUES (?, ?);",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            struct PrepareFailure: Error {}
+            throw PrepareFailure()
+        }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, id, -1, transient)
+        let data = Array(encodeRootBlob(
+            usedTokens: usedTokens,
+            totalTokens: totalTokens
+        ))
+        sqlite3_bind_blob(statement, 2, data, Int32(data.count), transient)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            struct StepFailure: Error {}
+            throw StepFailure()
+        }
+    }
+
     private func writeMeta(
         at directory: URL,
         cwd: String,
