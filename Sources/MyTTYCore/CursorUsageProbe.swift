@@ -1,8 +1,13 @@
 import Foundation
 import SQLite3
 
+public struct CursorUsagePayload: Sendable {
+    public let summary: Data
+    public let aggregatedEvents: Data?
+}
+
 public enum CursorUsageProbe {
-    public static func fetch(homeDirectory: URL) async -> Data? {
+    public static func fetch(homeDirectory: URL) async -> CursorUsagePayload? {
         let token = await Task.detached(priority: .utility) {
             CursorCredentialStore.accessToken(homeDirectory: homeDirectory)
         }.value
@@ -10,16 +15,57 @@ public enum CursorUsageProbe {
               let cookie = try? CursorCredentialStore.cookieHeader(
                   accessToken: token
               ),
-              let url = URL(string: "https://cursor.com/api/usage-summary")
+              let summaryURL = URL(string: "https://cursor.com/api/usage-summary")
+        else { return nil }
+
+        var summaryRequest = URLRequest(url: summaryURL)
+        summaryRequest.timeoutInterval = 8
+        summaryRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        summaryRequest.setValue(cookie, forHTTPHeaderField: "Cookie")
+        guard let (summaryData, summaryResponse) = try? await URLSession.shared.data(
+            for: summaryRequest
+        ),
+              (summaryResponse as? HTTPURLResponse)?.statusCode == 200,
+              (try? NativeAgentUsageParser.cursorSummary(from: summaryData)) != nil
+        else { return nil }
+
+        let aggregatedEvents = await fetchAggregatedEvents(
+            cookie: cookie,
+            billingCycle: NativeAgentUsageParser.cursorBillingCycle(from: summaryData)
+        )
+        return CursorUsagePayload(
+            summary: summaryData,
+            aggregatedEvents: aggregatedEvents
+        )
+    }
+
+    private static func fetchAggregatedEvents(
+        cookie: String,
+        billingCycle: (startMs: Int64, endMs: Int64)?
+    ) async -> Data? {
+        guard let url = URL(
+            string: "https://cursor.com/api/dashboard/get-aggregated-usage-events"
+        ) else { return nil }
+
+        var body: [String: Any] = ["teamId": 0]
+        if let billingCycle {
+            body["startDate"] = String(billingCycle.startMs)
+            body["endDate"] = String(billingCycle.endMs)
+        }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body)
         else { return nil }
 
         var request = URLRequest(url: url)
+        request.httpMethod = "POST"
         request.timeoutInterval = 8
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        request.setValue("https://cursor.com", forHTTPHeaderField: "Origin")
+        request.httpBody = bodyData
+
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              (try? NativeAgentUsageParser.cursorSummary(from: data)) != nil
+              (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
         return data
     }

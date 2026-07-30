@@ -380,6 +380,164 @@ struct NativeAgentUsageAdapterTests {
         ])
     }
 
+    @Test("falls back to aggregated-usage-events cost when on-demand is disabled")
+    func cursorAggregatedEventsCostFallback() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 37.5
+            },
+            "onDemand": {
+              "enabled": false,
+              "used": 0,
+              "limit": 0
+            }
+          }
+        }
+        """#.utf8)
+        let events = Data(#"""
+        {
+          "aggregations": [],
+          "totalCostCents": 28.61225
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(
+            from: data,
+            aggregatedEvents: events
+        )
+
+        #expect(summary?.cost == .session(amount: 0.2861225, currencyCode: "USD"))
+        #expect(summary?.limits == [
+            AgentUsageLimit(title: "Plan", remainingPercent: 62.5),
+        ])
+    }
+
+    @Test("prefers the on-demand budget over aggregated-usage-events cost")
+    func cursorOnDemandBudgetWinsOverAggregatedEvents() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "onDemand": {
+              "enabled": true,
+              "used": 1234,
+              "limit": 2000
+            }
+          }
+        }
+        """#.utf8)
+        let events = Data(#"""
+        {
+          "totalCostCents": 28.61225
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(
+            from: data,
+            aggregatedEvents: events
+        )
+
+        #expect(summary?.cost == .budget(
+            used: 12.34,
+            limit: 20,
+            currencyCode: "USD"
+        ))
+    }
+
+    @Test("treats zero aggregated-usage-events cost as no cost")
+    func cursorAggregatedEventsZeroCost() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 10
+            },
+            "onDemand": {
+              "enabled": false
+            }
+          }
+        }
+        """#.utf8)
+        let events = Data(#"""
+        {
+          "totalCostCents": 0
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(
+            from: data,
+            aggregatedEvents: events
+        )
+
+        #expect(summary?.cost == nil)
+        #expect(summary?.limits == [
+            AgentUsageLimit(title: "Plan", remainingPercent: 90),
+        ])
+    }
+
+    @Test("ignores malformed or invalid aggregated-usage-events payloads")
+    func cursorAggregatedEventsMalformed() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 10
+            },
+            "onDemand": {
+              "enabled": false
+            }
+          }
+        }
+        """#.utf8)
+
+        let malformedCases: [Data] = [
+            Data("not json".utf8),
+            Data(#"{}"#.utf8),
+            Data(#"{"totalCostCents": -5}"#.utf8),
+            Data(#"{"totalCostCents": "not-a-number"}"#.utf8),
+            Data(#"{"totalCostCents": 999999999}"#.utf8),
+        ]
+
+        for events in malformedCases {
+            let summary = try NativeAgentUsageParser.cursorSummary(
+                from: data,
+                aggregatedEvents: events
+            )
+            #expect(summary?.cost == nil)
+            #expect(summary?.limits == [
+                AgentUsageLimit(title: "Plan", remainingPercent: 90),
+            ])
+        }
+    }
+
+    @Test("parses Cursor billing cycle dates with and without fractional seconds")
+    func cursorBillingCycleParsing() {
+        let withFractional = Data(#"""
+        {
+          "billingCycleStart": "2026-07-15T04:54:42.985Z",
+          "billingCycleEnd": "2026-07-15T04:54:42.985Z"
+        }
+        """#.utf8)
+        let cycle = NativeAgentUsageParser.cursorBillingCycle(from: withFractional)
+        #expect(cycle?.startMs == 1_784_091_282_985)
+        #expect(cycle?.endMs == 1_784_091_282_985)
+
+        let withoutFractional = Data(#"""
+        {
+          "billingCycleStart": "2026-07-15T04:54:42Z",
+          "billingCycleEnd": "2026-07-15T04:54:42Z"
+        }
+        """#.utf8)
+        #expect(
+            NativeAgentUsageParser.cursorBillingCycle(from: withoutFractional)?.startMs
+                == 1_784_091_282_000
+        )
+
+        let missing = Data(#"{"billingCycleStart": "2026-07-15T04:54:42.985Z"}"#.utf8)
+        #expect(NativeAgentUsageParser.cursorBillingCycle(from: missing) == nil)
+    }
+
     @Test("calculates OpenCode Go limits from local usage")
     func openCodeGoRateLimits() async throws {
         let home = FileManager.default.temporaryDirectory

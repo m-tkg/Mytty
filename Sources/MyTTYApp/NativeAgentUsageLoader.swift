@@ -176,10 +176,13 @@ struct CursorUsageSource: AgentProviderUsageSource {
         pathProfile: ApplicationPathProfile,
         environment: [String: String]
     ) async -> AgentUsageSummary? {
-        guard let data = await CursorUsageProbe.fetch(
+        guard let payload = await CursorUsageProbe.fetch(
             homeDirectory: homeDirectory
         ) else { return nil }
-        return try? NativeAgentUsageParser.cursorSummary(from: data)
+        return try? NativeAgentUsageParser.cursorSummary(
+            from: payload.summary,
+            aggregatedEvents: payload.aggregatedEvents
+        )
     }
 }
 

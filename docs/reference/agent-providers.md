@@ -85,6 +85,8 @@ The context meter and the usage-limit meters next to it graph what is left by de
 
 `<slug>` for Claude Code replaces every non-alphanumeric character in the working directory path with `-`. To keep the 0.5-second foreground poll cheap, Claude Code transcript reads are skipped unless the tracked `(mtime, size)` fingerprint changed; the OpenCode, Cursor, and Antigravity lookups share a per-pane cache throttled to once every 5 seconds, invalidated immediately if the hook session ID changes.
 
+Cursor's status-bar dollar cost comes from `GET https://cursor.com/api/usage-summary`'s `individualUsage.onDemand`, but that field only carries a cost for accounts with usage-based pricing enabled — on plan/free accounts it is disabled and Mytty falls back to `POST https://cursor.com/api/dashboard/get-aggregated-usage-events` (same cookie, plus an `Origin: https://cursor.com` header and the usage-summary response's billing-cycle dates as the request window), reading `totalCostCents` as the session cost.
+
 ## Session restoration (resume commands)
 
 When **On Launch** is set to **Restore last session**, Mytty restores an agent that was running in a pane when the session snapshot was saved, by submitting one of these commands as the restored shell's initial input:
