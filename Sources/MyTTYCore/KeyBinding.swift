@@ -7,6 +7,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case nextWindow = "next-window"
     case previousWindow = "previous-window"
     case openHTML = "open-html"
+    case openURL = "open-url"
     case newTab = "new-tab"
     case renameTab = "rename-tab"
     case closeTab = "close-tab"
@@ -104,6 +105,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .nextWindow: "Next Window"
         case .previousWindow: "Previous Window"
         case .openHTML: "Open HTML File"
+        case .openURL: "Open URL"
         case .newTab: "New Tab"
         case .renameTab: "Rename Tab"
         case .closeTab: "Close Tab"
@@ -151,6 +153,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
                 modifiers: [.command, .shift]
             ),
             .openHTML: .init(key: "o", modifiers: [.command]),
+            .openURL: .init(key: "l", modifiers: [.command]),
             .newTab: .init(key: "t", modifiers: [.command]),
             .renameTab: .init(key: "r", modifiers: [.command, .shift]),
             .closeTab: .init(key: "w", modifiers: [.command]),
