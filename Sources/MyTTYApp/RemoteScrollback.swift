@@ -6,8 +6,8 @@ import MyTTYRemoteKit
 /// capping the line count so frames stay bounded.
 ///
 /// The cursor's logical line is found by reading, from ghostty, the exact
-/// text from the cursor's viewport cell (inclusive) to the viewport's
-/// bottom-right corner — the "cursor suffix". Ghostty trims trailing blank
+/// text from the cursor's active-area cell (inclusive) to the active
+/// area's bottom-right corner — the "cursor suffix". Ghostty trims trailing blank
 /// *lines* the same way on both this read and the full-screen read used
 /// for `text` (both go through the same unwrap + trim=false selection
 /// semantics), so the suffix's line count anchors the cursor from the
