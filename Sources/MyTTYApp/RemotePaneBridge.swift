@@ -52,19 +52,16 @@ final class RemotePaneBridge {
         guard let surface = surface(paneID) else { return nil }
         let gridSize = surface.terminalGridSize
         let screenText = surface.screenText()
-        let viewportText = surface.visibleText()
         let styledLines = RemoteVTStyledParser.parse(surface.screenVTText())
-        // Read the cursor last: if ghostty's IO thread processes more
-        // output between these reads, an earlier cursor read would pair
-        // stale (behind-by-one) coordinates with the newer text above,
-        // which renders as the cursor sitting one cell behind where it
-        // should be right after a keystroke.
-        let cursor = surface.terminalCursorPosition
+        // Read the cursor-to-end suffix last: if ghostty's IO thread
+        // processes more output between these reads, an earlier cursor
+        // read would pair stale (behind-by-one) coordinates with the
+        // newer text above, which renders as the cursor sitting one cell
+        // behind where it should be right after a keystroke.
+        let cursorSuffix = surface.visibleTextFromCursor()
         return RemoteScrollback.content(
             screenText: screenText,
-            viewportText: viewportText,
-            viewportCursor: cursor.map { ($0.row, $0.column) },
-            gridColumns: gridSize.columns,
+            viewportTextFromCursor: cursorSuffix,
             gridRows: gridSize.rows,
             styledLines: styledLines
         )

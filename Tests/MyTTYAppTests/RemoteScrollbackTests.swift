@@ -19,9 +19,7 @@ struct RemoteScrollbackTests {
         ]
         let content = RemoteScrollback.content(
             screenText: "one\ntwo\nthree",
-            viewportText: "one\ntwo\nthree",
-            viewportCursor: nil,
-            gridColumns: 80,
+            viewportTextFromCursor: nil,
             styledLines: styledLines
         )
         #expect(content.styledLines.map(\.plainText) == ["one", "two", "three"])
@@ -33,9 +31,7 @@ struct RemoteScrollbackTests {
         let styledLines = plain.map(styled)
         let content = RemoteScrollback.content(
             screenText: plain.joined(separator: "\n"),
-            viewportText: plain.suffix(3).joined(separator: "\n"),
-            viewportCursor: (row: 2, column: 0),
-            gridColumns: 80,
+            viewportTextFromCursor: "line-9\nline-10",
             styledLines: styledLines,
             maxLines: 4
         )
@@ -122,9 +118,7 @@ struct RemoteScrollbackTests {
         let screenSized = RemoteScrollback.content(
             screenText: (1...24).map { "line-\($0)" }
                 .joined(separator: "\n"),
-            viewportText: "",
-            viewportCursor: nil,
-            gridColumns: 80,
+            viewportTextFromCursor: nil,
             gridRows: 24
         )
         #expect(screenSized.altScreen)
@@ -132,18 +126,14 @@ struct RemoteScrollbackTests {
         let withScrollback = RemoteScrollback.content(
             screenText: (1...50).map { "line-\($0)" }
                 .joined(separator: "\n"),
-            viewportText: "",
-            viewportCursor: nil,
-            gridColumns: 80,
+            viewportTextFromCursor: nil,
             gridRows: 24
         )
         #expect(!withScrollback.altScreen)
 
         let unknownGrid = RemoteScrollback.content(
             screenText: "one",
-            viewportText: "",
-            viewportCursor: nil,
-            gridColumns: 80
+            viewportTextFromCursor: nil
         )
         #expect(!unknownGrid.altScreen)
     }
@@ -152,134 +142,82 @@ struct RemoteScrollbackTests {
     func passesFullTextThrough() {
         let content = RemoteScrollback.content(
             screenText: "one\ntwo\nthree",
-            viewportText: "two\nthree",
-            viewportCursor: nil,
-            gridColumns: 80
+            viewportTextFromCursor: nil
         )
         #expect(content.text == "one\ntwo\nthree")
         #expect(content.cursorRow == nil)
         #expect(content.cursorColumn == nil)
     }
 
-    @Test("remaps the viewport cursor into the full text from the bottom")
-    func remapsViewportCursor() {
-        // Screen buffer has 5 lines; the viewport shows the last 3, with
-        // the cursor on the viewport's last row (row 2), column 4.
+    @Test("maps a multi-line cursor suffix to its logical line and column")
+    func mapsMultiLineSuffixToLineAndColumn() {
+        // Screen has scrollback above, then three written lines. The
+        // suffix "BB\nCCCC" is the tail of "BBBB" (from column 2) plus the
+        // full "CCCC" line below it, so the cursor sits on "BBBB", column 2.
         let content = RemoteScrollback.content(
-            screenText: "s1\ns2\nv1\nv2\nprompt",
-            viewportText: "v1\nv2\nprompt",
-            viewportCursor: (row: 2, column: 4),
-            gridColumns: 80
+            screenText: "s1\ns2\nAAAA\nBBBB\nCCCC",
+            viewportTextFromCursor: "BB\nCCCC"
         )
-        #expect(content.cursorRow == 4)
-        #expect(content.cursorColumn == 4)
+        #expect(content.cursorRow == 3)
+        #expect(content.cursorColumn == 2)
     }
 
-    @Test("keeps the cursor mapping when the buffer fits in one viewport")
-    func mapsCursorWithoutScrollback() {
+    @Test("an empty suffix places the cursor at the end of the last line")
+    func emptySuffixPlacesCursorAtEndOfLastLine() {
         let content = RemoteScrollback.content(
-            screenText: "line\nprompt",
-            viewportText: "line\nprompt",
-            viewportCursor: (row: 1, column: 7),
-            gridColumns: 80
-        )
-        #expect(content.cursorRow == 1)
-        #expect(content.cursorColumn == 7)
-    }
-
-    @Test("a soft-wrapped viewport line does not shift the cursor down")
-    func wrappedLineDoesNotShiftCursor() {
-        // With 10 columns, the 25-cell line occupies 3 visual rows, so
-        // the cursor's visual row 3 is still the second logical line.
-        let wrapped = String(repeating: "x", count: 25)
-        let content = RemoteScrollback.content(
-            screenText: "old\n\(wrapped)\nprompt",
-            viewportText: "\(wrapped)\nprompt",
-            viewportCursor: (row: 3, column: 6),
-            gridColumns: 10
+            screenText: "one\ntwo\nthree",
+            viewportTextFromCursor: ""
         )
         #expect(content.cursorRow == 2)
-        #expect(content.cursorColumn == 6)
+        #expect(content.cursorColumn == "three".count)
     }
 
-    @Test("a cursor on a wrapped line's later visual row maps into that line")
-    func cursorInsideWrappedLine() {
-        // Cursor on the wrapped line's second visual row, column 4:
-        // cell offset 10 + 4 = character index 14 of the logical line.
-        let wrapped = String(repeating: "x", count: 25)
+    @Test("a Claude-style status suffix maps to the right row above the prompt")
+    func mapsClaudeStyleStatusSuffix() {
+        // The cursor sits at the end of the prompt line with nothing more
+        // written on it (empty tail), and two full lines — a rule and a
+        // status line — follow below it. That is a 3-element suffix
+        // ("", "────", "status"), so rowsFromBottom is 3.
+        let lines = [
+            "output",
+            "❯ aaaa",
+            "────",
+            "status",
+        ]
         let content = RemoteScrollback.content(
-            screenText: "\(wrapped)\nprompt",
-            viewportText: "\(wrapped)\nprompt",
-            viewportCursor: (row: 1, column: 4),
-            gridColumns: 10
+            screenText: lines.joined(separator: "\n"),
+            viewportTextFromCursor: "\n────\nstatus"
+        )
+        #expect(content.cursorRow == 1)
+        #expect(content.cursorColumn == "❯ aaaa".count)
+    }
+
+    @Test("wide characters need no width math for the column")
+    func wideCharactersNeedNoWidthMath() {
+        // "あいu" is 3 characters (2 wide + 1 narrow); the suffix "u" is the
+        // last character, so the column is a plain character-count
+        // subtraction with no cell-width table involved.
+        let content = RemoteScrollback.content(
+            screenText: "あいu",
+            viewportTextFromCursor: "u"
         )
         #expect(content.cursorRow == 0)
-        #expect(content.cursorColumn == 14)
+        #expect(content.cursorColumn == 2)
     }
 
-    @Test("maps a cursor cell offset through double-width characters")
-    func mapsCellOffsetThroughWideCharacters() {
-        // "日本語" occupies 6 cells; the cursor cell just after it is
-        // character index 3.
+    @Test("a soft-wrapped logical line stays one line on both sides")
+    func softWrappedLineStaysOneLineOnBothSides() {
+        // Ghostty unwraps a soft-wrapped logical line into a single line on
+        // both the screen-text read and the cursor-suffix read, so the
+        // suffix's tail still maps into that one logical line even though
+        // it visually spans several grid rows.
+        let wrapped = String(repeating: "あ", count: 7)
         let content = RemoteScrollback.content(
-            screenText: "日本語abc",
-            viewportText: "日本語abc",
-            viewportCursor: (row: 0, column: 6),
-            gridColumns: 80
+            screenText: "short\n\(wrapped)",
+            viewportTextFromCursor: "ああ"
         )
-        #expect(content.cursorRow == 0)
-        #expect(content.cursorColumn == 3)
-    }
-
-    @Test("a cursor below every written row lands past the last line")
-    func cursorBelowWrittenRows() {
-        let content = RemoteScrollback.content(
-            screenText: "a\nb",
-            viewportText: "a\nb",
-            viewportCursor: (row: 4, column: 0),
-            gridColumns: 80
-        )
-        #expect(content.cursorRow == 4)
-        #expect(content.cursorColumn == 0)
-    }
-
-    @Test("a text-presentation emoji without VS16 counts as a single cell")
-    func textPresentationEmojiIsNarrow() {
-        // U+1F587 (🖇) has Emoji=Yes but Emoji_Presentation=No, so without
-        // a following VS16 it renders (and should count) as narrow text,
-        // matching ghostty's uucode-backed wcwidth.
-        let line = "[app] \u{1F587} (main)$ aaa"
-        #expect(RemoteScrollback.displayCells(of: line) == line.count)
-
-        let cellOffset = line.count - 1 // cell just after the last "a"
-        #expect(
-            RemoteScrollback.characterIndex(
-                forCellOffset: cellOffset,
-                in: line
-            ) == cellOffset
-        )
-    }
-
-    @Test("VS16 forces an emoji-presentation cluster to double width")
-    func variationSelector16WidensCluster() {
-        let clipEmoji = "\u{1F587}\u{FE0F}" // 🖇️
-        #expect(RemoteScrollback.displayCells(of: clipEmoji) == 2)
-    }
-
-    @Test("an emoji-default-presentation character is double width")
-    func emojiPresentationDefaultIsWide() {
-        #expect(RemoteScrollback.displayCells(of: "\u{231A}") == 2) // ⌚
-    }
-
-    @Test("VS15 forces an emoji-presentation cluster to single width")
-    func variationSelector15NarrowsCluster() {
-        let textScissors = "\u{2702}\u{FE0E}" // ✂ with VS15
-        #expect(RemoteScrollback.displayCells(of: textScissors) == 1)
-    }
-
-    @Test("a CJK character stays double width")
-    func cjkCharacterStaysWide() {
-        #expect(RemoteScrollback.displayCells(of: "あ") == 2)
+        #expect(content.cursorRow == 1)
+        #expect(content.cursorColumn == wrapped.count - 2)
     }
 
     @Test("caps the text to the newest lines and shifts the cursor row")
@@ -287,9 +225,7 @@ struct RemoteScrollbackTests {
         let lines = (1...10).map { "line-\($0)" }
         let content = RemoteScrollback.content(
             screenText: lines.joined(separator: "\n"),
-            viewportText: lines.suffix(3).joined(separator: "\n"),
-            viewportCursor: (row: 2, column: 0),
-            gridColumns: 80,
+            viewportTextFromCursor: "line-10",
             maxLines: 4
         )
         #expect(
@@ -298,5 +234,6 @@ struct RemoteScrollbackTests {
         // Cursor was on the absolute last row (10th line, index 9); after
         // dropping six lines it lands on index 3.
         #expect(content.cursorRow == 3)
+        #expect(content.cursorColumn == 0)
     }
 }

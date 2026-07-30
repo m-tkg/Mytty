@@ -544,6 +544,53 @@ struct GhosttySurfaceIntegrationTests {
         #expect(typedPosition.column == position.column + 3)
     }
 
+    @Test("reads the viewport text from the cursor to the bottom")
+    @MainActor
+    func viewportTextFromCursor() async throws {
+        try GhosttyLibrary.initializeCurrentProcess()
+        let file = try temporaryConfiguration()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let configuration = try GhosttyConfiguration(file: file)
+        let runtime = try GhosttyRuntime(configuration: configuration)
+        // Prints three lines with no trailing newline, so the cursor rests
+        // right after "CCCC", then blocks so the shell doesn't repaint a
+        // prompt over the cursor.
+        //
+        // An embedded cursor-motion escape sequence (e.g. CUP/CUU) was
+        // tried here first, but this harness delivers `initialInput` as
+        // synthesized keystrokes into the pty: while the shell is still
+        // starting up (printing its login banner) the kernel tty driver
+        // echoes those raw bytes back before the shell ever reads them,
+        // and ghostty can't distinguish that echo from real program
+        // output — so any escape bytes in the typed text get interpreted
+        // once during that stray echo *and* again when the shell actually
+        // executes the command, landing the cursor somewhere else
+        // entirely. Resting the cursor at the end of plain, escape-free
+        // output sidesteps that hazard.
+        let surface = try GhosttySurfaceView(
+            runtime: runtime,
+            workingDirectory: file.deletingLastPathComponent(),
+            initialInput: "printf 'AAAA\\nBBBB\\nCCCC'; sleep 30\n"
+        )
+
+        var suffix: String?
+        var lastVisible = ""
+        for _ in 0..<100 {
+            lastVisible = surface.visibleText()
+            suffix = surface.visibleTextFromCursor()
+            if suffix == "", lastVisible.hasSuffix("CCCC") {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        FileHandle.standardError.write(Data(
+            "[cursor-suffix] suffix=\(String(describing: suffix)) visibleText=\(lastVisible)\n".utf8
+        ))
+        #expect(suffix == "")
+        #expect(lastVisible.hasSuffix("CCCC"))
+        #expect(surface.visibleText().contains("AAAA"))
+    }
+
     @Test("screen text includes scrollback that left the viewport")
     @MainActor
     func screenTextIncludesScrollback() async throws {
