@@ -548,6 +548,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         openBrowserTab(url)
     }
 
+    func openURLPrompt() {
+        let alert = Self.makeOpenURLAlert(localizer: localizer)
+        guard let textField = Self.openURLTextField(in: alert) else {
+            return
+        }
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard let url = BrowserURLInput.parse(textField.stringValue) else {
+            return
+        }
+        openBrowserTab(url)
+    }
+
     private func openBrowserTab(_ url: URL) {
         let state = BrowserPaneState(url: url)
         do {
@@ -2827,6 +2839,23 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         case let accessory as TabNameSuggestAccessoryView: accessory.textField
         default: nil
         }
+    }
+
+    static func makeOpenURLAlert(localizer: MyTTYLocalizer) -> NSAlert {
+        let alert = ApplicationAlert.make()
+        alert.messageText = localizer[.openURL]
+        let textField = NSTextField(string: "")
+        textField.placeholderString = "https://example.com"
+        textField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = textField
+        alert.addButton(withTitle: localizer[.openAction])
+        alert.addButton(withTitle: localizer[.cancel])
+        alert.window.initialFirstResponder = textField
+        return alert
+    }
+
+    static func openURLTextField(in alert: NSAlert) -> NSTextField? {
+        alert.accessoryView as? NSTextField
     }
 
     private func copyPath(for id: TabID) {

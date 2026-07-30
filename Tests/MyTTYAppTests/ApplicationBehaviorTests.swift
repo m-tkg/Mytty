@@ -288,6 +288,21 @@ struct ApplicationBehaviorTests {
         #expect((alert.accessoryView as? NSTextField)?.stringValue == "Build logs")
     }
 
+    @Test("uses the application icon in open URL alerts")
+    @MainActor
+    func openURLAlertIcon() throws {
+        let alert = TerminalWindowController.makeOpenURLAlert(
+            localizer: MyTTYLocalizer(language: .english)
+        )
+        let applicationIcon = try #require(ApplicationIcon.image)
+
+        #expect(
+            alert.icon?.tiffRepresentation
+                == applicationIcon.tiffRepresentation
+        )
+        #expect(TerminalWindowController.openURLTextField(in: alert) != nil)
+    }
+
     @Test("uses the application icon in shared application alerts")
     @MainActor
     func sharedApplicationAlertIcon() throws {

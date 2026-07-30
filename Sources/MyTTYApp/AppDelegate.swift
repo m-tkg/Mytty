@@ -320,6 +320,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windowSessionCoordinator.activeController?.openHTMLFile()
     }
 
+    @objc func openURL(_ sender: Any?) {
+        windowSessionCoordinator.activeController?.openURLPrompt()
+    }
+
     @objc func closeTab(_ sender: Any?) {
         let keyWindow = NSApplication.shared.keyWindow
         switch CloseTabCommandRouting.make(

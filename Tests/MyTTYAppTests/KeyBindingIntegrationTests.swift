@@ -24,6 +24,7 @@ struct KeyBindingIntegrationTests {
         let application = try #require(menu.items.first)
         let newTab = try #require(menu.item(titled: "New Tab"))
         let openHTML = try #require(menu.item(titled: "Open HTML File..."))
+        let openURL = try #require(menu.item(titled: "Open URL..."))
         let renameTab = try #require(menu.item(titled: "Rename Tab"))
         let toggleTabPanel = try #require(
             menu.item(titled: "Toggle Tab Panels")
@@ -56,6 +57,7 @@ struct KeyBindingIntegrationTests {
         #expect(about.keyEquivalent.isEmpty)
         #expect(newTab.keyEquivalent == "x")
         #expect(openHTML.keyEquivalent == "o")
+        #expect(openURL.keyEquivalent == "l")
         #expect(renameTab.keyEquivalent == "r")
         #expect(toggleTabPanel.keyEquivalent == "b")
         #expect(

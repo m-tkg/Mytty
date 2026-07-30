@@ -208,6 +208,8 @@ enum MyTTYText: String {
     case previousWindow = "Previous Window"
     case newTab = "New Tab"
     case openHTMLFile = "Open HTML File"
+    case openURL = "Open URL"
+    case openAction = "Open"
     case renameTab = "Rename Tab"
     case splitLeft = "Split Left"
     case splitRight = "Split Right"
@@ -740,6 +742,8 @@ struct MyTTYLocalizer: Equatable {
         case .previousWindow: "前のウィンドウ"
         case .newTab: "新規タブ"
         case .openHTMLFile: "HTML ファイルを開く"
+        case .openURL: "URL を開く"
+        case .openAction: "開く"
         case .renameTab: "タブ名を変更"
         case .autoNameTab: "自動で命名"
         case .showTabUptime: "タブに経過時間を表示"
@@ -972,6 +976,7 @@ private extension MyTTYCommand {
         case .nextWindow: .nextWindow
         case .previousWindow: .previousWindow
         case .openHTML: .openHTMLFile
+        case .openURL: .openURL
         case .newTab: .newTab
         case .renameTab: .renameTab
         case .closeTab: .closeTab

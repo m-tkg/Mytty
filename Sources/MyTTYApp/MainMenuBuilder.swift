@@ -59,6 +59,14 @@ enum MainMenuBuilder {
             keyBindings: keyBindings,
             target: target
         )
+        addCommandItem(
+            to: fileMenu,
+            title: localizer.commandTitle(.openURL) + "...",
+            action: #selector(AppDelegate.openURL(_:)),
+            command: .openURL,
+            keyBindings: keyBindings,
+            target: target
+        )
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
 
