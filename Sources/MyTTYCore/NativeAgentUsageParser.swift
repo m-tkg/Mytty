@@ -128,12 +128,15 @@ public enum NativeAgentUsageParser {
         return AgentUsageSummary(cost: nil, limits: limits)
     }
 
-    public static func cursorSummary(from data: Data) throws -> AgentUsageSummary? {
+    public static func cursorSummary(
+        from data: Data,
+        aggregatedEvents: Data? = nil
+    ) throws -> AgentUsageSummary? {
         let response = try JSONDecoder().decode(CursorUsageResponse.self, from: data)
         let plan = response.individualUsage?.plan
         let onDemand = response.individualUsage?.onDemand
-        let cost: AgentUsageCost? = if onDemand?.enabled != false,
-                                      let used = onDemand?.used {
+        let onDemandCost: AgentUsageCost? = if onDemand?.enabled != false,
+                                              let used = onDemand?.used {
             if let limit = onDemand?.limit, limit > 0 {
                 .budget(
                     used: used / 100,
@@ -148,6 +151,7 @@ public enum NativeAgentUsageParser {
         } else {
             nil
         }
+        let cost = onDemandCost ?? aggregatedEvents.flatMap(cursorAggregatedCost)
         let totalPercent = plan?.totalPercentUsed ?? {
             guard let used = plan?.used,
                   let limit = plan?.limit,
@@ -168,6 +172,55 @@ public enum NativeAgentUsageParser {
         }
         guard cost != nil || !limits.isEmpty else { return nil }
         return AgentUsageSummary(cost: cost, limits: limits)
+    }
+
+    /// Parses the ISO8601 `billingCycleStart`/`billingCycleEnd` timestamps out
+    /// of a Cursor usage-summary payload and returns them as epoch-ms, for use
+    /// as the `startDate`/`endDate` window on the aggregated-usage-events
+    /// request. Returns `nil` if either field is missing or unparseable.
+    public static func cursorBillingCycle(
+        from data: Data
+    ) -> (startMs: Int64, endMs: Int64)? {
+        guard let response = try? JSONDecoder().decode(
+            CursorUsageResponse.self,
+            from: data
+        ),
+              let start = response.billingCycleStart,
+              let end = response.billingCycleEnd,
+              let startDate = parseCursorDate(start),
+              let endDate = parseCursorDate(end)
+        else { return nil }
+        return (
+            startMs: Int64((startDate.timeIntervalSince1970 * 1_000).rounded()),
+            endMs: Int64((endDate.timeIntervalSince1970 * 1_000).rounded())
+        )
+    }
+
+    private static func parseCursorDate(_ string: String) -> Date? {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractional.date(from: string) {
+            return date
+        }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: string)
+    }
+
+    /// Parses the aggregated-usage-events payload into a session cost.
+    /// Malformed or missing data yields `nil` rather than throwing, so a
+    /// failure here never discards the surrounding usage summary.
+    private static func cursorAggregatedCost(from data: Data) -> AgentUsageCost? {
+        guard let response = try? JSONDecoder().decode(
+            CursorAggregatedEventsResponse.self,
+            from: data
+        ),
+              let totalCostCents = response.totalCostCents,
+              totalCostCents.isFinite,
+              totalCostCents > 0,
+              totalCostCents <= 100_000_000
+        else { return nil }
+        return .session(amount: totalCostCents / 100, currencyCode: "USD")
     }
 
     public static func costOnly(_ sessionCostUSD: Double?) -> AgentUsageSummary? {
@@ -251,6 +304,12 @@ private struct ClaudeUsageLimitModel: Decodable {
 
 private struct CursorUsageResponse: Decodable {
     let individualUsage: CursorIndividualUsage?
+    let billingCycleStart: String?
+    let billingCycleEnd: String?
+}
+
+private struct CursorAggregatedEventsResponse: Decodable {
+    let totalCostCents: Double?
 }
 
 private struct CursorIndividualUsage: Decodable {
