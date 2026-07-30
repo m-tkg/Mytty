@@ -700,22 +700,23 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         readText(tag: GHOSTTY_POINT_SCREEN, preservesAttributes: true)
     }
 
-    /// The viewport text from the cursor's cell (inclusive) to the
-    /// viewport's bottom-right, unwrapped the same way as `visibleText()`.
-    /// Ghostty always trims trailing blank lines, so a cursor sitting at
-    /// the end of the last written line yields an empty string. Returns
-    /// nil when the surface has no cursor or the read fails.
+    /// The active-area text from the cursor's cell (inclusive) to the
+    /// active area's bottom-right, unwrapped the same way as
+    /// `visibleText()`. Ghostty always trims trailing whitespace-only
+    /// output, so a cursor sitting at or past the end of the last written
+    /// line yields an empty string. Returns nil when the surface has no
+    /// cursor or the read fails.
     public func visibleTextFromCursor() -> String? {
         guard let cursor = terminalCursorPosition else { return nil }
         return readText(
             topLeft: ghostty_point_s(
-                tag: GHOSTTY_POINT_VIEWPORT,
+                tag: GHOSTTY_POINT_ACTIVE,
                 coord: GHOSTTY_POINT_COORD_EXACT,
                 x: UInt32(cursor.column),
                 y: UInt32(cursor.row)
             ),
             bottomRight: ghostty_point_s(
-                tag: GHOSTTY_POINT_VIEWPORT,
+                tag: GHOSTTY_POINT_ACTIVE,
                 coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
                 x: 0,
                 y: 0
@@ -1420,30 +1421,19 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         )
     }
 
-    /// The cursor's grid coordinates (zero-based, from the viewport's
-    /// top-left), derived from the IME caret point and the cell size.
+    /// The cursor's grid coordinates (zero-based, in the terminal's
+    /// active area), read directly from the terminal state via the
+    /// patched `ghostty_surface_cursor_position`. The previous
+    /// implementation divided the IME caret's pixel point by the cell
+    /// size, which silently drifted one row down (the IME point hangs
+    /// below the cursor cell and carries window padding), so every
+    /// cursor-anchored read landed in the blank region under the prompt.
     public var terminalCursorPosition: GhosttyGridPosition? {
-        guard let native, cellSize.width > 0, cellSize.height > 0 else {
-            return nil
-        }
-        var x = 0.0
-        var y = 0.0
-        var width = Double(cellSize.width)
-        var height = Double(cellSize.height)
-        ghostty_surface_ime_point(native, &x, &y, &width, &height)
-
-        let grid = terminalGridSize
-        guard grid.columns > 0, grid.rows > 0 else { return nil }
-        // The IME point is the *bottom-right* corner of the cursor's
-        // cell (where a candidate window would hang), so both indexes
-        // are one less than the edge's cell multiple. Verified against a
-        // live shell in the cursorGridPosition integration test.
-        let column = Int((x / Double(cellSize.width)).rounded()) - 1
-        let row = Int((y / Double(cellSize.height)).rounded()) - 1
-        return GhosttyGridPosition(
-            row: min(max(row, 0), grid.rows - 1),
-            column: min(max(column, 0), grid.columns - 1)
-        )
+        guard let native else { return nil }
+        var x: UInt32 = 0
+        var y: UInt32 = 0
+        ghostty_surface_cursor_position(native, &x, &y)
+        return GhosttyGridPosition(row: Int(y), column: Int(x))
     }
 
     private func positionAutocompleteSuggestion() {
