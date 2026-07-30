@@ -700,31 +700,70 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         readText(tag: GHOSTTY_POINT_SCREEN, preservesAttributes: true)
     }
 
+    /// The viewport text from the cursor's cell (inclusive) to the
+    /// viewport's bottom-right, unwrapped the same way as `visibleText()`.
+    /// Ghostty always trims trailing blank lines, so a cursor sitting at
+    /// the end of the last written line yields an empty string. Returns
+    /// nil when the surface has no cursor or the read fails.
+    public func visibleTextFromCursor() -> String? {
+        guard let cursor = terminalCursorPosition else { return nil }
+        return readText(
+            topLeft: ghostty_point_s(
+                tag: GHOSTTY_POINT_VIEWPORT,
+                coord: GHOSTTY_POINT_COORD_EXACT,
+                x: UInt32(cursor.column),
+                y: UInt32(cursor.row)
+            ),
+            bottomRight: ghostty_point_s(
+                tag: GHOSTTY_POINT_VIEWPORT,
+                coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
+                x: 0,
+                y: 0
+            )
+        )
+    }
+
     private func readText(
         tag: ghostty_point_tag_e,
         preservesAttributes: Bool = false
     ) -> String {
-        guard let native else { return "" }
-        let selection = ghostty_selection_s(
-            top_left: ghostty_point_s(
+        readText(
+            topLeft: ghostty_point_s(
                 tag: tag,
                 coord: GHOSTTY_POINT_COORD_TOP_LEFT,
                 x: 0,
                 y: 0
             ),
-            bottom_right: ghostty_point_s(
+            bottomRight: ghostty_point_s(
                 tag: tag,
                 coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
                 x: 0,
                 y: 0
             ),
+            preservesAttributes: preservesAttributes
+        ) ?? ""
+    }
+
+    /// Reads the text between two explicit viewport/screen points. Returns
+    /// nil when the surface has no native handle or the underlying read
+    /// call fails; returns "" (not nil) when the read succeeds but the
+    /// selection is empty.
+    private func readText(
+        topLeft: ghostty_point_s,
+        bottomRight: ghostty_point_s,
+        preservesAttributes: Bool = false
+    ) -> String? {
+        guard let native else { return nil }
+        let selection = ghostty_selection_s(
+            top_left: topLeft,
+            bottom_right: bottomRight,
             rectangle: false
         )
         var text = ghostty_text_s()
         let didRead = preservesAttributes
             ? ghostty_surface_read_text_vt(native, selection, &text)
             : ghostty_surface_read_text(native, selection, &text)
-        guard didRead else { return "" }
+        guard didRead else { return nil }
         defer { ghostty_surface_free_text(native, &text) }
         return Self.decodedText(text) ?? ""
     }

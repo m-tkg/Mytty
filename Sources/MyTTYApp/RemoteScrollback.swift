@@ -2,8 +2,19 @@ import Foundation
 import MyTTYRemoteKit
 
 /// Builds the pane content sent to remote clients from the full screen
-/// buffer (scrollback included), remapping the viewport-relative cursor
-/// into that text and capping the line count so frames stay bounded.
+/// buffer (scrollback included), anchoring the cursor into that text and
+/// capping the line count so frames stay bounded.
+///
+/// The cursor's logical line is found by reading, from ghostty, the exact
+/// text from the cursor's viewport cell (inclusive) to the viewport's
+/// bottom-right corner — the "cursor suffix". Ghostty trims trailing blank
+/// *lines* the same way on both this read and the full-screen read used
+/// for `text` (both go through the same unwrap + trim=false selection
+/// semantics), so the suffix's line count anchors the cursor from the
+/// bottom of `lines` with no wrap-height estimation or width tables: a
+/// soft-wrapped logical line reads back as one line on both sides, so the
+/// suffix's first line is always the tail of the same logical line the
+/// cursor sits in, and character counts subtract cleanly.
 enum RemoteScrollback {
     /// Keeps pushes and phone-side rendering manageable; the Mac's own
     /// scrollback can be effectively unbounded. The real bound on a frame
@@ -26,9 +37,7 @@ enum RemoteScrollback {
 
     static func content(
         screenText: String,
-        viewportText: String,
-        viewportCursor: (row: Int, column: Int)?,
-        gridColumns: Int,
+        viewportTextFromCursor: String?,
         gridRows: Int = 0,
         styledLines: [RemoteStyledLine] = [],
         maxLines: Int = maxLines
@@ -46,35 +55,24 @@ enum RemoteScrollback {
 
         var cursorRow: Int?
         var cursorColumn: Int?
-        if let viewportCursor, gridColumns > 0 {
-            let viewportLines = viewportText
+        if let suffix = viewportTextFromCursor {
+            // An empty suffix means the cursor sits right after the last
+            // character ghostty wrote — i.e. on the last line, since
+            // trailing blank lines are trimmed. `split` on "" yields [""],
+            // so rowsFromBottom is 1 with no special case needed.
+            let suffixLines = suffix
                 .split(separator: "\n", omittingEmptySubsequences: false)
                 .map(String.init)
+            let rowsFromBottom = suffixLines.count
+            let row = max(lines.count - rowsFromBottom, 0)
+            cursorRow = row
 
-            // The cursor's row is a *visual* grid row, but read-text
-            // unwraps soft-wrapped rows into single logical lines, so
-            // the two units diverge as soon as any viewport line wraps.
-            // Walk the logical lines' visual heights to find which
-            // logical line the cursor sits on, then anchor that line
-            // from the bottom (while following output both texts come
-            // from the same trimmed read, so their tails line up).
-            let located = locate(
-                visualRow: viewportCursor.row,
-                in: viewportLines,
-                columns: gridColumns
-            )
-            let rowsFromBottom = viewportLines.count - located.lineIndex
-            cursorRow = max(lines.count - rowsFromBottom, 0)
-
-            let lineText = located.lineIndex < viewportLines.count
-                ? viewportLines[located.lineIndex]
-                : ""
-            let cellOffset = located.rowWithinLine * gridColumns
-                + viewportCursor.column
-            cursorColumn = characterIndex(
-                forCellOffset: cellOffset,
-                in: lineText
-            )
+            // The suffix's first line is the tail of the cursor's logical
+            // line (both reads unwrap soft wraps identically), so the
+            // character count leading up to it is exactly the cursor's
+            // column — no cell-width math required.
+            let lineText = row < lines.count ? lines[row] : ""
+            cursorColumn = max(lineText.count - suffixLines[0].count, 0)
         }
 
         if lines.count > maxLines {
@@ -181,85 +179,5 @@ enum RemoteScrollback {
             lines.removeFirst(drop)
         }
         return lines
-    }
-
-    /// Finds the logical line containing a visual grid row, given that
-    /// each logical line occupies `ceil(cells / columns)` visual rows.
-    /// A visual row below every written line resolves past the end of
-    /// `lines` (one logical row per unwritten visual row).
-    private static func locate(
-        visualRow: Int,
-        in lines: [String],
-        columns: Int
-    ) -> (lineIndex: Int, rowWithinLine: Int) {
-        var remaining = visualRow
-        for (index, line) in lines.enumerated() {
-            let height = visualHeight(of: line, columns: columns)
-            if remaining < height {
-                return (index, remaining)
-            }
-            remaining -= height
-        }
-        return (lines.count + remaining, 0)
-    }
-
-    static func visualHeight(of line: String, columns: Int) -> Int {
-        let cells = displayCells(of: line)
-        return max(1, (cells + columns - 1) / columns)
-    }
-
-    /// Converts a grid cell offset into a character index within the
-    /// line, accounting for double-width (East Asian) characters. An
-    /// offset past the line's end maps past its last character so the
-    /// client pads with spaces.
-    static func characterIndex(
-        forCellOffset offset: Int,
-        in line: String
-    ) -> Int {
-        var consumedCells = 0
-        for (index, character) in line.enumerated() {
-            let width = displayWidth(of: character)
-            if consumedCells + width > offset {
-                return index
-            }
-            consumedCells += width
-        }
-        return line.count + (offset - consumedCells)
-    }
-
-    static func displayCells(of line: String) -> Int {
-        line.reduce(0) { $0 + displayWidth(of: $1) }
-    }
-
-    /// Simplified wcwidth: 2 cells for East Asian wide/fullwidth ranges and
-    /// emoji-default-presentation characters, 1 otherwise. A variation
-    /// selector elsewhere in the cluster overrides that default (VS16 forces
-    /// 2, VS15 forces 1). Close enough to libghostty's own uucode-backed
-    /// width tables for cursor placement in everyday CJK/emoji content.
-    private static func displayWidth(of character: Character) -> Int {
-        guard let base = character.unicodeScalars.first else { return 1 }
-        for scalar in character.unicodeScalars.dropFirst() {
-            if scalar.value == 0xFE0F, base.properties.isEmoji { return 2 }
-            if scalar.value == 0xFE0E, base.properties.isEmoji { return 1 }
-        }
-        if base.properties.isEmojiPresentation { return 2 }
-        switch base.value {
-        case 0x1100...0x115F,
-             0x2E80...0x303E,
-             0x3041...0x33FF,
-             0x3400...0x4DBF,
-             0x4E00...0x9FFF,
-             0xA000...0xA4CF,
-             0xAC00...0xD7A3,
-             0xF900...0xFAFF,
-             0xFE30...0xFE4F,
-             0xFF00...0xFF60,
-             0xFFE0...0xFFE6,
-             0x1F200...0x1F265,
-             0x20000...0x3FFFD:
-            return 2
-        default:
-            return 1
-        }
     }
 }
