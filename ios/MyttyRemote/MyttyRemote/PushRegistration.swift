@@ -31,6 +31,11 @@ final class PushRegistration: NSObject, ObservableObject {
     /// it — a cold launch from the Lock Screen runs this delegate first.
     @Published var pendingOpen: PushNotificationTarget?
 
+    /// Whether the app's scene is currently active (foreground). Updated
+    /// from `scenePhase` in `MyttyRemoteApp`; `willPresent` reads it to
+    /// decide whether a push needs to surface as a banner.
+    @Published private(set) var isAppActive = false
+
     /// A sandbox token is rejected outright by the production APNs host
     /// and vice versa, so this is read from the entitlement the running
     /// binary was actually signed with rather than assumed from `#if
@@ -96,6 +101,10 @@ final class PushRegistration: NSObject, ObservableObject {
         clearRegistration()
     }
 
+    func setAppActive(_ active: Bool) {
+        isAppActive = active
+    }
+
     private func exchangeWithRelay(deviceToken: String) async {
         var request = URLRequest(url: PushRelay.registerURL(base: baseURL))
         request.httpMethod = "POST"
@@ -145,12 +154,15 @@ struct PushNotificationTarget: Equatable {
 
 extension PushRegistration: UNUserNotificationCenterDelegate {
     /// Attention alerts matter most when the app happens to be open on
-    /// another pane, so show them rather than swallowing them.
+    /// another pane, so show them rather than swallowing them — but not
+    /// while this app itself is the one in front, where a banner and
+    /// sound would just be noise on top of what's already on screen.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        let isActive = await MainActor.run { self.isAppActive }
+        return isActive ? [] : [.banner, .sound]
     }
 
     nonisolated func userNotificationCenter(
