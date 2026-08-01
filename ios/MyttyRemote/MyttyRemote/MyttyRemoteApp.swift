@@ -13,6 +13,7 @@ struct MyttyRemoteApp: App {
             RootView()
         }
         .onChange(of: scenePhase) { _, phase in
+            PushRegistration.shared.setAppActive(phase == .active)
             switch phase {
             case .background:
                 backgroundKeeper.sceneDidEnterBackground()
