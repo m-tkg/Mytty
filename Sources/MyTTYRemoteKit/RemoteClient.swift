@@ -75,7 +75,8 @@ public final class RemoteClient: ObservableObject {
         serverProtocolVersion >= 6
     }
 
-    private var transport: RemoteConnectionTransport?
+    private var transport: (any RemoteConnectionTransporting)?
+    private let makeTransport: (NWEndpoint) -> any RemoteConnectionTransporting
     private var sessionKey: SymmetricKey?
     /// The Mac connected to most recently, so views deep in the navigation
     /// stack can trigger a reconnect without carrying the `PairedMac`.
@@ -95,8 +96,23 @@ public final class RemoteClient: ObservableObject {
     /// the connection on an unknown message type.
     private var serverProtocolVersion = 1
 
-    public init(pushRegistration: RemotePushRegistrationProviding? = nil) {
+    public convenience init(
+        pushRegistration: RemotePushRegistrationProviding? = nil
+    ) {
+        self.init(
+            pushRegistration: pushRegistration,
+            makeTransport: { RemoteConnectionTransport(endpoint: $0) }
+        )
+    }
+
+    init(
+        pushRegistration: RemotePushRegistrationProviding? = nil,
+        makeTransport: @escaping (
+            NWEndpoint
+        ) -> any RemoteConnectionTransporting
+    ) {
         self.pushRegistration = pushRegistration
+        self.makeTransport = makeTransport
         // The token can land after the session is already up (first launch
         // asks for permission), so re-send whenever it changes.
         pushRegistrationObserver = pushRegistration?
@@ -122,30 +138,37 @@ public final class RemoteClient: ObservableObject {
         pairingEndpointInfo = addressingInfo(macName: macName, endpoint: endpoint)
         pairingLabel = label
 
-        let transport = RemoteConnectionTransport(endpoint: endpoint)
+        let transport = makeTransport(endpoint)
         self.transport = transport
 
-        transport.onReady = { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.sendPairRequest(deviceName: deviceName, token: token, key: key)
+        transport.onReady = { [weak self, weak transport] in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.sendPairRequest(deviceName: deviceName, token: token, key: key)
             }
         }
-        transport.onFrame = { [weak self] frame in
-            Task { @MainActor [weak self] in
-                self?.handlePairingFrame(frame, key: key)
+        transport.onFrame = { [weak self, weak transport] frame in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.handlePairingFrame(frame, key: key)
             }
         }
-        transport.onClose = { [weak self] error in
-            Task { @MainActor [weak self] in
-                self?.failPairing(error ?? RemoteClientError.connectionClosed)
+        transport.onClose = { [weak self, weak transport] error in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.failPairing(error ?? RemoteClientError.connectionClosed)
             }
         }
 
-        pairingTimeoutTask = Task { [weak self] in
+        pairingTimeoutTask = Task { [weak self, weak transport] in
             try? await Task.sleep(for: Self.attemptTimeout)
-            guard !Task.isCancelled else { return }
-            self?.transport?.cancel()
-            self?.failPairing(RemoteClientError.timedOut)
+            guard !Task.isCancelled, let self, let transport,
+                  self.transport === transport else { return }
+            transport.cancel()
+            self.failPairing(RemoteClientError.timedOut)
         }
         return try await withCheckedThrowingContinuation { continuation in
             self.pairingContinuation = continuation
@@ -233,35 +256,42 @@ public final class RemoteClient: ObservableObject {
             return
         }
         state = .connecting
-        connectTimeoutTask?.cancel()
-        connectTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.attemptTimeout)
-            guard !Task.isCancelled, let self,
-                  self.state == .connecting else { return }
-            self.transport?.cancel()
-            self.transport = nil
-            self.state = .failed("Connection timed out")
-        }
         let key = SymmetricKey(data: mac.deviceSecret)
         sessionKey = key
 
-        let transport = RemoteConnectionTransport(endpoint: endpoint)
+        let transport = makeTransport(endpoint)
         self.transport = transport
 
-        transport.onReady = { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.sendHello(deviceID: mac.deviceID, key: key)
+        transport.onReady = { [weak self, weak transport] in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.sendHello(deviceID: mac.deviceID, key: key)
             }
         }
-        transport.onFrame = { [weak self] frame in
-            Task { @MainActor [weak self] in
-                self?.handleSessionFrame(frame, key: key)
+        transport.onFrame = { [weak self, weak transport] frame in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.handleSessionFrame(frame, key: key)
             }
         }
-        transport.onClose = { [weak self] error in
-            Task { @MainActor [weak self] in
-                self?.handleSessionClose(error)
+        transport.onClose = { [weak self, weak transport] error in
+            Task { @MainActor [weak self, weak transport] in
+                guard let self, let transport,
+                      self.transport === transport else { return }
+                self.handleSessionClose(error)
             }
+        }
+        connectTimeoutTask?.cancel()
+        connectTimeoutTask = Task { [weak self, weak transport] in
+            try? await Task.sleep(for: Self.attemptTimeout)
+            guard !Task.isCancelled, let self, let transport,
+                  self.transport === transport,
+                  self.state == .connecting else { return }
+            transport.cancel()
+            self.transport = nil
+            self.state = .failed("Connection timed out")
         }
         transport.start()
     }

@@ -1,11 +1,24 @@
 import Foundation
 import Network
 
+protocol RemoteConnectionTransporting: AnyObject, Sendable {
+    var onReady: (@Sendable () -> Void)? { get set }
+    var onFrame: (@Sendable (Data) -> Void)? { get set }
+    var onClose: (@Sendable (Error?) -> Void)? { get set }
+
+    func start()
+    func send(_ data: Data)
+    func cancel()
+}
+
 /// Raw Network.framework plumbing for a single outbound connection to a
 /// Mac. Mirrors `RemoteAccessTransport` on the server side: this class only
 /// moves bytes and frames them, leaving protocol/crypto decisions to
 /// `RemoteClient`.
-public final class RemoteConnectionTransport: @unchecked Sendable {
+public final class RemoteConnectionTransport:
+    RemoteConnectionTransporting,
+    @unchecked Sendable
+{
     public var onReady: (@Sendable () -> Void)?
     public var onFrame: (@Sendable (Data) -> Void)?
     public var onClose: (@Sendable (Error?) -> Void)?
