@@ -170,8 +170,18 @@ public enum NativeAgentUsageParser {
                 remainingPercent: 100 - usedPercent
             )
         }
-        guard cost != nil || !limits.isEmpty else { return nil }
-        return AgentUsageSummary(cost: cost, limits: limits)
+        // Plan usage can read 0% used while the account still can't run
+        // another request: on a plan with on-demand billing disabled, the
+        // plan quota simply refuses further requests once free credits
+        // reset, and Cursor's own `enabled: false` flag is the only signal
+        // for that — it isn't reflected in `totalPercentUsed`.
+        let onDemandUnavailable = plan?.enabled == true && onDemand?.enabled == false
+        guard cost != nil || !limits.isEmpty || onDemandUnavailable else { return nil }
+        return AgentUsageSummary(
+            cost: cost,
+            limits: limits,
+            onDemandUnavailable: onDemandUnavailable
+        )
     }
 
     /// Parses the ISO8601 `billingCycleStart`/`billingCycleEnd` timestamps out

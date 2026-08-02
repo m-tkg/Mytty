@@ -58,6 +58,17 @@ struct AgentUsageMeterContent: Equatable, Sendable {
 struct AgentUsageStatusContent: Equatable, Sendable {
     let costDescription: String?
     let limits: [AgentUsageMeterContent]
+    let onDemandUnavailable: Bool
+
+    init(
+        costDescription: String?,
+        limits: [AgentUsageMeterContent],
+        onDemandUnavailable: Bool = false
+    ) {
+        self.costDescription = costDescription
+        self.limits = limits
+        self.onDemandUnavailable = onDemandUnavailable
+    }
 }
 
 extension AgentUsageSummary {
@@ -70,6 +81,9 @@ extension AgentUsageSummary {
         components.append(contentsOf: content.limits.map {
             $0.tooltip(localizer: localizer)
         })
+        if content.onDemandUnavailable {
+            components.append(localizer.onDemandUnavailableNote())
+        }
         return components.isEmpty ? nil : components.joined(separator: " · ")
     }
 
@@ -85,12 +99,16 @@ extension AgentUsageSummary {
                 isStale: limitsAreStale
             )
         }
-        guard costDescription != nil || !visibleLimits.isEmpty else {
+        guard costDescription != nil
+                || !visibleLimits.isEmpty
+                || onDemandUnavailable
+        else {
             return nil
         }
         return AgentUsageStatusContent(
             costDescription: costDescription,
-            limits: visibleLimits
+            limits: visibleLimits,
+            onDemandUnavailable: onDemandUnavailable
         )
     }
 
