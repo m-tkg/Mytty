@@ -19,14 +19,21 @@ public struct AgentUsageSummary: Equatable, Sendable {
     public let cost: AgentUsageCost?
     public let limits: [AgentUsageLimit]
     public let limitsAreStale: Bool
+    /// True when the provider reports its plan quota as unused while also
+    /// signaling that on-demand billing is unavailable — the plan meters
+    /// alone would read as "plenty left" even though no more usage is
+    /// actually possible.
+    public let onDemandUnavailable: Bool
 
     public init(
         cost: AgentUsageCost?,
         limits: [AgentUsageLimit],
-        limitsAreStale: Bool = false
+        limitsAreStale: Bool = false,
+        onDemandUnavailable: Bool = false
     ) {
         self.cost = cost
         self.limits = limits
         self.limitsAreStale = limitsAreStale
+        self.onDemandUnavailable = onDemandUnavailable
     }
 }

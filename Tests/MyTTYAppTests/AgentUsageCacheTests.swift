@@ -380,6 +380,57 @@ struct NativeAgentUsageAdapterTests {
         ])
     }
 
+    @Test("flags on-demand billing as unavailable when the free plan quota reads unused")
+    func cursorOnDemandUnavailableOnFreePlan() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "enabled": true,
+              "totalPercentUsed": 0,
+              "autoPercentUsed": 0
+            },
+            "onDemand": {
+              "enabled": false,
+              "used": 0,
+              "limit": null
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.onDemandUnavailable == true)
+        #expect(summary?.limits == [
+            AgentUsageLimit(title: "Plan", remainingPercent: 100),
+            AgentUsageLimit(title: "Auto", remainingPercent: 100),
+        ])
+    }
+
+    @Test("does not flag on-demand billing when the plan itself is disabled")
+    func cursorOnDemandUnavailableIgnoredWhenPlanDisabled() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "enabled": false,
+              "totalPercentUsed": 0
+            },
+            "onDemand": {
+              "enabled": false,
+              "used": 0,
+              "limit": null
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.onDemandUnavailable == false)
+    }
+
     @Test("falls back to aggregated-usage-events cost when on-demand is disabled")
     func cursorAggregatedEventsCostFallback() throws {
         let data = Data(#"""

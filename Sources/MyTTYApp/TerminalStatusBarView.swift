@@ -324,6 +324,9 @@ struct TerminalStatusBarView: View {
                     localizer: localizer
                 )
             }
+            if model.content.agentUsage?.onDemandUnavailable == true {
+                OnDemandUnavailableBadge(localizer: localizer)
+            }
         }
     }
 
@@ -397,6 +400,21 @@ private struct AgentUsageMeterView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.title)
         .accessibilityValue(content.accessibilityValue(localizer: localizer))
+    }
+}
+
+/// Flags a provider quota that reads as "plenty left" while the account
+/// can't actually make another request — Cursor's free plan is the case
+/// this exists for, see `AgentUsageSummary.onDemandUnavailable`.
+private struct OnDemandUnavailableBadge: View {
+    let localizer: MyTTYLocalizer
+
+    var body: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(Color.orange)
+            .help(localizer.onDemandUnavailableNote())
+            .accessibilityLabel(localizer.onDemandUnavailableNote())
     }
 }
 

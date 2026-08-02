@@ -519,6 +519,13 @@ struct MyTTYLocalizer: Equatable {
         }
     }
 
+    func onDemandUnavailableNote() -> String {
+        switch language {
+        case .english: "on-demand billing off"
+        case .japanese: "従量課金オフ"
+        }
+    }
+
     func closeTitle(_ title: String) -> String {
         switch language {
         case .english: "Close \(title)"
