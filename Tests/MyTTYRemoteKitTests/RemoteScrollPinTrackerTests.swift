@@ -43,6 +43,43 @@ struct RemoteScrollPinTrackerTests {
     }
 
     @Test
+    func contentShrinkWhilePinnedRequestsScrollEvenPastNewBottom() {
+        var tracker = RemoteScrollPinTracker()
+        _ = tracker.update(
+            contentTopOffset: -1400, contentHeight: 2000, viewportHeight: 600
+        )
+
+        // A TUI clear or the first frame after reconnect can replace a long
+        // scrollback with one short screen before SwiftUI clamps the old
+        // offset. The large negative distance is outside the new content,
+        // not evidence that the viewport is already at its bottom.
+        let shouldFollow = tracker.update(
+            contentTopOffset: -1400, contentHeight: 300, viewportHeight: 600
+        )
+
+        #expect(shouldFollow)
+        #expect(tracker.isPinnedToBottom)
+    }
+
+    @Test
+    func contentShrinkWhileReadingHistoryDoesNotForceFollow() {
+        var tracker = RemoteScrollPinTracker()
+        _ = tracker.update(
+            contentTopOffset: -1400, contentHeight: 2000, viewportHeight: 600
+        )
+        _ = tracker.update(
+            contentTopOffset: -800, contentHeight: 2000, viewportHeight: 600
+        )
+
+        let shouldFollow = tracker.update(
+            contentTopOffset: -800, contentHeight: 900, viewportHeight: 600
+        )
+
+        #expect(!shouldFollow)
+        #expect(!tracker.isPinnedToBottom)
+    }
+
+    @Test
     func scrollingUpUnpinsAndStopsFollowing() {
         var tracker = RemoteScrollPinTracker()
         _ = tracker.update(
