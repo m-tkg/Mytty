@@ -34,6 +34,9 @@ public struct RemoteScrollPinTracker: Sendable {
             contentTopOffset + contentHeight - viewportHeight
         let atBottom = distanceBelowViewport <= threshold
 
+        let contentShrank = lastContentHeight.map {
+            contentHeight < $0 - 0.5
+        } ?? false
         let sizesUnchanged =
             (lastContentHeight.map { abs(contentHeight - $0) < 0.5 } ?? false)
             && (lastViewportHeight.map { abs(viewportHeight - $0) < 0.5 } ?? false)
@@ -44,6 +47,11 @@ public struct RemoteScrollPinTracker: Sendable {
             isPinnedToBottom = atBottom
             return false
         }
-        return isPinnedToBottom && !atBottom
+        // After a clear/reconnect, SwiftUI can report the old negative
+        // offset together with the new shorter content. That makes
+        // `distanceBelowViewport` strongly negative and therefore looks
+        // like "at bottom", although the viewport is actually past the
+        // end of the content. Re-anchor any shrink while following.
+        return isPinnedToBottom && (contentShrank || !atBottom)
     }
 }
