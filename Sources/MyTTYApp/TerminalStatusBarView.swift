@@ -413,8 +413,8 @@ private struct OnDemandUnavailableBadge: View {
         Image(systemName: "exclamationmark.triangle.fill")
             .font(.system(size: 10))
             .foregroundStyle(Color.orange)
-            .help(localizer.onDemandUnavailableNote())
-            .accessibilityLabel(localizer.onDemandUnavailableNote())
+            .help(localizer.onDemandUnavailableBadgeTooltip())
+            .accessibilityLabel(localizer.onDemandUnavailableBadgeTooltip())
     }
 }
 

@@ -526,6 +526,17 @@ struct MyTTYLocalizer: Equatable {
         }
     }
 
+    func onDemandUnavailableBadgeTooltip() -> String {
+        switch language {
+        case .english:
+            "On-demand billing is off, so Cursor can block requests even "
+                + "while Plan/Auto usage above still shows room left."
+        case .japanese:
+            "従量課金オフ。上のPlan/Auto使用率に余裕があってもCursor側で"
+                + "リクエストがブロックされることがある。"
+        }
+    }
+
     func closeTitle(_ title: String) -> String {
         switch language {
         case .english: "Close \(title)"
