@@ -121,6 +121,14 @@ struct GhosttySurfaceIntegrationTests {
             == [
                 "ペースト", "Bookmark This Line", "すべてを選択", "ペインを閉じる",
             ])
+        // A fresh surface is on the primary screen, so the bookmark item
+        // must be enabled; it is only disabled while a fullscreen TUI
+        // holds the alternate screen.
+        #expect(surface.isAlternateScreenActive() == false)
+        let bookmarkItem = try #require(
+            menu.items.first { $0.title == "Bookmark This Line" }
+        )
+        #expect(bookmarkItem.isEnabled)
     }
 
     @Test("builds standard native actions for selected terminal text")
