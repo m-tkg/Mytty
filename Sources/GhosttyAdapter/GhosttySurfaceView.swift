@@ -1069,10 +1069,16 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                     ) != nil
                 ))
             case .addBookmark:
-                menu.addItem(contextMenuItem(
+                let item = contextMenuItem(
                     title: contextMenuLabels.addBookmark,
                     action: #selector(addBookmarkFromMenu(_:))
-                ))
+                )
+                // Bookmarks pin primary-screen scrollback; while a
+                // fullscreen TUI holds the alternate screen there is no
+                // line to pin, so show the item disabled instead of
+                // letting it silently do nothing.
+                item.isEnabled = !isAlternateScreenActive()
+                menu.addItem(item)
             case .selectAll:
                 menu.addItem(contextMenuItem(
                     title: contextMenuLabels.selectAll,
@@ -1543,6 +1549,14 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     public func freeBookmark(_ handle: GhosttyBookmarkHandle) {
         guard let native else { return }
         ghostty_surface_bookmark_free(native, handle.pointer)
+    }
+
+    /// Whether a fullscreen TUI currently holds the alternate screen.
+    /// Line bookmarks only exist on the primary screen, so the context
+    /// menu disables its bookmark item while this is true.
+    public func isAlternateScreenActive() -> Bool {
+        guard let native else { return false }
+        return ghostty_surface_alt_screen_active(native)
     }
 
     /// The text of the row a bookmark currently points to, used to
