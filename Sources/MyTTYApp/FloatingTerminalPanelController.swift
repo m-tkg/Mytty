@@ -143,10 +143,11 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         panel.title = localizer[.floatingPane]
         panel.isFloatingPanel = true
         panel.isReleasedWhenClosed = false
-        // A panel hides itself the moment the app stops being active. That
-        // would pull the panel out from under anyone who switched to
-        // another app to copy something they meant to paste back here, so
-        // the hot key stays the only way it goes away.
+        // AppKit's own deactivate-hide would snap the panel away with no
+        // slide-out; `windowDidResignKey` below covers the same "focus left
+        // the panel" case (another app activating included) with the same
+        // animated `hide()` a hot key press uses, so there's nothing left
+        // for the built-in behavior to do.
         panel.hidesOnDeactivate = false
         TerminalWindowController.prepareWindowForLiveTransparency(panel)
 
@@ -412,6 +413,17 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         }
         guard ratio.isFinite else { return }
         extentRatio = min(max(ratio, Self.minimumExtentRatio), 1)
+    }
+
+    /// Slides the panel back out the moment it stops being key -- clicking
+    /// another window, Cmd-Tabbing to another app, or the global hot key's
+    /// own `hide()` all resign key before the panel disappears. The
+    /// in-flight guard matters for that last case: `hide()` already calls
+    /// `panel.orderOut(nil)`, which resigns key on its way out, and without
+    /// it this would re-enter `hide()` on a panel already sliding away.
+    func windowDidResignKey(_ notification: Notification) {
+        guard panel.isVisible, !isSlidingOut else { return }
+        hide()
     }
 
     /// Whether the panel is the app's key window right now. `AppDelegate`
