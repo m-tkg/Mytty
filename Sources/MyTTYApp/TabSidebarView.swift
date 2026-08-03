@@ -421,9 +421,9 @@ struct TabSidebarView: View {
                     row: row,
                     localizer: localizer,
                     paneProcessProvider: onPaneProcesses,
-                    processPopoverArrowEdge: processPopoverArrowEdge
+                    processPopoverArrowEdge: processPopoverArrowEdge,
+                    agentSpinnerColumnWidth: 18
                 )
-                .padding(.leading, 24)
             }
             .frame(
                 maxWidth: .infinity,
@@ -528,9 +528,9 @@ struct TabSidebarView: View {
                     row: row,
                     localizer: localizer,
                     paneProcessProvider: onPaneProcesses,
-                    processPopoverArrowEdge: processPopoverArrowEdge
+                    processPopoverArrowEdge: processPopoverArrowEdge,
+                    agentSpinnerColumnWidth: 14
                 )
-                .padding(.leading, 20)
             }
             .frame(
                 maxWidth: .infinity,
@@ -729,6 +729,10 @@ private struct TabStatusIndicators: View {
     /// plain, non-interactive glyph (the drag preview).
     var paneProcessProvider: ((TabID) -> [PaneListItem])? = nil
     var processPopoverArrowEdge: Edge = .bottom
+    /// When set, the running-agent spinner renders in a fixed-width leading
+    /// column — the tab-icon column — instead of trailing the indicators.
+    /// Nil keeps the trailing placement, used by the drag preview.
+    var agentSpinnerColumnWidth: CGFloat? = nil
     /// Presentation trigger and content in one value: `popover(item:)`
     /// snapshots the items in the same transaction that presents, so the
     /// content can never render a stale (empty) list the way a separate
@@ -737,6 +741,16 @@ private struct TabStatusIndicators: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if let agentSpinnerColumnWidth {
+                Group {
+                    if row.hasRunningAgent {
+                        runningAgentSpinner
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: agentSpinnerColumnWidth, height: 12)
+            }
             if let paneCount = row.visiblePaneCount {
                 paneCountIndicator(paneCount)
             }
@@ -764,19 +778,23 @@ private struct TabStatusIndicators: View {
                     .help(localizer[.paneZoomed])
                     .accessibilityLabel(localizer[.paneZoomed])
             }
-            if row.hasRunningAgent {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .controlSize(.mini)
-                    .frame(width: 12, height: 12)
-                    .accessibilityLabel(
-                        "\(localizer[.agents]) \(localizer[.running])"
-                    )
+            if agentSpinnerColumnWidth == nil, row.hasRunningAgent {
+                runningAgentSpinner
             }
             Spacer(minLength: 0)
         }
         .frame(minHeight: 14)
         .foregroundStyle(.secondary)
+    }
+
+    private var runningAgentSpinner: some View {
+        ProgressView()
+            .progressViewStyle(.circular)
+            .controlSize(.mini)
+            .frame(width: 12, height: 12)
+            .accessibilityLabel(
+                "\(localizer[.agents]) \(localizer[.running])"
+            )
     }
 
     @ViewBuilder
