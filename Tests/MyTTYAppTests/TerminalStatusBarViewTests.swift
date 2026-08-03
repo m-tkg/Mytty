@@ -100,13 +100,51 @@ struct TerminalStatusBarViewTests {
         #expect(content.visibleAgentUsageLimits.map(\.isLow) == [true, false])
     }
 
-    @Test("orders agent controls before sleep and scheduled input")
+    @Test("orders agent controls before sleep, scheduled input, and bookmarks")
     func statusBarTrailingItemOrder() {
         #expect(
             TerminalStatusBarLayout.trailingItems
-                == [.agent, .sleepPrevention, .scheduledInput]
+                == [.agent, .sleepPrevention, .scheduledInput, .bookmarks]
         )
         #expect(TerminalStatusBarLayout.trailingUsesIntrinsicWidth)
+    }
+
+    @Test("shows only the focused terminal pane's bookmarks")
+    @MainActor
+    func statusBarBookmarkUpdate() {
+        let model = TerminalStatusBarModel()
+        let items = [
+            BookmarkDisplayItem(id: UUID(), snippet: "npm test"),
+            BookmarkDisplayItem(id: UUID(), snippet: "(empty line)"),
+        ]
+
+        model.updateBookmarks(items, isTerminalPane: true)
+        #expect(model.content.bookmarks == items)
+
+        model.updateBookmarks(items, isTerminalPane: false)
+        #expect(model.content.bookmarks.isEmpty)
+    }
+
+    @Test("routes bookmark menu selection and deletion callbacks")
+    @MainActor
+    func statusBarBookmarkActions() {
+        let model = TerminalStatusBarModel()
+        let bookmarkID = UUID()
+        var selected: [UUID] = []
+        var deleted: [UUID] = []
+        let view = TerminalStatusBarView(
+            model: model,
+            revealInFinderTitle: "Reveal in Finder",
+            onRevealInFinder: {},
+            onSelectBookmark: { selected.append($0) },
+            onDeleteBookmark: { deleted.append($0) }
+        )
+
+        view.onSelectBookmark(bookmarkID)
+        view.onDeleteBookmark(bookmarkID)
+
+        #expect(selected == [bookmarkID])
+        #expect(deleted == [bookmarkID])
     }
 
     @Test("copies the session ID from the agent status menu")

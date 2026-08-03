@@ -633,7 +633,8 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
         let moveTargets = contextMenuMoveTargets?() ?? []
         for action in GhosttySurfaceView.contextMenuActions(
             selectionText: selectionText,
-            hasMoveTargets: !moveTargets.isEmpty
+            hasMoveTargets: !moveTargets.isEmpty,
+            includesAddBookmark: false
         ) {
             switch action {
             case .lookUp:
@@ -674,6 +675,12 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
                     isEnabled: isInputEnabled
                         && NSPasteboard.general.string(forType: .string) != nil
                 ))
+            case .addBookmark:
+                // A remote pane mirrors another Mac's terminal: it has no
+                // local scrollback to pin a bookmark against, so this
+                // action (shared with GhosttySurfaceView's context menu)
+                // is intentionally not offered here.
+                continue
             case .selectAll:
                 menu.addItem(contextMenuItem(
                     title: contextMenuLabels.selectAll,

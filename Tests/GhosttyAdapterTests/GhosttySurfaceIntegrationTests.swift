@@ -118,7 +118,9 @@ struct GhosttySurfaceIntegrationTests {
         let menu = try #require(surface.menu(for: event))
 
         #expect(menu.items.filter { !$0.isSeparatorItem }.map(\.title)
-            == ["ペースト", "すべてを選択", "ペインを閉じる"])
+            == [
+                "ペースト", "Bookmark This Line", "すべてを選択", "ペインを閉じる",
+            ])
     }
 
     @Test("builds standard native actions for selected terminal text")
@@ -158,6 +160,7 @@ struct GhosttySurfaceIntegrationTests {
             "Google で検索",
             "コピー",
             "ペースト",
+            "Bookmark This Line",
             "すべてを選択",
             "共有",
             "サービス",

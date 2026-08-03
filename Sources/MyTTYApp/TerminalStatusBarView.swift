@@ -7,6 +7,7 @@ enum TerminalStatusBarTrailingItem: Hashable {
     case agent
     case sleepPrevention
     case scheduledInput
+    case bookmarks
 }
 
 enum TerminalStatusBarLayout {
@@ -15,7 +16,14 @@ enum TerminalStatusBarLayout {
         .agent,
         .sleepPrevention,
         .scheduledInput,
+        .bookmarks,
     ]
+}
+
+/// A focused pane's line bookmark, as shown in the status bar menu.
+struct BookmarkDisplayItem: Equatable, Hashable {
+    let id: UUID
+    let snippet: String
 }
 
 struct TerminalStatusBarContent: Equatable {
@@ -33,6 +41,7 @@ struct TerminalStatusBarContent: Equatable {
     var sleepStatus: AgentSleepStatus
     var canScheduleInput: Bool
     var scheduledInputCount: Int
+    var bookmarks: [BookmarkDisplayItem]
 
     init(
         resource: String = "",
@@ -48,7 +57,8 @@ struct TerminalStatusBarContent: Equatable {
         agentContext: AgentUsageMeterContent? = nil,
         sleepStatus: AgentSleepStatus = .disabled,
         canScheduleInput: Bool = false,
-        scheduledInputCount: Int = 0
+        scheduledInputCount: Int = 0,
+        bookmarks: [BookmarkDisplayItem] = []
     ) {
         self.resource = resource
         self.resourceSymbolName = resourceSymbolName
@@ -64,6 +74,7 @@ struct TerminalStatusBarContent: Equatable {
         self.sleepStatus = sleepStatus
         self.canScheduleInput = canScheduleInput
         self.scheduledInputCount = scheduledInputCount
+        self.bookmarks = bookmarks
     }
 
     var agentDescription: String? {
@@ -112,6 +123,17 @@ final class TerminalStatusBarModel: ObservableObject {
         content.canScheduleInput = true
         content.scheduledInputCount = visible.count
     }
+
+    /// `items` is already the focused pane's bookmarks (the coordinator
+    /// stores them per-pane); `isTerminalPane` still gates display the
+    /// same way `updateScheduledInputs` does, so a browser/remote pane or
+    /// no selected tab shows none.
+    func updateBookmarks(
+        _ items: [BookmarkDisplayItem],
+        isTerminalPane: Bool
+    ) {
+        content.bookmarks = isTerminalPane ? items : []
+    }
 }
 
 struct TerminalStatusBarView: View {
@@ -125,6 +147,8 @@ struct TerminalStatusBarView: View {
     let onNewScheduledInput: () -> Void
     let onEditScheduledInput: (PaneInputSchedule) -> Void
     let onDeleteScheduledInput: (PaneInputSchedule) -> Void
+    let onSelectBookmark: (UUID) -> Void
+    let onDeleteBookmark: (UUID) -> Void
 
     init(
         model: TerminalStatusBarModel,
@@ -136,7 +160,9 @@ struct TerminalStatusBarView: View {
         onSelectSleepPreventionMode: @escaping (AgentSleepPreventionMode) -> Void = { _ in },
         onNewScheduledInput: @escaping () -> Void = {},
         onEditScheduledInput: @escaping (PaneInputSchedule) -> Void = { _ in },
-        onDeleteScheduledInput: @escaping (PaneInputSchedule) -> Void = { _ in }
+        onDeleteScheduledInput: @escaping (PaneInputSchedule) -> Void = { _ in },
+        onSelectBookmark: @escaping (UUID) -> Void = { _ in },
+        onDeleteBookmark: @escaping (UUID) -> Void = { _ in }
     ) {
         self.model = model
         self.revealInFinderTitle = revealInFinderTitle
@@ -148,6 +174,8 @@ struct TerminalStatusBarView: View {
         self.onNewScheduledInput = onNewScheduledInput
         self.onEditScheduledInput = onEditScheduledInput
         self.onDeleteScheduledInput = onDeleteScheduledInput
+        self.onSelectBookmark = onSelectBookmark
+        self.onDeleteBookmark = onDeleteBookmark
     }
 
     var body: some View {
@@ -284,6 +312,17 @@ struct TerminalStatusBarView: View {
             )
             .frame(width: 20, height: 20)
             .help(localizer[.scheduledInput])
+        case .bookmarks:
+            if !model.content.bookmarks.isEmpty {
+                BookmarkMenuButton(
+                    bookmarks: model.content.bookmarks,
+                    localizer: localizer,
+                    onSelect: onSelectBookmark,
+                    onDelete: onDeleteBookmark
+                )
+                .frame(height: 20)
+                .help(localizer[.bookmarks])
+            }
         }
     }
 
@@ -415,6 +454,184 @@ private struct OnDemandUnavailableBadge: View {
             .foregroundStyle(Color.orange)
             .help(localizer.onDemandUnavailableBadgeTooltip())
             .accessibilityLabel(localizer.onDemandUnavailableBadgeTooltip())
+    }
+}
+
+/// Status bar bookmark list. Mirrors `ScheduledInputMenuButton`
+/// (`PaneInputSchedulePresentation.swift`): a plain SwiftUI `Menu` can't
+/// give a row both a click target and an inline delete button, so this is
+/// an `NSViewRepresentable` around a real `NSMenu` with a custom row view
+/// per bookmark, same as scheduled inputs' edit/delete rows.
+struct BookmarkMenuButton: NSViewRepresentable {
+    let bookmarks: [BookmarkDisplayItem]
+    let localizer: MyTTYLocalizer
+    let onSelect: (UUID) -> Void
+    let onDelete: (UUID) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(
+            image: NSImage(),
+            target: context.coordinator,
+            action: #selector(Coordinator.showMenu(_:))
+        )
+        button.isBordered = false
+        button.imagePosition = .imageLeading
+        button.imageScaling = .scaleProportionallyDown
+        button.font = .systemFont(ofSize: 11)
+        button.toolTip = localizer[.bookmarks]
+        button.setAccessibilityLabel(localizer[.bookmarks])
+        updateIndicator(button)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.parent = self
+        button.toolTip = localizer[.bookmarks]
+        button.setAccessibilityLabel(localizer[.bookmarks])
+        updateIndicator(button)
+    }
+
+    private func updateIndicator(_ button: NSButton) {
+        button.image = NSImage(
+            systemSymbolName: bookmarks.isEmpty ? "bookmark" : "bookmark.fill",
+            accessibilityDescription: nil
+        ) ?? NSImage()
+        button.contentTintColor = bookmarks.isEmpty
+            ? .secondaryLabelColor
+            : .controlAccentColor
+        button.title = bookmarks.isEmpty ? "" : "\(bookmarks.count)"
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: BookmarkMenuButton
+
+        init(parent: BookmarkMenuButton) {
+            self.parent = parent
+        }
+
+        @objc func showMenu(_ sender: NSButton) {
+            let menu = NSMenu(title: parent.localizer[.bookmarks])
+            menu.autoenablesItems = false
+            for bookmark in parent.bookmarks {
+                let item = NSMenuItem()
+                item.view = BookmarkMenuRow(
+                    title: bookmark.snippet,
+                    deleteAccessibilityLabel: parent.localizer[.delete],
+                    onSelect: { [parent] in parent.onSelect(bookmark.id) },
+                    onDelete: { [parent] in parent.onDelete(bookmark.id) }
+                )
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+            menu.popUp(
+                positioning: nil,
+                at: NSPoint(x: 0, y: sender.bounds.maxY + 3),
+                in: sender
+            )
+        }
+    }
+}
+
+@MainActor
+private final class BookmarkMenuRow: NSView {
+    private let onSelect: () -> Void
+    private let onDelete: () -> Void
+    private var deferredAction: (() -> Void)?
+
+    init(
+        title: String,
+        deleteAccessibilityLabel: String,
+        onSelect: @escaping () -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.onSelect = onSelect
+        self.onDelete = onDelete
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 28))
+
+        let selectButton = NSButton(
+            title: title,
+            target: self,
+            action: #selector(select)
+        )
+        selectButton.isBordered = false
+        selectButton.alignment = .left
+        selectButton.lineBreakMode = .byTruncatingTail
+        selectButton.contentTintColor = .labelColor
+        selectButton.toolTip = title
+        selectButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let deleteButton = NSButton(
+            image: NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+                ?? NSImage(),
+            target: self,
+            action: #selector(delete)
+        )
+        deleteButton.isBordered = false
+        deleteButton.imagePosition = .imageOnly
+        deleteButton.contentTintColor = .secondaryLabelColor
+        deleteButton.translatesAutoresizingMaskIntoConstraints = false
+        deleteButton.setAccessibilityLabel(deleteAccessibilityLabel)
+        toolTip = title
+
+        addSubview(selectButton)
+        addSubview(deleteButton)
+        NSLayoutConstraint.activate([
+            selectButton.leadingAnchor.constraint(
+                equalTo: leadingAnchor, constant: 10
+            ),
+            selectButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            selectButton.trailingAnchor.constraint(
+                equalTo: deleteButton.leadingAnchor, constant: -6
+            ),
+            deleteButton.trailingAnchor.constraint(
+                equalTo: trailingAnchor, constant: -8
+            ),
+            deleteButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            deleteButton.widthAnchor.constraint(equalToConstant: 22),
+            deleteButton.heightAnchor.constraint(equalToConstant: 22),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    @objc private func select() {
+        performAfterClosingMenu(onSelect)
+    }
+
+    @objc private func delete() {
+        performAfterClosingMenu(onDelete)
+    }
+
+    private func performAfterClosingMenu(
+        _ action: @escaping () -> Void
+    ) {
+        if let menu = enclosingMenuItem?.menu {
+            ScheduledInputMenuHierarchy.root(startingAt: menu)
+                .cancelTracking()
+        }
+        deferredAction = action
+        let timer = Timer(
+            timeInterval: 0,
+            target: self,
+            selector: #selector(invokeDeferredAction(_:)),
+            userInfo: nil,
+            repeats: false
+        )
+        RunLoop.main.add(timer, forMode: .default)
+    }
+
+    @objc private func invokeDeferredAction(_ timer: Timer) {
+        let action = deferredAction
+        deferredAction = nil
+        action?()
     }
 }
 

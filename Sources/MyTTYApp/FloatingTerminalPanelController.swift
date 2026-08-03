@@ -308,6 +308,9 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
             contextMenuLabels: makeContextMenuLabels(),
             clipboardConfirmationLabels: makeClipboardConfirmationLabels()
         ) else { return }
+        // The panel has no status bar to list bookmarks in, so don't
+        // offer the context-menu action here.
+        created.contextMenuIncludesAddBookmark = false
         bind(created)
         panel.contentView = created
         surface = created
@@ -366,7 +369,8 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
             share: localizer[.share],
             services: localizer[.services],
             moveToTab: localizer[.moveToTab],
-            closePane: localizer[.closePane]
+            closePane: localizer[.closePane],
+            addBookmark: localizer[.addBookmark]
         )
     }
 

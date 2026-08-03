@@ -24,6 +24,10 @@ public enum GhosttySurfaceEvent: Equatable, Sendable {
     case closeWindowRequested
     case openURLRequested(URL)
     case focusChanged(Bool)
+    /// The user chose "Bookmark This Line" from the context menu. The
+    /// location is in this view's own coordinate space (not yet flipped
+    /// into Ghostty's surface-pixel space), matching `contextMenuLocation`.
+    case addBookmarkRequested(location: CGPoint)
 }
 
 public enum GhosttySurfaceError: Error, Equatable, Sendable {
@@ -48,6 +52,31 @@ public struct GhosttyGridPosition: Equatable, Sendable {
         self.row = row
         self.column = column
     }
+}
+
+/// A tracked pin into a surface's primary-screen scrollback, created by
+/// `GhosttySurfaceView.createBookmark(atViewLocation:)`. The handle owns a
+/// ghostty-side tracked pin — call `freeBookmark(_:)` on the *same*
+/// surface once done with it, or the pin (and the small amount of memory
+/// backing it) leaks for the surface's lifetime.
+public struct GhosttyBookmarkHandle: Equatable, @unchecked Sendable {
+    let pointer: UnsafeMutableRawPointer
+
+    init(pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+}
+
+/// A bookmark's resolved position, read via
+/// `GhosttySurfaceView.bookmarkInfo(_:)`.
+public struct GhosttyBookmarkInfo: Equatable, Sendable {
+    public let row: Int
+    public let x: Int
+    /// False while the alternate screen is active. The row/x above still
+    /// describe the primary screen's scrollback in that case; callers
+    /// should not treat them as evidence of eviction until this is true
+    /// again.
+    public let screenIsActive: Bool
 }
 
 public struct GhosttySearchLabels: Equatable, Sendable {
@@ -79,6 +108,7 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
     public var services: String
     public var moveToTab: String
     public var closePane: String
+    public var addBookmark: String
 
     public init(
         copy: String = "Copy",
@@ -89,7 +119,8 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
         share: String = "Share",
         services: String = "Services",
         moveToTab: String = "Move to Tab",
-        closePane: String = "Close Pane"
+        closePane: String = "Close Pane",
+        addBookmark: String = "Bookmark This Line"
     ) {
         self.copy = copy
         self.paste = paste
@@ -100,6 +131,7 @@ public struct GhosttyContextMenuLabels: Equatable, Sendable {
         self.services = services
         self.moveToTab = moveToTab
         self.closePane = closePane
+        self.addBookmark = addBookmark
     }
 }
 
@@ -144,6 +176,7 @@ public enum GhosttyContextMenuAction: Equatable, Sendable {
     case separator
     case copy
     case paste
+    case addBookmark
     case selectAll
     case share
     case services
@@ -169,6 +202,10 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     /// Supplies the "Move to Tab" submenu contents on demand; empty (or
     /// nil) hides the submenu entirely.
     public var contextMenuMoveTargets: (() -> [GhosttyContextMenuMoveTarget])?
+    /// Hosts with no bookmark UI (e.g. the floating panel, which has no
+    /// status bar to list bookmarks in) set this false so the context
+    /// menu never offers an action that would go nowhere.
+    public var contextMenuIncludesAddBookmark = true
 
     public private(set) var terminalTitle = ""
     public private(set) var workingDirectory: URL?
@@ -990,7 +1027,8 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         let moveTargets = contextMenuMoveTargets?() ?? []
         for action in Self.contextMenuActions(
             selectionText: selectionText,
-            hasMoveTargets: !moveTargets.isEmpty
+            hasMoveTargets: !moveTargets.isEmpty,
+            includesAddBookmark: contextMenuIncludesAddBookmark
         ) {
             switch action {
             case .lookUp:
@@ -1029,6 +1067,11 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
                     isEnabled: NSPasteboard.general.string(
                         forType: .string
                     ) != nil
+                ))
+            case .addBookmark:
+                menu.addItem(contextMenuItem(
+                    title: contextMenuLabels.addBookmark,
+                    action: #selector(addBookmarkFromMenu(_:))
                 ))
             case .selectAll:
                 menu.addItem(contextMenuItem(
@@ -1126,19 +1169,24 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     public nonisolated static func contextMenuActions(
         selectionText: String?,
-        hasMoveTargets: Bool
+        hasMoveTargets: Bool,
+        includesAddBookmark: Bool = true
     ) -> [GhosttyContextMenuAction] {
         let trailing: [GhosttyContextMenuAction] =
             (hasMoveTargets ? [.moveToTab] : []) + [.closePane]
+        let bookmark: [GhosttyContextMenuAction] =
+            includesAddBookmark ? [.addBookmark] : []
 
         guard let selectionText, !selectionText.isEmpty else {
-            return [.paste, .separator, .selectAll, .separator] + trailing
+            return [.paste] + bookmark + [
+                .separator, .selectAll, .separator,
+            ] + trailing
         }
         guard !selectionText.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).isEmpty else {
-            return [
-                .copy, .paste, .separator, .selectAll, .separator,
+            return [.copy, .paste] + bookmark + [
+                .separator, .selectAll, .separator,
             ] + trailing
         }
         return [
@@ -1147,6 +1195,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
             .separator,
             .copy,
             .paste,
+        ] + bookmark + [
             .separator,
             .selectAll,
             .separator,
@@ -1212,6 +1261,10 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
     @objc private func pasteFromMenu(_ sender: Any?) {
         _ = performBindingAction("paste_from_clipboard")
+    }
+
+    @objc private func addBookmarkFromMenu(_ sender: Any?) {
+        onEvent?(.addBookmarkRequested(location: contextMenuLocation))
     }
 
     @objc private func selectAllFromMenu(_ sender: Any?) {
@@ -1434,6 +1487,80 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         var y: UInt32 = 0
         ghostty_surface_cursor_position(native, &x, &y)
         return GhosttyGridPosition(row: Int(y), column: Int(x))
+    }
+
+    /// Creates a "line bookmark" tracked pin at the given view-coordinate
+    /// location (e.g. a right-click's location, the same space
+    /// `contextMenuLocation` is stored in). Returns nil while the
+    /// alternate screen is active or the surface has no native handle —
+    /// there is no primary-screen scrollback to pin against in either
+    /// case. The y-flip mirrors `mouseMoved(with:)` exactly — the C API
+    /// expects the same unscaled top-left-origin space as
+    /// `ghostty_surface_mouse_pos` and does the pixel scaling itself.
+    public func createBookmark(
+        atViewLocation location: NSPoint
+    ) -> GhosttyBookmarkHandle? {
+        guard let native else { return nil }
+        guard let pointer = ghostty_surface_bookmark_create(
+            native,
+            location.x,
+            bounds.height - location.y
+        ) else { return nil }
+        return GhosttyBookmarkHandle(pointer: pointer)
+    }
+
+    /// Resolves a bookmark's current position. Returns nil only if the
+    /// underlying pin genuinely couldn't be resolved (the surface having
+    /// no native handle counts as unresolvable); an evicted line still
+    /// resolves; see `GhosttyBookmarkInfo.screenIsActive`.
+    public func bookmarkInfo(
+        _ handle: GhosttyBookmarkHandle
+    ) -> GhosttyBookmarkInfo? {
+        guard let native else { return nil }
+        var info = ghostty_bookmark_info_s()
+        guard ghostty_surface_bookmark_info(
+            native,
+            handle.pointer,
+            &info
+        ) else { return nil }
+        return GhosttyBookmarkInfo(
+            row: Int(info.row),
+            x: Int(info.x),
+            screenIsActive: info.screen_is_active
+        )
+    }
+
+    /// Scrolls the viewport to the given bookmark. No-op while the
+    /// alternate screen is active or the surface has no native handle.
+    public func scrollToBookmark(_ handle: GhosttyBookmarkHandle) {
+        guard let native else { return }
+        ghostty_surface_bookmark_scroll(native, handle.pointer)
+    }
+
+    /// Releases a bookmark's tracked pin. Must be called exactly once per
+    /// handle returned by `createBookmark(atViewLocation:)`, on the same
+    /// surface that created it.
+    public func freeBookmark(_ handle: GhosttyBookmarkHandle) {
+        guard let native else { return }
+        ghostty_surface_bookmark_free(native, handle.pointer)
+    }
+
+    /// The text of the row a bookmark currently points to, used to
+    /// snapshot the line and later detect whether it still matches. Read
+    /// through the pin itself — `ghostty_surface_read_text` clamps exact
+    /// y coordinates to the viewport height, so it can't address
+    /// scrollback rows. Returns nil only if the surface has no native
+    /// handle or the read genuinely fails.
+    public func bookmarkLineText(_ handle: GhosttyBookmarkHandle) -> String? {
+        guard let native else { return nil }
+        var text = ghostty_text_s()
+        guard ghostty_surface_bookmark_text(
+            native,
+            handle.pointer,
+            &text
+        ) else { return nil }
+        defer { ghostty_surface_free_text(native, &text) }
+        return Self.decodedText(text)
     }
 
     private func positionAutocompleteSuggestion() {

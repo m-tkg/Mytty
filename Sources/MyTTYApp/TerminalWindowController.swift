@@ -124,6 +124,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             self?.surfaces.keys.map { $0 } ?? []
         }
     )
+    private lazy var bookmarks = TerminalBookmarkCoordinator(
+        surface: { [weak self] surfaceID in self?.surfaces[surfaceID] },
+        localizer: localizer,
+        onChange: { [weak self] in self?.updateStatusBar() }
+    )
     private var browsers: [TerminalSurfaceID: BrowserPaneView] = [:]
     private var remotes: [TerminalSurfaceID: RemotePaneView] = [:]
     private let remoteConnections: RemotePaneConnectionCoordinator
@@ -1219,6 +1224,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
         localizer = MyTTYLocalizer(language: preferences.language)
         scheduledInput.updateLocalizer(localizer)
+        bookmarks.updateLocalizer(localizer)
         let terminalSearchLabels = makeTerminalSearchLabels()
         let clipboardConfirmationLabels = makeClipboardConfirmationLabels()
         surfaces.values.forEach {
@@ -1413,6 +1419,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             for surfaceID in tab.surfaceIDs {
                 agentEventServer.revoke(surface: surfaceID)
                 autocomplete.removeSession(for: surfaceID)
+                bookmarks.removePane(surfaceID)
                 surfaces.removeValue(forKey: surfaceID)?.removeFromSuperview()
             }
             for paneID in tab.paneIDs
@@ -1861,6 +1868,26 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     },
                     onDeleteScheduledInput: { [weak self] schedule in
                         self?.scheduledInput.deleteScheduledInput(schedule)
+                    },
+                    onSelectBookmark: { [weak self] bookmarkID in
+                        guard let self,
+                              let focusedID = self.session.selectedTab?
+                                  .focusedSurfaceID
+                        else { return }
+                        self.bookmarks.scrollTo(
+                            bookmarkID: bookmarkID,
+                            paneID: focusedID
+                        )
+                    },
+                    onDeleteBookmark: { [weak self] bookmarkID in
+                        guard let self,
+                              let focusedID = self.session.selectedTab?
+                                  .focusedSurfaceID
+                        else { return }
+                        self.bookmarks.remove(
+                            bookmarkID: bookmarkID,
+                            paneID: focusedID
+                        )
                     }
                 )
             )
@@ -2230,7 +2257,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             share: localizer[.share],
             services: localizer[.services],
             moveToTab: localizer[.moveToTab],
-            closePane: localizer[.closePane]
+            closePane: localizer[.closePane],
+            addBookmark: localizer[.addBookmark]
         )
     }
 
@@ -2365,6 +2393,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
         case let .movePaneRequested(destinationTab):
             movePane(surfaceID, toTab: destinationTab)
+
+        case let .addBookmarkRequested(location):
+            bookmarks.addBookmark(paneID: surfaceID, location: location)
 
         case let .closeRequested(processAlive):
             guard let tab = session.tabs.first(where: {
@@ -3081,10 +3112,24 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 focusedSurfaceID: nil,
                 isTerminalPane: false
             )
+            statusBarModel.updateBookmarks([], isTerminalPane: false)
             return
         }
 
         let focusedID = tab.focusedSurfaceID
+        // Validated right before display, in addition to the background
+        // timer: catches eviction/edits that happened since the last poll
+        // without waiting up to 5s to reflect them once this pane is the
+        // one on screen.
+        let isFocusedTerminalPane = surfaces[focusedID] != nil
+        if isFocusedTerminalPane {
+            bookmarks.validate(paneID: focusedID)
+        }
+        let bookmarkItems = isFocusedTerminalPane
+            ? bookmarks.bookmarks(for: focusedID).map {
+                BookmarkDisplayItem(id: $0.id, snippet: $0.snippet)
+            }
+            : []
         let resourceURL = resourceURL(for: tab)
         let resource = resourceURL.map {
             $0.isFileURL
@@ -3167,7 +3212,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         statusBarModel.updateScheduledInputs(
             scheduledInput.schedules,
             focusedSurfaceID: focusedID,
-            isTerminalPane: surfaces[focusedID] != nil
+            isTerminalPane: isFocusedTerminalPane
+        )
+        statusBarModel.updateBookmarks(
+            bookmarkItems,
+            isTerminalPane: isFocusedTerminalPane
         )
     }
 
@@ -3373,6 +3422,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 agentEventServer.revoke(surface: paneID)
             }
             autocomplete.removeSession(for: paneID)
+            bookmarks.removePane(paneID)
             surfaces.removeValue(forKey: paneID)?.removeFromSuperview()
             browsers.removeValue(forKey: paneID)?.removeFromSuperview()
             detachRemotePane(paneID)

@@ -1,8 +1,25 @@
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 72bbb57..1d4ab3a 100644
+index 72bbb57..d173d43 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
-@@ -475,6 +475,7 @@ typedef struct {
+@@ -440,6 +440,16 @@ typedef struct {
+   bool rectangle;
+ } ghostty_selection_s;
+ 
++/// Row/column of a tracked bookmark pin in the primary screen, as of the
++/// last time it was resolved. `screen_is_active` is false while the
++/// alternate screen is active, in which case row/x describe the primary
++/// screen's scrollback and should not be used to judge eviction.
++typedef struct {
++  uint32_t row;
++  uint32_t x;
++  bool screen_is_active;
++} ghostty_bookmark_info_s;
++
+ typedef struct {
+   const char* key;
+   const char* value;
+@@ -475,6 +485,7 @@ typedef struct {
    ghostty_env_var_s* env_vars;
    size_t env_var_count;
    const char* initial_input;
@@ -10,15 +27,38 @@ index 72bbb57..1d4ab3a 100644
    bool wait_after_command;
    ghostty_surface_context_e context;
  } ghostty_surface_config_s;
-@@ -1143,6 +1144,7 @@ GHOSTTY_API void ghostty_surface_mouse_scroll(ghostty_surface_t,
+@@ -1143,6 +1154,30 @@ GHOSTTY_API void ghostty_surface_mouse_scroll(ghostty_surface_t,
                                                   ghostty_input_scroll_mods_t);
  GHOSTTY_API void ghostty_surface_mouse_pressure(ghostty_surface_t, uint32_t, double);
  GHOSTTY_API void ghostty_surface_ime_point(ghostty_surface_t, double*, double*, double*, double*);
 +GHOSTTY_API void ghostty_surface_cursor_position(ghostty_surface_t, uint32_t*, uint32_t*);
++/// Creates a tracked bookmark pin at the given unscaled surface
++/// coordinates (the same space the host passes to
++/// ghostty_surface_mouse_pos). Returns null when the
++/// alternate screen is active or the point can't be pinned. The caller
++/// owns the returned pin and must release it with
++/// ghostty_surface_bookmark_free.
++GHOSTTY_API void* ghostty_surface_bookmark_create(ghostty_surface_t, double, double);
++/// Resolves a bookmark pin's current position. Returns false only if the
++/// point could not be resolved at all (the pin is otherwise always kept
++/// up to date, including being relocated to the top-left on eviction).
++GHOSTTY_API bool ghostty_surface_bookmark_info(ghostty_surface_t,
++                                                  void*,
++                                                  ghostty_bookmark_info_s*);
++/// Scrolls the viewport to the given bookmark pin. No-op while the
++/// alternate screen is active.
++GHOSTTY_API void ghostty_surface_bookmark_scroll(ghostty_surface_t, void*);
++/// Reads the full text of the row the bookmark pin currently points to.
++/// Free the result with ghostty_surface_free_text.
++GHOSTTY_API bool ghostty_surface_bookmark_text(ghostty_surface_t,
++                                                  void*,
++                                                  ghostty_text_s*);
++/// Releases a bookmark pin created by ghostty_surface_bookmark_create.
++GHOSTTY_API void ghostty_surface_bookmark_free(ghostty_surface_t, void*);
  GHOSTTY_API void ghostty_surface_request_close(ghostty_surface_t);
  GHOSTTY_API void ghostty_surface_split(ghostty_surface_t, ghostty_action_split_direction_e);
  GHOSTTY_API void ghostty_surface_split_focus(ghostty_surface_t,
-@@ -1161,6 +1163,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
+@@ -1161,6 +1196,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
  GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
                                                ghostty_selection_s,
                                                ghostty_text_s*);
@@ -29,7 +69,7 @@ index 72bbb57..1d4ab3a 100644
  
  #ifdef __APPLE__
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 7310159..544d2b6 100644
+index 7310159..96c6885 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -457,6 +457,11 @@ pub const Surface = struct {
@@ -60,7 +100,21 @@ index 7310159..544d2b6 100644
          // Wait after command
          if (opts.wait_after_command) {
              config.@"wait-after-command" = true;
-@@ -1642,6 +1656,62 @@ pub const CAPI = struct {
+@@ -1387,6 +1401,13 @@ pub const CAPI = struct {
+         }
+     };
+ 
++    // ghostty_bookmark_info_s
++    const BookmarkInfo = extern struct {
++        row: u32,
++        x: u32,
++        screen_is_active: bool,
++    };
++
+     // Reference the conditional exports based on target platform
+     // so they're included in the C API.
+     comptime {
+@@ -1642,6 +1663,62 @@ pub const CAPI = struct {
          return readTextLocked(surface, core_sel, result);
      }
  
@@ -123,7 +177,7 @@ index 7310159..544d2b6 100644
      fn readTextLocked(
          surface: *Surface,
          core_sel: terminal.Selection,
-@@ -1919,6 +1989,23 @@ pub const CAPI = struct {
+@@ -1919,6 +1996,160 @@ pub const CAPI = struct {
          height.* = pos.height;
      }
  
@@ -142,6 +196,143 @@ index 7310159..544d2b6 100644
 +        const cursor = core_surface.renderer_state.terminal.screens.active.cursor;
 +        x.* = @intCast(cursor.x);
 +        y.* = @intCast(cursor.y);
++    }
++
++    /// Creates a tracked pin at the given unscaled surface coordinates
++    /// (the same coordinate space the host feeds to
++    /// ghostty_surface_mouse_pos; scaling to pixels happens here, like
++    /// cursorPosCallback), for use as a "line bookmark" an embedder can
++    /// later scroll back to. Only the primary screen has meaningful
++    /// scrollback to bookmark, so this returns null while the alternate
++    /// screen is active or the point otherwise can't be pinned. The
++    /// returned pin is tracked: it follows content as the pagelist is
++    /// modified, and is relocated to the top-left of the screen if the
++    /// line it points to is fully evicted (see PageList.trackPin). The
++    /// caller owns the pin and must release it with
++    /// ghostty_surface_bookmark_free.
++    export fn ghostty_surface_bookmark_create(
++        surface: *Surface,
++        x: f64,
++        y: f64,
++    ) ?*anyopaque {
++        const pos = surface.cursorPosToPixels(.{
++            .x = @floatCast(x),
++            .y = @floatCast(y),
++        }) catch |err| {
++            log.warn("error scaling bookmark position err={}", .{err});
++            return null;
++        };
++
++        const core_surface = &surface.core_surface;
++        core_surface.renderer_state.mutex.lock();
++        defer core_surface.renderer_state.mutex.unlock();
++
++        const t = core_surface.renderer_state.terminal;
++        if (t.screens.active_key != .primary) return null;
++        const screen = t.screens.active;
++
++        const coord = core_surface.posToViewport(pos.x, pos.y);
++        const p = screen.pages.pin(.{ .viewport = coord }) orelse return null;
++        return screen.pages.trackPin(p) catch |err| {
++            log.warn("error tracking bookmark pin err={}", .{err});
++            return null;
++        };
++    }
++
++    /// Resolves a bookmark pin's current row/column in the primary
++    /// screen along with whether the primary screen is currently active.
++    /// The pin always belongs to the primary screen's pagelist (bookmarks
++    /// can only be created while it's active), so this resolves against
++    /// that pagelist regardless of which screen is active right now.
++    /// Returns false only if the point genuinely can't be resolved; a
++    /// fully evicted line still resolves (relocated to the top-left, per
++    /// ghostty_surface_bookmark_create's docs), so callers detect
++    /// eviction by checking the resolved row/x, not this return value.
++    export fn ghostty_surface_bookmark_info(
++        surface: *Surface,
++        pin_ptr: *anyopaque,
++        out: *BookmarkInfo,
++    ) bool {
++        const core_surface = &surface.core_surface;
++        core_surface.renderer_state.mutex.lock();
++        defer core_surface.renderer_state.mutex.unlock();
++
++        const t = core_surface.renderer_state.terminal;
++        const primary = t.screens.get(.primary).?;
++        const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
++        const pt = primary.pages.pointFromPin(.screen, pin.*) orelse
++            return false;
++        const coord = pt.coord();
++
++        out.* = .{
++            .row = coord.y,
++            .x = @intCast(coord.x),
++            .screen_is_active = t.screens.active_key == .primary,
++        };
++        return true;
++    }
++
++    /// Scrolls the viewport to the given bookmark pin. No-op while the
++    /// alternate screen is active, since there is no scrollback to
++    /// scroll to and the pin belongs to the primary screen's pagelist.
++    export fn ghostty_surface_bookmark_scroll(
++        surface: *Surface,
++        pin_ptr: *anyopaque,
++    ) void {
++        {
++            const core_surface = &surface.core_surface;
++            core_surface.renderer_state.mutex.lock();
++            defer core_surface.renderer_state.mutex.unlock();
++
++            const t = core_surface.renderer_state.terminal;
++            if (t.screens.active_key != .primary) return;
++
++            const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
++            t.screens.active.scroll(.{ .pin = pin.* });
++        }
++
++        surface.refresh();
++    }
++
++    /// Reads the full text of the row a bookmark pin currently points
++    /// to, resolved through the pin itself rather than point
++    /// coordinates — the generic ghostty_surface_read_text clamps exact
++    /// y coordinates to the viewport height, so it cannot address
++    /// scrollback rows. The result must be freed with
++    /// ghostty_surface_free_text.
++    export fn ghostty_surface_bookmark_text(
++        surface: *Surface,
++        pin_ptr: *anyopaque,
++        result: *Text,
++    ) bool {
++        surface.core_surface.renderer_state.mutex.lock();
++        defer surface.core_surface.renderer_state.mutex.unlock();
++
++        const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
++        var start = pin.*;
++        start.x = 0;
++        var end = pin.*;
++        end.x = end.node.cols() - 1;
++
++        const core_sel: terminal.Selection = .{
++            .bounds = .{ .untracked = .{ .start = start, .end = end } },
++            .rectangle = false,
++        };
++        return readTextLocked(surface, core_sel, result);
++    }
++
++    /// Releases a bookmark pin created by ghostty_surface_bookmark_create.
++    export fn ghostty_surface_bookmark_free(
++        surface: *Surface,
++        pin_ptr: *anyopaque,
++    ) void {
++        const core_surface = &surface.core_surface;
++        core_surface.renderer_state.mutex.lock();
++        defer core_surface.renderer_state.mutex.unlock();
++
++        const primary = core_surface.renderer_state.terminal.screens.get(.primary).?;
++        const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
++        primary.pages.untrackPin(pin);
 +    }
 +
      /// Request that the surface become closed. This will go through the
