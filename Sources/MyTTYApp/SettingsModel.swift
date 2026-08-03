@@ -52,18 +52,25 @@ final class SettingsModel: ObservableObject {
         terminalThemes = GhosttyThemeCatalog.currentThemes()
     }
 
-    func reload() {
+    @discardableResult
+    func reload() -> Bool {
         do {
-            application = try applicationStore.load(
+            let reloadedApplication = try applicationStore.load(
                 from: paths.appConfiguration
             )
-            terminal = try terminalStore.load(
+            let reloadedTerminal = try terminalStore.load(
                 from: paths.terminalConfiguration
             )
+            try onTerminalConfigurationChanged(reloadedTerminal)
+            application = reloadedApplication
+            terminal = reloadedTerminal
             terminalThemes = GhosttyThemeCatalog.currentThemes()
             errorText = nil
+            onApplicationPreferencesChanged(application)
+            return true
         } catch {
             errorText = .unableToReadSettings
+            return false
         }
     }
 

@@ -384,6 +384,11 @@ enum MyTTYText: String {
     case unableToReadSettings = "Unable to read settings"
     case unableToSaveSettings = "Unable to save application settings"
     case unableToApplyTerminalSettings = "Unable to apply terminal settings"
+    case configurationFiles = "Configuration Files"
+    case reloadConfigurationFiles = "Reload from Disk"
+    case reloadConfigurationFilesDescription =
+        "Reload settings after editing the configuration files directly."
+    case configurationFilesReloaded = "Settings reloaded"
     case development = "Development"
     case importReleaseSettings = "Import Settings from Mytty"
     case importReleaseSettingsDescription =
@@ -936,6 +941,11 @@ struct MyTTYLocalizer: Equatable {
         case .unableToReadSettings: "設定を読み込めませんでした"
         case .unableToSaveSettings: "アプリ設定を保存できませんでした"
         case .unableToApplyTerminalSettings: "ターミナル設定を適用できませんでした"
+        case .configurationFiles: "設定ファイル"
+        case .reloadConfigurationFiles: "ディスクから再読み込み"
+        case .reloadConfigurationFilesDescription:
+            "設定ファイルを直接編集した後に変更を反映します。"
+        case .configurationFilesReloaded: "設定を再読み込みしました"
         case .development: "開発"
         case .importReleaseSettings: "Mytty の設定をインポート"
         case .importReleaseSettingsDescription:
