@@ -248,6 +248,7 @@ private struct GeneralSettingsView: View {
     @ObservedObject var defaultTerminal: DefaultTerminalModel
     let localizer: MyTTYLocalizer
     @State private var importedReleaseSettings = false
+    @State private var reloadedConfigurationFiles = false
 
     private static let releaseSettingsSource = ApplicationPaths(
         homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
@@ -508,6 +509,26 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.confirmClosingLastPane)
                 )
                 .toggleStyle(.switch)
+            }
+
+            Section(localizer[.configurationFiles]) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Button(localizer[.reloadConfigurationFiles]) {
+                            reloadedConfigurationFiles = model.reload()
+                        }
+                        if reloadedConfigurationFiles {
+                            Label(
+                                localizer[.configurationFilesReloaded],
+                                systemImage: "checkmark.circle.fill"
+                            )
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(localizer[.reloadConfigurationFilesDescription])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if ApplicationIdentity.isDevelopmentBuild {
