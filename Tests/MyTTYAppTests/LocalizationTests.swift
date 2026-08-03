@@ -672,4 +672,19 @@ struct LocalizationTests {
         #expect(japanese[.pushNotifiedAttentionKinds] == "通知する Attention")
         #expect(japanese[.pushNotifiedAgents] == "通知するエージェント")
     }
+
+    @Test("localizes the line bookmark context menu item and status bar list")
+    func lineBookmarkText() {
+        let english = MyTTYLocalizer(language: .english)
+        let japanese = MyTTYLocalizer(language: .japanese)
+
+        #expect(english[.addBookmark] == "Bookmark This Line")
+        #expect(english[.bookmarks] == "Bookmarks")
+        #expect(english[.emptyLineBookmark] == "(empty line)")
+        #expect(english[.delete] == "Delete")
+        #expect(japanese[.addBookmark] == "この行をブックマーク")
+        #expect(japanese[.bookmarks] == "ブックマーク")
+        #expect(japanese[.emptyLineBookmark] == "(空行)")
+        #expect(japanese[.delete] == "削除")
+    }
 }

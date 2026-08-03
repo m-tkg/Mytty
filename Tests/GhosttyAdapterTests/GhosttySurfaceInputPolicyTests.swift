@@ -80,6 +80,7 @@ struct GhosttySurfaceInputPolicyTests {
                     .separator,
                     .copy,
                     .paste,
+                    .addBookmark,
                     .separator,
                     .selectAll,
                     .separator,
@@ -94,7 +95,10 @@ struct GhosttySurfaceInputPolicyTests {
                 selectionText: nil,
                 hasMoveTargets: false
             )
-                == [.paste, .separator, .selectAll, .separator, .closePane]
+                == [
+                    .paste, .addBookmark, .separator, .selectAll,
+                    .separator, .closePane,
+                ]
         )
         #expect(
             GhosttySurfaceView.contextMenuActions(
@@ -102,7 +106,7 @@ struct GhosttySurfaceInputPolicyTests {
                 hasMoveTargets: false
             )
                 == [
-                    .copy, .paste, .separator, .selectAll,
+                    .copy, .paste, .addBookmark, .separator, .selectAll,
                     .separator, .closePane,
                 ]
         )
