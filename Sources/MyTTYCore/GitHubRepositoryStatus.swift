@@ -1,10 +1,10 @@
 import Foundation
 
 public struct GitHubRepositoryStatus: Equatable, Sendable {
-    public let pageURL: URL
+    public let pageURL: URL?
     public let branchName: String
 
-    public init(pageURL: URL, branchName: String) {
+    public init(pageURL: URL? = nil, branchName: String) {
         self.pageURL = pageURL
         self.branchName = branchName
     }
@@ -76,27 +76,30 @@ public struct GitHubRepositoryLoader: Sendable {
         if let origin = remotes.firstIndex(of: "origin") {
             remotes.insert(remotes.remove(at: origin), at: 0)
         }
+        var pageURL: URL?
         for remoteName in remotes.prefix(32) {
             guard let remote = await runner.output(
                 in: directory,
                 arguments: ["remote", "get-url", remoteName]
             ),
-                  let pageURL = GitHubRemoteURL.pageURL(from: remote)
+                  let url = GitHubRemoteURL.pageURL(from: remote)
             else { continue }
-            var branch = trimmed(await runner.output(
-                in: directory,
-                arguments: ["branch", "--show-current"]
-            ))
-            if branch?.isEmpty != false {
-                branch = trimmed(await runner.output(
-                    in: directory,
-                    arguments: ["rev-parse", "--short", "HEAD"]
-                ))
-            }
-            guard let branch, !branch.isEmpty else { return nil }
-            return GitHubRepositoryStatus(pageURL: pageURL, branchName: branch)
+            pageURL = url
+            break
         }
-        return nil
+
+        var branch = trimmed(await runner.output(
+            in: directory,
+            arguments: ["branch", "--show-current"]
+        ))
+        if branch?.isEmpty != false {
+            branch = trimmed(await runner.output(
+                in: directory,
+                arguments: ["rev-parse", "--short", "HEAD"]
+            ))
+        }
+        guard let branch, !branch.isEmpty else { return nil }
+        return GitHubRepositoryStatus(pageURL: pageURL, branchName: branch)
     }
 
     private func trimmed(_ value: String?) -> String? {
