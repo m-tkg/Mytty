@@ -105,6 +105,12 @@ Acknowledged or otherwise resolved items remain visible in the drawer for 24 hou
 | `{"ok": false, "error": "invalid-request"}` | Envelope could not be decoded as the expected JSON shape |
 | `{"ok": false, "error": "internal-error"}` | Event storage failed on Mytty's side |
 
+## Native run estimation
+
+For a provider whose hook integration isn't installed, Mytty still detects a run starting and finishing on its own: it watches which agent executable is in a pane's foreground process, and reads OSC 133 when the shell reports that foreground command has finished. Events synthesized this way carry an `event.hookName` under the `mytty.native.` prefix (`mytty.native.launchObserved`, `mytty.native.commandFinished`, `mytty.native.processExited`) instead of a provider's own hook name, and always have `event.sessionID` set to `null`, since there's no hook payload to read a session identifier from.
+
+This estimation only runs for a provider whose integration status is not installed; once hooks are installed for a provider, its runs go back to being reported by the provider's own hooks exclusively, and the native estimator stays out of the way. More generally, any `hookName` beginning with `mytty.` (not just `mytty.native.`) marks an event Mytty synthesized itself rather than received from a provider's hooks — see `Sources/MyTTYCore/NativeAgentRunEstimator.swift` and `Sources/MyTTYCore/AgentHookEventAdapter.swift`.
+
 ## See also
 
 - [Agent providers](agent-providers.md) covers file locations, per-provider hook-to-event mapping, and status bar/session-inspector sources.

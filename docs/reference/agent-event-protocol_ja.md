@@ -105,6 +105,12 @@ Mytty が通知(Attention)パネルの item を作るのは次の場合のみで
 | `{"ok": false, "error": "invalid-request"}` | エンベロープを期待する JSON 形式としてデコードできなかった |
 | `{"ok": false, "error": "internal-error"}` | Mytty 側で event の保存に失敗した |
 
+## ネイティブ推定による run 検出
+
+hook integration が未インストールの provider についても、Mytty は run の開始と終了を自力で検出します。ペインのフォアグラウンドプロセスにどの agent 実行ファイルが立っているかを監視し、フォアグラウンドのコマンドが終了したことを shell が OSC 133 で報告するのを読み取ります。この方法で合成された event は、provider 自身の hook 名の代わりに `mytty.native.` で始まる `event.hookName`(`mytty.native.launchObserved`、`mytty.native.commandFinished`、`mytty.native.processExited`)を持ち、`event.sessionID` は常に `null` です。hook payload から読み取れるセッション識別子が存在しないためです。
+
+この推定が動くのは、その provider の integration status が未インストールの間だけです。hook をインストールすればその provider の run は再び hook 自身の報告に一本化され、ネイティブ推定は関与しなくなります。より一般的に、`mytty.native.` に限らず `mytty.` で始まる `hookName` はすべて、Mytty が自ら合成した event(provider の hook から受け取ったものではない event)を表します。詳細は `Sources/MyTTYCore/NativeAgentRunEstimator.swift` と `Sources/MyTTYCore/AgentHookEventAdapter.swift` を参照してください。
+
 ## 参考
 
 - [Agent providers](agent-providers_ja.md): 設定ファイルの場所、provider ごとの hook と event の対応、status bar / session inspector の情報源をまとめています。

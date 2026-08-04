@@ -80,9 +80,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ) {
                 self?.settingsWindowController?.close()
             }
+        },
+        onNativeProviderTransition: { [weak self] surfaceID, provider, processID in
+            guard let self else { return }
+            nativeAgentRunCoordinator.providerChanged(
+                surfaceID: surfaceID,
+                provider: provider,
+                processID: processID,
+                suppressedProviders: hookCoveredAgentProviders
+            )
+        },
+        onNativeCommandFinished: { [weak self] surfaceID, exitCode in
+            self?.nativeAgentRunCoordinator.commandFinished(
+                surfaceID: surfaceID,
+                exitCode: exitCode
+            )
         }
     )
     private lazy var cursorApprovalCoordinator = CursorApprovalCoordinator(
+        deliver: { [weak self] event in
+            self?.deliverSyntheticAgentEvent(event)
+        }
+    )
+    /// Estimates run lifecycle for panes whose provider hook integration
+    /// isn't installed (`NativeAgentRunEstimator`, `mytty.native.*` marker
+    /// events) -- see `hookCoveredAgentProviders` for how the estimator
+    /// learns which providers to stay out of.
+    private lazy var nativeAgentRunCoordinator = NativeAgentRunCoordinator(
         deliver: { [weak self] event in
             self?.deliverSyntheticAgentEvent(event)
         }
@@ -1354,9 +1378,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Providers whose hook integration is already installed, computed
+    /// fresh at every call rather than cached: it's read once per
+    /// foreground-provider transition (at most a few times a second, only
+    /// while a pane's provider is actually changing), and a cache would
+    /// need its own invalidation whenever the user toggles a provider in
+    /// Settings. `NativeAgentRunEstimator` must stay out of the way of any
+    /// provider in this set entirely -- the hook side owns those runs.
+    private var hookCoveredAgentProviders: Set<AgentProvider> {
+        Set(AgentProvider.allCases.filter {
+            agentIntegrationSettingsModel?.state(for: $0).status != .notInstalled
+        })
+    }
+
     private func receiveAgentEvent(_ event: AgentEvent) throws -> Bool {
         guard let attentionCenter else { return false }
         cursorApprovalCoordinator.observe(event)
+        nativeAgentRunCoordinator.observe(event)
         let inserted = try attentionCenter.append(event)
         if inserted {
             updateAgentSleepPrevention()

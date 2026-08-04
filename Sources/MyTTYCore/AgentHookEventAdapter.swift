@@ -141,6 +141,140 @@ public enum AgentHookEventAdapter {
     /// output.
     static let syntheticPendingApprovalHookName = "mytty.cursorApprovalPending"
 
+    /// Every `hookName` this adapter synthesizes rather than receives from
+    /// a provider's own hooks starts with this prefix -- `mytty.` alone,
+    /// not `mytty.native.`, so `syntheticPendingApprovalHookName` above
+    /// (Cursor's approval-pending estimate, which predates
+    /// `NativeAgentRunEstimator` and ships even when Cursor's hooks *are*
+    /// installed) also counts. `isMyttySynthesizedHookName` is the single
+    /// place that recognizes it, so a new synthesized kind only needs to
+    /// pick a name under this prefix, not update every consumer.
+    static let mySynthesizedHookNamePrefix = "mytty."
+
+    /// The narrower prefix used only by `NativeAgentRunEstimator`'s three
+    /// event kinds, for callers (docs, log filters) that want to say
+    /// "estimated from process/OSC 133 observation" specifically, as
+    /// opposed to any mytty-synthesized event in general.
+    public static let nativeHookNamePrefix = "mytty.native."
+
+    static let nativeLaunchObservedHookName = "\(nativeHookNamePrefix)launchObserved"
+    static let nativeCommandFinishedHookName = "\(nativeHookNamePrefix)commandFinished"
+    static let nativeProcessExitedHookName = "\(nativeHookNamePrefix)processExited"
+
+    /// True for any `hookName` mytty synthesized itself -- both
+    /// `syntheticPendingApprovalHookName` and every `mytty.native.*` kind
+    /// below. `NativeAgentRunEstimator.observeRealEvent` uses this to skip
+    /// its own output (and any other synthesized event) when watching the
+    /// event stream for hook coverage, the same way
+    /// `CursorApprovalPendingTracker` recognizes its own synthetic event by
+    /// exact hookName.
+    public static func isMyttySynthesizedHookName(_ hookName: String?) -> Bool {
+        guard let hookName else { return false }
+        return hookName.hasPrefix(mySynthesizedHookNamePrefix)
+    }
+
+    /// Derives the stable run ID a native-estimated epoch's events share,
+    /// from the same `epochKey` `NativeAgentRunEstimator` mints when the
+    /// epoch is registered. Exposed separately from the event factories
+    /// below so `NativeAgentRunEstimator` can log/compare run IDs without
+    /// building a whole event.
+    public static func nativeRunID(epochKey: String) -> AgentRunID {
+        AgentRunID(
+            rawValue: StableAgentUUID.make(
+                from: "run\u{0}native\u{0}\(epochKey)"
+            )
+        )
+    }
+
+    /// Builds the `started` event `NativeAgentRunEstimator` emits once a
+    /// detected agent process has stayed in a pane's foreground past the
+    /// estimator's start grace -- the native equivalent of a provider's own
+    /// `UserPromptSubmit`/`beforeSubmitPrompt` hook, for providers whose
+    /// hook integration isn't installed. `sessionID` is always nil: without
+    /// a hook there is no provider-reported session identifier to attach.
+    public static func nativeStartedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}started\u{0}\(epochKey)"
+                )
+            ),
+            runID: nativeRunID(epochKey: epochKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .started,
+            occurredAt: occurredAt,
+            hookName: nativeLaunchObservedHookName
+        )
+    }
+
+    /// Builds the terminal event `NativeAgentRunEstimator` emits when OSC
+    /// 133 reports the foreground command (the agent process itself) has
+    /// exited. A shell exit status of `0` reads as `succeeded`, any other
+    /// status as `failed`; a `nil` exit code means the terminal couldn't
+    /// determine one at all (not that the run merely disconnected mid-turn,
+    /// which is `nativeProcessExitedEvent`'s job), so it reads as
+    /// `disconnected` -- the only kind the reducer accepts unconditionally
+    /// regardless of the run's current state, so an uncertain outcome is
+    /// never mis-reported as a clean success or failure.
+    public static func nativeCommandFinishedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        exitCode: Int?,
+        occurredAt: Date
+    ) -> AgentEvent {
+        let kind: AgentEventKind = switch exitCode {
+        case 0: .succeeded
+        case .some: .failed
+        case .none: .disconnected
+        }
+        return AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}command-finished\u{0}\(epochKey)"
+                )
+            ),
+            runID: nativeRunID(epochKey: epochKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: kind,
+            occurredAt: occurredAt,
+            hookName: nativeCommandFinishedHookName
+        )
+    }
+
+    /// Builds the `disconnected` event `NativeAgentRunEstimator` emits when
+    /// the detected agent process simply disappears from a pane's
+    /// foreground without OSC 133 ever reporting the command finished (e.g.
+    /// the shell integration that emits OSC 133 isn't installed, or the
+    /// pane closed outright).
+    public static func nativeProcessExitedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}process-exited\u{0}\(epochKey)"
+                )
+            ),
+            runID: nativeRunID(epochKey: epochKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .disconnected,
+            occurredAt: occurredAt,
+            hookName: nativeProcessExitedHookName
+        )
+    }
+
     private static func codexMapping(
         _ object: [String: Any]
     ) -> Mapping? {

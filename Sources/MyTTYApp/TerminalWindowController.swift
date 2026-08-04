@@ -207,6 +207,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 provider: provider,
                 interruption: interruption
             )
+        },
+        onProviderTransition: { [weak self] surfaceID, provider, processID in
+            self?.onNativeProviderTransition(surfaceID, provider, processID)
         }
     )
     private lazy var repositoryStatus = RepositoryStatusCoordinator(
@@ -303,6 +306,24 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private let onSleepPreventionModeSelected: (AgentSleepPreventionMode) -> Void
     private let onTabDropRequested: (Int) -> Void
     private let onTabDragSessionEnded: (TabID, NSPoint) -> Void
+    /// Forwards `AgentStatusPollingCoordinator`'s foreground-provider
+    /// transitions to `NativeAgentRunCoordinator` (see
+    /// `AppDelegate.nativeAgentRunCoordinator`), so panes running a
+    /// provider without hooks installed still get estimated `started` /
+    /// end events. Optional-with-default-no-op so existing call sites and
+    /// tests that construct a controller don't all need updating.
+    private let onNativeProviderTransition: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider?,
+        _ processID: pid_t?
+    ) -> Void
+    /// Forwards OSC 133's command-end report the same way, for the other
+    /// half of the estimator's signal (see `NativeAgentRunEstimator
+    /// .commandFinished`).
+    private let onNativeCommandFinished: (
+        _ surfaceID: TerminalSurfaceID,
+        _ exitCode: Int?
+    ) -> Void
 
     private(set) var session: WindowSession
 
@@ -324,7 +345,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         onAgentActivityChanged: @escaping () -> Void,
         onSleepPreventionModeSelected: @escaping (AgentSleepPreventionMode) -> Void,
         onTabDropRequested: @escaping (Int) -> Void,
-        onTabDragSessionEnded: @escaping (TabID, NSPoint) -> Void
+        onTabDragSessionEnded: @escaping (TabID, NSPoint) -> Void,
+        onNativeProviderTransition: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider?,
+            _ processID: pid_t?
+        ) -> Void = { _, _, _ in },
+        onNativeCommandFinished: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ exitCode: Int?
+        ) -> Void = { _, _ in }
     ) throws {
         self.session = session
         // Seed the cache from what the session was restored (or adopted)
@@ -356,6 +386,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             onSleepPreventionModeSelected
         self.onTabDropRequested = onTabDropRequested
         self.onTabDragSessionEnded = onTabDragSessionEnded
+        self.onNativeProviderTransition = onNativeProviderTransition
+        self.onNativeCommandFinished = onNativeCommandFinished
 
         let windowFrame = NSRect(
             x: session.frame.x,
@@ -2494,6 +2526,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 exitCode: exitCode,
                 surfaceID: surfaceID
             )
+            onNativeCommandFinished(surfaceID, exitCode)
 
         case .rendererHealthChanged,
              .childExited:
