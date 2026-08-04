@@ -744,7 +744,7 @@ struct GhosttySurfaceIntegrationTests {
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         try """
         font-size = 13
-        command = /bin/zsh
+        command = direct:/bin/zsh -f
         shell-integration = none
         """.appending("\n").write(
             to: file,
@@ -845,10 +845,12 @@ struct GhosttySurfaceIntegrationTests {
         let configuration = try GhosttyConfiguration(file: file)
         let runtime = try GhosttyRuntime(configuration: configuration)
         let marker = "mytty-typed-text"
+        // Pin the prompt so the `$ aaa` assertion below doesn't depend on
+        // the default zsh prompt (which ends in `%` and varies by host).
         let surface = try GhosttySurfaceView(
             runtime: runtime,
             workingDirectory: file.deletingLastPathComponent(),
-            initialInput: "printf '\(marker)\\n'\n"
+            initialInput: "PS1='mytty$ '; printf '\(marker)\\n'\n"
         )
 
         for _ in 0..<100 {
@@ -886,7 +888,7 @@ struct GhosttySurfaceIntegrationTests {
         // The typed characters carry no styling of their own — in
         // particular no `ESC[7m`, which the shell applies to a bracketed
         // paste and which renders as a reverse-video block.
-        #expect(promptLine.contains("$ aaa"))
+        #expect(promptLine.contains("mytty$ aaa"))
         #expect(!promptLine.contains("\u{1B}[7m"))
     }
 
@@ -898,7 +900,14 @@ struct GhosttySurfaceIntegrationTests {
             withIntermediateDirectories: true
         )
         let file = directory.appendingPathComponent("terminal.conf")
-        try "font-size = 13\n".write(
+        // `zsh -f` skips every startup file (including `/etc/zshrc`, which
+        // sets HISTFILE unconditionally), so test shells never write the
+        // developer's real `~/.zsh_history` on exit and never depend on
+        // their rc files.
+        try """
+        font-size = 13
+        command = direct:/bin/zsh -f
+        """.appending("\n").write(
             to: file,
             atomically: true,
             encoding: .utf8
