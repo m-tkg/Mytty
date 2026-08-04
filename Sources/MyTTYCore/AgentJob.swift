@@ -141,6 +141,22 @@ public enum AgentIntegrationPreflight {
         case .installed: nil
         }
     }
+
+    /// The pane-level `wait` preflight is stricter than `agent spawn`'s
+    /// about what it lets through: only `notInstalled` fails, because
+    /// that's the state where no event can ever arrive and the wait is
+    /// guaranteed to burn its full timeout in silence. A `needsRepair`
+    /// integration may still be delivering events from a live session, so
+    /// failing a wait over it could break an orchestration that's
+    /// actually working.
+    public static func waitFailureCode(
+        for status: AgentIntegrationStatus
+    ) -> String? {
+        switch status {
+        case .notInstalled: "provider-integration-not-installed"
+        case .needsRepair, .installed: nil
+        }
+    }
 }
 
 /// Pure job/run reconciliation. One `AgentJobTracker` tracks exactly one

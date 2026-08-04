@@ -336,7 +336,7 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 { "type": "waitResult", "state": "idle", "timedOut": false }
 ```
 
-`--timeout-seconds` defaults to `120`. `state` is the `AgentRunState` observed when the wait resolved (or `null` if no event has ever arrived for that pane); `timedOut` is `true` if the deadline was reached without the condition being satisfied. See [wait semantics](#wait-semantics) below.
+`--timeout-seconds` defaults to `120`. `state` is the `AgentRunState` observed when the wait resolved (or `null` if no event has ever arrived for that pane); `timedOut` is `true` if the deadline was reached without the condition being satisfied. A pane already running an agent whose hook integration isn't installed fails immediately with `provider-integration-not-installed` instead of blocking. See [wait semantics](#wait-semantics) below.
 
 ### close-pane
 
@@ -375,7 +375,7 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `new-tab-failed` | `new-tab` could not create a tab |
 | `split-failed` | `split` could not split the given pane |
 | `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`); `agent spawn` also returns this if `--anchor` doesn't resolve to a live pane |
-| `provider-integration-not-installed` | `agent spawn`: the requested provider's hook integration isn't enabled in Settings |
+| `provider-integration-not-installed` | `agent spawn`: the requested provider's hook integration isn't enabled in Settings; `wait`: the pane's foreground process is a recognized agent whose integration isn't enabled (see [wait semantics](#wait-semantics)) |
 | `provider-integration-needs-repair` | `agent spawn`: the provider's hook integration is installed but stale/broken |
 | `invalid-cwd` | `agent spawn`: `--cwd` doesn't name an existing directory |
 | `invalid-label` | `agent spawn`: `--label` contains a control character or exceeds 100 Unicode scalars |
@@ -393,7 +393,7 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 
 - `--until idle` resolves once the pane's most recent agent run reaches `idle`, `succeeded`, `failed`, or `disconnected`. A pane that has never received an agent event blocks until timeout; there is no "already idle" default.
 - `--until attention` resolves once the run reaches `waiting-input` or `waiting-approval`. Antigravity's installed hooks never emit approval- or input-requested events (see [Agent providers](agent-providers.md)), so `wait --until attention` always times out for panes running that provider; use `--until idle` for it instead. Cursor never emits input-requested either, but it can reach `waiting-approval`: mytty estimates a stuck tool call from a delay between Cursor's `preToolUse` hook and the matching `postToolUse` / `postToolUseFailure`, so `wait --until attention` resolves for a Cursor pane once that estimate fires (roughly 10 seconds after the tool call starts, if nothing resolves it sooner).
-- If the target provider's hook integration has not been enabled yet in Settings, no agent events reach Mytty at all and `wait` blocks until timeout regardless of condition. This is the most common cause of an unexpected timeout the first time a provider is used from a script.
+- If the target provider's hook integration has not been enabled yet in Settings, no agent events reach Mytty at all. `wait` checks for this once before entering its poll loop: when the pane's foreground process is already a recognized agent (as seen by the 0.5-second process poll, `MYTTY_AGENT` hint included) whose integration is `not-installed`, it fails immediately with `provider-integration-not-installed` instead of blocking to timeout -- fix it with `mytty-ctl integration enable <provider>` or **Settings > Agents**. The check is deliberately a preflight, not per-poll (an agent exiting back to its shell mid-wait must not fail a legitimate wait), and it deliberately lets a `needs-repair` integration through, since one may still be delivering events from a live session. When the agent hasn't been launched yet as the wait starts -- the usual `split --command`-then-`wait` flow -- the preflight sees only a shell and the wait still blocks to timeout, so treat a timeout right after launching a provider as the same missing-integration signal.
 
 `agent wait` polls the same way, against `agent spawn`'s job instead of a pane. Its three conditions (`running`/`attention`/`completed`) are a different set from `wait`'s (`idle`/`attention`) -- see [agent wait](#agent-wait) above.
 

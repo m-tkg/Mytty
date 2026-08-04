@@ -257,9 +257,15 @@ public enum ControlCommandLineParser {
       WAIT PITFALLS
 
         - If the target provider's integration is not enabled in Mytty Settings,
-          no agent events reach Mytty at all, and `wait` blocks until it times
-          out regardless of condition. This is the single most common
-          first-time failure.
+          no agent events reach Mytty at all. `wait` on a pane whose
+          foreground process is already a recognized agent fails immediately
+          with `provider-integration-not-installed` -- ask the user to
+          approve `mytty-ctl integration enable <provider>` (or Settings >
+          Agents) instead of retrying. But if the agent hasn't been launched
+          yet when `wait` starts (the usual split-then-wait flow), the
+          preflight sees only a shell and the wait still blocks to timeout,
+          so treat a wait timeout right after launching a provider as the
+          same missing-integration signal.
         - Cursor never emits an input-requested event. A shell approval instead
           surfaces as `waiting-approval` roughly 10 seconds after the command
           starts, once Mytty's delay-based estimate fires.

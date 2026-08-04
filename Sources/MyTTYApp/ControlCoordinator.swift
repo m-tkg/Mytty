@@ -15,6 +15,9 @@ final class ControlCoordinator {
     private let attentionCenter: AttentionCenter
     private let localizerProvider: () -> MyTTYLocalizer
     private let agentJobCoordinator: AgentJobCoordinator
+    private let agentIntegrationStatus: (
+        AgentProvider
+    ) -> AgentIntegrationStatus
     private let integrationStates: () -> [AgentIntegrationSettingsState]
     private let confirmIntegrationInstall: (
         _ providers: [AgentProvider],
@@ -56,6 +59,7 @@ final class ControlCoordinator {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenter = attentionCenter
         self.localizerProvider = localizerProvider
+        self.agentIntegrationStatus = agentIntegrationStatus
         self.integrationStates = integrationStates
         self.confirmIntegrationInstall = confirmIntegrationInstall
         self.installIntegration = installIntegration
@@ -226,6 +230,23 @@ extension ControlCoordinator: ControlServerDelegate {
               controller(owning: surfaceID) != nil
         else { return nil }
         return .some(attentionCenter.mostRelevantRun(for: surfaceID)?.state)
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        waitPreflightFailureCodeForPaneID paneID: String
+    ) -> String? {
+        // An unresolvable pane is left to the poll loop's own
+        // pane-not-found answer; an unrecognized foreground process
+        // (plain shell, unknown binary, or an agent launched so recently
+        // the 0.5s process poll hasn't seen it yet) stays waitable.
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let provider = controller(owning: surfaceID)?
+                  .foregroundAgentProvider(forPane: surfaceID)
+        else { return nil }
+        return AgentIntegrationPreflight.waitFailureCode(
+            for: agentIntegrationStatus(provider)
+        )
     }
 
     func controlServer(

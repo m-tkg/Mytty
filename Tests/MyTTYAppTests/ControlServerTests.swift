@@ -286,6 +286,43 @@ struct ControlServerTests {
         #expect(response == .failure(code: "pane-not-found"))
     }
 
+    @Test("wait fails fast when the pane's provider integration is not installed")
+    func waitFailsFastForMissingIntegration() async throws {
+        let delegate = StubControlDelegate()
+        delegate.knownPaneIDs = ["pane-1"]
+        delegate.waitPreflightFailureCodes = [
+            "pane-1": "provider-integration-not-installed",
+        ]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .wait(paneID: "pane-1", until: .idle, timeoutSeconds: 30),
+            to: socketURL
+        )
+        #expect(
+            response == .failure(code: "provider-integration-not-installed")
+        )
+        // Fail-fast means answering immediately, not after the timeout.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("a nil preflight keeps wait's normal behavior")
+    func waitPreflightPassThrough() async throws {
+        let delegate = StubControlDelegate()
+        delegate.knownPaneIDs = ["pane-1"]
+        delegate.agentStates = ["pane-1": .succeeded]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let response = try await perform(
+            .wait(paneID: "pane-1", until: .idle, timeoutSeconds: 30),
+            to: socketURL
+        )
+        #expect(response == .waitResult(state: "succeeded", timedOut: false))
+    }
+
     @Test("integration list, enable, and repair route to the delegate")
     func integrationCommands() async throws {
         let delegate = StubControlDelegate()
@@ -898,6 +935,15 @@ private final class StubControlDelegate: ControlServerDelegate {
     ) -> AgentRunState?? {
         guard knownPaneIDs.contains(paneID) else { return nil }
         return .some(agentStates[paneID])
+    }
+
+    var waitPreflightFailureCodes: [String: String] = [:]
+
+    func controlServer(
+        _ server: ControlServer,
+        waitPreflightFailureCodeForPaneID paneID: String
+    ) -> String? {
+        waitPreflightFailureCodes[paneID]
     }
 
     func controlServer(

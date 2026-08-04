@@ -16,4 +16,20 @@ struct AgentIntegrationPreflightTests {
         )
         #expect(AgentIntegrationPreflight.failureCode(for: .installed) == nil)
     }
+
+    @Test("the wait preflight only fails a not-installed integration")
+    func waitFailureCodes() {
+        #expect(
+            AgentIntegrationPreflight.waitFailureCode(for: .notInstalled)
+                == "provider-integration-not-installed"
+        )
+        // needs-repair may still deliver events from a live session, so a
+        // wait against it must keep waiting rather than fail.
+        #expect(
+            AgentIntegrationPreflight.waitFailureCode(for: .needsRepair) == nil
+        )
+        #expect(
+            AgentIntegrationPreflight.waitFailureCode(for: .installed) == nil
+        )
+    }
 }
