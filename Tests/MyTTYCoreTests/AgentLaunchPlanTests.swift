@@ -32,11 +32,12 @@ struct AgentLaunchPlanTests {
     @Test("prefixes every launch command with the history-suppression guard")
     func historySuppressionPrefixApplied() {
         // The exact bytes matter: the leading space is what
-        // `hist_ignore_space` setups key on, and the `unset` must run in
-        // the same typed line as the launch command.
+        // `hist_ignore_space` setups key on, and the `unset` and `fc -p`
+        // must run in the same typed line as the launch command.
         #expect(
             AgentLaunchPlan.historySuppressionPrefix
                 == " builtin unset HISTFILE 2>/dev/null; "
+                + "builtin fc -p 2>/dev/null; "
         )
         let input = AgentLaunchPlan.initialInput(
             provider: .codex,
@@ -44,7 +45,7 @@ struct AgentLaunchPlanTests {
             model: nil,
             task: "task"
         )
-        #expect(input.hasPrefix(" builtin unset HISTFILE 2>/dev/null; "))
+        #expect(input.hasPrefix(AgentLaunchPlan.historySuppressionPrefix))
     }
 
     @Test("appends the worker contract exactly once")
@@ -72,7 +73,7 @@ struct AgentLaunchPlanTests {
         let input = AgentLaunchPlan.initialInput(command: command)
         #expect(input == AgentLaunchPlan.historySuppressionPrefix
             + command + "\n")
-        #expect(input.hasPrefix(" builtin unset HISTFILE 2>/dev/null; "))
+        #expect(input.hasPrefix(AgentLaunchPlan.historySuppressionPrefix))
         #expect(input.contains(command))
         #expect(input.hasSuffix("\n"))
         #expect(!input.hasSuffix("\n\n"))
