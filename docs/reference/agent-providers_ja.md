@@ -4,6 +4,16 @@ Mytty は5つの agent provider に対応しています。コード上は `Agen
 
 Antigravity provider は、1つの event カテゴリの下に2種類の実行バイナリをまとめています。`AgentProvider.antigravity` は Google Antigravity IDE のエージェントと、スタンドアロンの Gemini CLI の両方を指す単一のプロトコル上のカテゴリで、hook イベントとしては両者を区別しません。両者が分岐するのはセッション再開(resume)の場面で、Mytty はフォアグラウンドプロセスの実行バイナリの basename を見て、Gemini CLI らしければ(basename が `gemini` または `gemini-cli`、あるいはパスに `/gemini-cli/` を含む)`gemini --resume=<id>` を、そうでなければ `agy --conversation=<id>` を選びます(`Sources/MyTTYApp/AgentSessionRestoration.swift` の `AgentResumeLaunchPlan.isGeminiCLI`)。アプリ内の一部表記や過去のドキュメントはこれを「Gemini (Antigravity)」と短縮していますが、この表記は provider 名であって resume コマンドを表すものではありません。
 
+## フォアグラウンド provider の検出と `MYTTY_AGENT` ヒント
+
+ステータスバーは、ペインのフォアグラウンドプロセスの実行ファイルパスと argv の先頭数個を調べて、そのペインで動いているエージェントを識別します(`Sources/MyTTYApp/TerminalAgentProcessDetector.swift` の `TerminalAgentProcessDetector.provider(executablePath:arguments:)`)。エージェントを直接起動していれば これで足りますが、リモートへの `ssh`、コンテナへの `docker exec`、ラッパースクリプトなど、バイナリ名がエージェントについて何も語らないラッパー越しでは手がかりがありません。
+
+そうした場合は、ラッパーを起動する前に環境変数 `MYTTY_AGENT=<provider>` を export してください。パス/argv による検出で provider が特定できなかったときに限り、Mytty はラッパープロセスの exec 時点の環境からこの変数を読み取ってフォールバックします。値は `AgentProvider` の識別子 — `codex`、`claude-code`、`opencode`、`antigravity`、`cursor` — のいずれかで、前後の空白除去と小文字化のあと完全一致のみ受理し、それ以外は無視します。ヒントが実検出を上書きすることはなく、効果は provider の識別(ステータスバーの表示と provider 単位の参照)だけです。hook イベント自体は Mytty のイベントソケットに届く必要があり、リモートホストやコンテナの中からは届かないため、ヒント経由で検出されたペインは通常、実行状態なしで provider だけが表示されます。
+
+```sh
+MYTTY_AGENT=claude-code ssh devbox
+```
+
 ## 設定ファイルと handler
 
 hook helper の共有バイナリは `~/Library/Application Support/mytty/bin/mytty-agent-hook` に置かれます。**設定 > Agents** で provider を有効化すると次のファイルが書き換わります。

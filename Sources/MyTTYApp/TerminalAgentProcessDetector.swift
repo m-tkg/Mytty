@@ -89,13 +89,23 @@ enum TerminalAgentProcessDetector {
         shellCommandNames.contains(name)
     }
 
+    /// Environment variable a wrapper (ssh, container, launcher script) can
+    /// export to identify the agent it runs when the executable path gives
+    /// no signal. Values are the `AgentProvider` raw identifiers.
+    static let agentHintEnvironmentKey = "MYTTY_AGENT"
+
     static func provider(processID: pid_t) -> AgentProvider? {
         guard processID > 0,
               let executablePath = executablePath(processID: processID)
         else { return nil }
-        return provider(
+        if let detected = provider(
             executablePath: executablePath,
             arguments: arguments(processID: processID)
+        ) {
+            return detected
+        }
+        return providerHint(
+            fromEnvironment: environment(processID: processID)
         )
     }
 
@@ -155,6 +165,31 @@ enum TerminalAgentProcessDetector {
             return .antigravity
         }
         return nil
+    }
+
+    static func provider(
+        executablePath: String,
+        arguments: [String],
+        environment: [String: String]
+    ) -> AgentProvider? {
+        provider(executablePath: executablePath, arguments: arguments)
+            ?? providerHint(fromEnvironment: environment)
+    }
+
+    /// The `MYTTY_AGENT` fallback: only consulted when the executable path
+    /// and argv identify no provider, so a hint can never override real
+    /// detection. Only exact provider identifiers are accepted (after
+    /// trimming whitespace and lowercasing); anything else is ignored.
+    static func providerHint(
+        fromEnvironment environment: [String: String]
+    ) -> AgentProvider? {
+        guard let hint = environment[agentHintEnvironmentKey] else {
+            return nil
+        }
+        let normalized = hint
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return AgentProvider(rawValue: normalized)
     }
 
     /// The executable path and argv for a running process, exposed
@@ -241,15 +276,80 @@ enum TerminalAgentProcessDetector {
     /// The process's argv. Also read outside provider detection, to see the
     /// model an agent was launched with (`--model opus[1m]`).
     static func arguments(processID: pid_t) -> [String] {
+        guard let buffer = processArguments2(processID: processID) else {
+            return []
+        }
+        var index = buffer.argvStartIndex
+        var result: [String] = []
+        result.reserveCapacity(Int(max(buffer.argumentCount, 0)))
+        while index < buffer.bytes.count, result.count < buffer.argumentCount {
+            let start = index
+            skipString(in: buffer.bytes, index: &index)
+            if start < index,
+               let value = String(
+                   bytes: buffer.bytes[start..<index],
+                   encoding: .utf8
+               ) {
+                result.append(value)
+            }
+            skipNulls(in: buffer.bytes, index: &index)
+        }
+        return result
+    }
+
+    /// The process's environment as captured by the kernel at `exec` time
+    /// (`KERN_PROCARGS2` lays out envp right after argv). Later `setenv`
+    /// calls inside the process are not visible, which is fine for the
+    /// `MYTTY_AGENT` hint: a wrapper exports it before launching the agent.
+    /// The trailing apple-vars section (`executable_path=`, `ptr_munge=`,
+    /// ...) shares the `key=value` shape and is not filtered out, so treat
+    /// the result as a lookup table for known keys, not a faithful environ.
+    static func environment(processID: pid_t) -> [String: String] {
+        guard let buffer = processArguments2(processID: processID) else {
+            return [:]
+        }
+        var index = buffer.argvStartIndex
+        var seen: Int32 = 0
+        while index < buffer.bytes.count, seen < buffer.argumentCount {
+            skipString(in: buffer.bytes, index: &index)
+            skipNulls(in: buffer.bytes, index: &index)
+            seen += 1
+        }
+
+        var result: [String: String] = [:]
+        while index < buffer.bytes.count {
+            let start = index
+            skipString(in: buffer.bytes, index: &index)
+            if start < index,
+               let entry = String(
+                   bytes: buffer.bytes[start..<index],
+                   encoding: .utf8
+               ),
+               let separator = entry.firstIndex(of: "=") {
+                result[String(entry[..<separator])] =
+                    String(entry[entry.index(after: separator)...])
+            }
+            skipNulls(in: buffer.bytes, index: &index)
+        }
+        return result
+    }
+
+    /// The raw `KERN_PROCARGS2` buffer plus the offsets both parsers need:
+    /// `[argc][exec_path]\0...[argv]\0...[envp]\0...`. `argvStartIndex`
+    /// points at the first argv string, past argc and the exec path.
+    private static func processArguments2(
+        processID: pid_t
+    ) -> (bytes: [UInt8], argumentCount: Int32, argvStartIndex: Int)? {
+        guard processID > 0 else { return nil }
         var query = [CTL_KERN, KERN_PROCARGS2, processID]
         var size = 0
         guard sysctl(&query, UInt32(query.count), nil, &size, nil, 0) == 0,
               size > MemoryLayout<Int32>.size
-        else { return [] }
+        else { return nil }
 
         var bytes = [UInt8](repeating: 0, count: size)
         guard sysctl(&query, UInt32(query.count), &bytes, &size, nil, 0) == 0
-        else { return [] }
+        else { return nil }
         bytes = Array(bytes.prefix(size))
 
         var argumentCount: Int32 = 0
@@ -264,19 +364,7 @@ enum TerminalAgentProcessDetector {
         var index = MemoryLayout<Int32>.size
         skipString(in: bytes, index: &index)
         skipNulls(in: bytes, index: &index)
-
-        var result: [String] = []
-        result.reserveCapacity(Int(max(argumentCount, 0)))
-        while index < bytes.count, result.count < argumentCount {
-            let start = index
-            skipString(in: bytes, index: &index)
-            if start < index,
-               let value = String(bytes: bytes[start..<index], encoding: .utf8) {
-                result.append(value)
-            }
-            skipNulls(in: bytes, index: &index)
-        }
-        return result
+        return (bytes, argumentCount, index)
     }
 
     private static func skipString(in bytes: [UInt8], index: inout Int) {
