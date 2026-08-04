@@ -857,6 +857,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.agentIntegrationSettingsModel?
                     .state(for: provider).status ?? .notInstalled
             },
+            integrationStates: { [weak self] in
+                // Re-read every provider's on-disk config so the CLI sees
+                // current state, not whatever the Settings pane last showed.
+                self?.agentIntegrationSettingsModel?.refresh()
+                return self?.agentIntegrationSettingsModel?.states ?? []
+            },
+            confirmIntegrationInstall: { [weak self] providers, isRepair in
+                self?.confirmIntegrationInstallPrompt(
+                    providers: providers,
+                    isRepair: isRepair
+                ) ?? false
+            },
+            installIntegration: { [weak self] provider in
+                guard let self else { return }
+                agentIntegrationSettingsModel.setInstalled(
+                    true,
+                    for: provider,
+                    language: localizer.language.paneTeamPointerLanguage
+                )
+            },
             onError: { error in
                 WindowSessionCoordinator.reportPersistenceError(
                     error,
@@ -1278,6 +1298,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controllers.forEach {
             $0.updateAgentSleepStatus(status)
         }
+    }
+
+    /// The human gate behind `mytty-ctl integration enable`/`repair`:
+    /// activates the app and blocks on a modal until the person at the Mac
+    /// answers. Deliberately the only path that reaches
+    /// `setInstalled` from the control socket — an AI orchestrator can
+    /// request an install but can never approve one (see
+    /// `docs/explanation/mytty-ctl-architecture.md`).
+    private func confirmIntegrationInstallPrompt(
+        providers: [AgentProvider],
+        isRepair: Bool
+    ) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let names = providers.map(\.title).joined(separator: ", ")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = isRepair
+            ? localizer.integrationRepairPromptTitle(names)
+            : localizer.integrationEnablePromptTitle(names)
+        alert.informativeText = localizer[.integrationInstallPromptMessage]
+        alert.addButton(withTitle: isRepair
+            ? localizer[.repairIntegration]
+            : localizer[.enableIntegration])
+        alert.addButton(withTitle: localizer[.cancel])
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Explains the one-time background-item approval before System

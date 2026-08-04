@@ -167,6 +167,27 @@ mytty-ctl agent close "$job"
 mytty-ctl guide
 ```
 
+### integration list / integration enable / integration repair
+
+```bash
+mytty-ctl integration list
+mytty-ctl integration enable claude-code
+mytty-ctl integration repair
+```
+
+```json
+{ "type": "integrationStatuses", "integrations": [
+  { "provider": "claude-code", "status": "installed" },
+  { "provider": "codex", "status": "not-installed" }
+] }
+```
+
+`integration list` は全 provider の hook 連携の状態(`installed`、`not-installed`、`needs-repair`)を返します。**設定 > Agents** が表示するのと同じ状態を、呼び出しのたびに各 provider の設定ファイルから読み直したものです。直前のインストール試行が失敗している場合は `error` 文字列も入ります。
+
+`integration enable <provider>` はその provider の hook をインストールし、`integration repair` は `needs-repair` の連携(provider を指定した場合はその 1 つ。未インストールのものを指定すれば単なるインストールになります)を再インストールします。どちらも `AgentProvider` の 5 つの識別子(`codex`、`claude-code`、`opencode`、`antigravity`、`cursor`)を取ります。`agent spawn --provider` の 3 値の語彙とは別物です — 連携は Mytty が追跡できる全 provider に存在し、`agent spawn` が起動できるものに限らないためです。
+
+hook の有効化は、その provider のセッション内で Mytty 提供のコードが実行されるようになることを意味します。そのため変更を伴う 2 コマンドは、Mytty アプリが Mac の前にいる人間に確認ダイアログを提示して回答があるまでブロックします。これをスキップするフラグは意図的に存在しません — AI オーケストレーターはインストールを「依頼」できても「承認」は絶対にできない、という構造を保つためです。CLI は回答を最大 180 秒待ちます。拒否されると `integration-declined` で失敗し、承認されると設定画面のトグルと同じインストール(pane-team pointer の処理込み)を行った上で最新の状態一覧を返します。すでにインストール済みの provider の enable や、修復対象が無いときの repair は、ダイアログを出さずに現在の状態を返します。
+
 ### list
 
 開いている全ウィンドウの全ペインを一覧します。
@@ -360,6 +381,7 @@ mytty-ctl focus "$paneA"
 | `invalid-task` | `agent spawn`: 解決後のタスクテキストが空 |
 | `spawn-failed` | `agent spawn`: ペインを作成できなかった |
 | `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: 指定した job ID が未知(そもそも存在しない、または直前の Mytty 再起動より前に発行されたもの。job ID は永続化されない) |
+| `integration-declined` | `integration enable`/`integration repair`: Mac の前にいる人間が確認ダイアログを拒否した(または誰も回答しなかった) |
 | `job-lost` | `agent send`/`agent focus`: job のペインが消えている(下記 `lost` を参照)。`agent result` と `agent close` はこのコードを使わない -- job の `lost` 状態と空の結果を返し、すでに消えているペインを閉じる操作も終了コード `0` になる |
 
 ## wait の挙動

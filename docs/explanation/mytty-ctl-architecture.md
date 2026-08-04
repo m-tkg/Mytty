@@ -82,6 +82,12 @@ The binding rule itself is deliberately simple and independent of `AttentionCent
 
 The job registry itself is not persisted, unlike `TerminalSurfaceState`. A Mytty restart loses every job ID that was ever issued -- `agent wait`/ `agent result`/etc. against one of them then returns `job-not-found` -- while leaving the panes and worker processes those jobs pointed at running exactly as before. This mirrors the "no resident orchestrator" tradeoff above: state that only matters while some lead process is still around to use it doesn't need to survive an app restart, and not persisting it means there's no stale-job-registry migration to get wrong later.
 
+## Why integration install requires a human dialog
+
+`mytty-ctl integration enable`/`repair` are the one place the control socket crosses from "drive panes" into "change what code runs elsewhere": installing a hook writes Mytty's helper into a provider's own configuration, so every future session of that provider executes it. The same-user trust model that justifies the unauthenticated socket (a local process could already drive Mytty via CGEvent) does not cover this, because the requester is typically not the user — it's an AI orchestrator reacting to a `provider-integration-not-installed` failure, and "the agent wants its own hooks installed" is exactly the request that should not be self-serviced.
+
+So the approval lives where only a human can reach it: the app activates and runs a modal confirmation dialog (`AppDelegate.confirmIntegrationInstallPrompt`), and the CLI blocks until it's answered (up to 180 seconds; a decline fails with `integration-declined`). There is deliberately no `--yes` flag — a flag an AI can type is not consent — and no other code path from `ControlServer` to `AgentIntegrationSettingsModel.setInstalled`, so requesting an install and approving one stay structurally separate. `integration list` is read-only and answers without a dialog, as do an `enable` of an already-installed provider and a `repair` with nothing to repair.
+
 ## References
 
 - `docs/reference/mytty-ctl.md`: command reference and usage patterns, including the `agent` failure codes and job/run binding summary

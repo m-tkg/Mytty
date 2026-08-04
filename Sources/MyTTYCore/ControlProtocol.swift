@@ -66,6 +66,34 @@ public struct ControlPaneInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// One provider's hook-integration state as reported by
+/// `mytty-ctl integration list/enable/repair`. `status` carries
+/// `AgentIntegrationStatus.controlValue`; `error` is the same
+/// human-readable install error the Settings pane would show, if the last
+/// install/repair attempt failed.
+public struct ControlIntegrationInfo: Codable, Equatable, Sendable {
+    public let provider: String
+    public let status: String
+    public let error: String?
+
+    public init(provider: String, status: String, error: String?) {
+        self.provider = provider
+        self.status = status
+        self.error = error
+    }
+}
+
+public extension AgentIntegrationStatus {
+    /// The wire value `ControlIntegrationInfo.status` carries.
+    var controlValue: String {
+        switch self {
+        case .notInstalled: "not-installed"
+        case .installed: "installed"
+        case .needsRepair: "needs-repair"
+        }
+    }
+}
+
 public struct ControlPaneContent: Codable, Equatable, Sendable {
     public let paneID: String
     public let text: String
@@ -140,6 +168,19 @@ public enum ControlRequest: Equatable, Sendable {
     case sendAgent(jobID: AgentJobID, text: String, pressEnter: Bool)
     case focusAgent(jobID: AgentJobID)
     case closeAgent(jobID: AgentJobID)
+
+    /// Read-only status of every provider's hook integration.
+    case integrationList
+    /// Install `provider`'s hook integration. The app puts a confirmation
+    /// dialog in front of a human first — there is deliberately no flag to
+    /// bypass it, since installing a hook amounts to arbitrary code
+    /// execution inside that provider's sessions. Declining answers with
+    /// failure code `integration-declined`.
+    case integrationEnable(provider: AgentProvider)
+    /// Repair `provider`'s integration, or every integration that needs
+    /// repair when `provider` is nil. Same human confirmation as
+    /// `integrationEnable`.
+    case integrationRepair(provider: AgentProvider?)
 }
 
 public enum ControlResponse: Equatable, Sendable {
@@ -154,6 +195,11 @@ public enum ControlResponse: Equatable, Sendable {
     case agentJob(AgentJobSnapshot)
     case agentWaitResult(job: AgentJobSnapshot, timedOut: Bool)
     case agentResult(job: AgentJobSnapshot, content: ControlPaneContent)
+
+    /// Answer to every `integration*` request: the fresh status of all
+    /// providers, so `enable`/`repair` callers see the state they produced
+    /// without a second `list` round-trip.
+    case integrationStatuses([ControlIntegrationInfo])
 }
 
 extension ControlRequest: Codable {
@@ -173,6 +219,9 @@ extension ControlRequest: Codable {
         case sendAgent
         case focusAgent
         case closeAgent
+        case integrationList
+        case integrationEnable
+        case integrationRepair
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -337,6 +386,22 @@ extension ControlRequest: Codable {
             self = .closeAgent(
                 jobID: try container.decode(AgentJobID.self, forKey: .jobID)
             )
+        case .integrationList:
+            self = .integrationList
+        case .integrationEnable:
+            self = .integrationEnable(
+                provider: try container.decode(
+                    AgentProvider.self,
+                    forKey: .provider
+                )
+            )
+        case .integrationRepair:
+            self = .integrationRepair(
+                provider: try container.decodeIfPresent(
+                    AgentProvider.self,
+                    forKey: .provider
+                )
+            )
         }
     }
 
@@ -416,6 +481,14 @@ extension ControlRequest: Codable {
         case let .closeAgent(jobID):
             try container.encode(RequestType.closeAgent, forKey: .type)
             try container.encode(jobID, forKey: .jobID)
+        case .integrationList:
+            try container.encode(RequestType.integrationList, forKey: .type)
+        case let .integrationEnable(provider):
+            try container.encode(RequestType.integrationEnable, forKey: .type)
+            try container.encode(provider, forKey: .provider)
+        case let .integrationRepair(provider):
+            try container.encode(RequestType.integrationRepair, forKey: .type)
+            try container.encodeIfPresent(provider, forKey: .provider)
         }
     }
 }
@@ -431,6 +504,7 @@ extension ControlResponse: Codable {
         case agentJob
         case agentWaitResult
         case agentResult
+        case integrationStatuses
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -442,6 +516,7 @@ extension ControlResponse: Codable {
         case timedOut
         case code
         case job
+        case integrations
     }
 
     public init(from decoder: Decoder) throws {
@@ -500,6 +575,13 @@ extension ControlResponse: Codable {
                     forKey: .content
                 )
             )
+        case .integrationStatuses:
+            self = .integrationStatuses(
+                try container.decode(
+                    [ControlIntegrationInfo].self,
+                    forKey: .integrations
+                )
+            )
         }
     }
 
@@ -535,6 +617,12 @@ extension ControlResponse: Codable {
             try container.encode(ResponseType.agentResult, forKey: .type)
             try container.encode(job, forKey: .job)
             try container.encode(content, forKey: .content)
+        case let .integrationStatuses(integrations):
+            try container.encode(
+                ResponseType.integrationStatuses,
+                forKey: .type
+            )
+            try container.encode(integrations, forKey: .integrations)
         }
     }
 }

@@ -38,6 +38,24 @@ struct LocalizationTests {
         #expect(english[.keyBindings] == "Key Bindings")
         #expect(english[.window] == "Window")
         #expect(english[.right] == "Right")
+        #expect(english[.enableIntegration] == "Enable Integration")
+        #expect(japanese[.enableIntegration] == "連携を有効化")
+        #expect(
+            english.integrationEnablePromptTitle("Codex")
+                == "Enable the Codex hook integration?"
+        )
+        #expect(
+            japanese.integrationEnablePromptTitle("Codex")
+                == "Codex の hook 連携を有効化しますか？"
+        )
+        #expect(
+            english.integrationRepairPromptTitle("Codex, Cursor")
+                .contains("Codex, Cursor")
+        )
+        #expect(
+            japanese[.integrationInstallPromptMessage]
+                .contains("mytty-ctl")
+        )
         #expect(english[.bottom] == "Bottom")
         #expect(english[.restoreLastSession] == "Restore last session")
         #expect(english.commandTitle(.newWindow) == "New Window")

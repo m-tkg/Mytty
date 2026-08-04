@@ -58,6 +58,27 @@ protocol ControlServerDelegate: AnyObject {
         _ server: ControlServer,
         focusPaneID paneID: String
     ) -> Bool
+
+    /// Current status of every provider's hook integration, for
+    /// `integration list` and as the success payload of enable/repair.
+    func controlServerIntegrationStatuses(
+        _ server: ControlServer
+    ) -> [ControlIntegrationInfo]
+
+    /// Install `provider`'s hook integration after a human approves the
+    /// in-app confirmation dialog. Blocks the request until the dialog is
+    /// answered; a decline fails with `integration-declined`.
+    func controlServer(
+        _ server: ControlServer,
+        enableIntegrationFor provider: AgentProvider
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure>
+
+    /// Repair `provider`'s integration (or every integration needing
+    /// repair when nil), behind the same human confirmation as enabling.
+    func controlServer(
+        _ server: ControlServer,
+        repairIntegrationsFor provider: AgentProvider?
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure>
 }
 
 /// A `mytty-ctl agent` request that couldn't be completed, carrying the
@@ -283,6 +304,21 @@ final class ControlServer {
                 return .failure(code: "pane-not-found")
             }
             return .ok
+
+        case .integrationList:
+            return .integrationStatuses(
+                delegate.controlServerIntegrationStatuses(self)
+            )
+
+        case let .integrationEnable(provider):
+            return Self.encodeAgentResult(
+                delegate.controlServer(self, enableIntegrationFor: provider)
+            ) { .integrationStatuses($0) }
+
+        case let .integrationRepair(provider):
+            return Self.encodeAgentResult(
+                delegate.controlServer(self, repairIntegrationsFor: provider)
+            ) { .integrationStatuses($0) }
 
         case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
              .closeAgent:

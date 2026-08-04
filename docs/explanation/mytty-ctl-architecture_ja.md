@@ -82,6 +82,12 @@ graph LR
 
 job レジストリ自体は `TerminalSurfaceState` と違って永続化されません。Mytty を再起動すると、それまでに発行された job ID はすべて失われ、以後その job ID に対する `agent wait`/`agent result` などは `job-not-found` を返すようになります。一方で、それらの job が指していたペインやワーカープロセスはそのまま動き続けます。これは上で説明した「常駐オーケストレーターを置かない」という判断と同じ考え方で、司令塔プロセスが生きている間だけ意味を持つ状態はアプリ再起動をまたいで生き残る必要がなく、永続化しないことで後から古い job レジストリの移行処理を書く必要も生まれません。
 
+## integration のインストールに人間のダイアログを要求する理由
+
+`mytty-ctl integration enable`/`repair` は、制御ソケットが「ペインを操作する」から「他所で実行されるコードを変更する」へ踏み込む唯一の場所です。hook のインストールは Mytty のヘルパーを provider 自身の設定に書き込むことであり、以後その provider のすべてのセッションがそれを実行するようになります。認証なしソケットを正当化している同一ユーザーの信頼モデル(ローカルプロセスは CGEvent で既に Mytty を操作できる)はここには当てはまりません。要求者は通常ユーザー本人ではなく、`provider-integration-not-installed` エラーを受けた AI オーケストレーターであり、「エージェントが自分用の hook のインストールを求める」というのは、まさにセルフサービスにしてはいけない類の要求だからです。
+
+そこで承認は人間にしか届かない場所に置いています。アプリが最前面化してモーダルの確認ダイアログを表示し(`AppDelegate.confirmIntegrationInstallPrompt`)、CLI は回答まで(最大 180 秒)ブロックします。拒否は `integration-declined` で失敗します。`--yes` のようなフラグは意図的にありません — AI が自分で打てるフラグは同意ではないからです。また `ControlServer` から `AgentIntegrationSettingsModel.setInstalled` へ至る経路はこのダイアログ経由の一本だけで、インストールの「依頼」と「承認」が構造的に分離されています。`integration list` は読み取り専用でダイアログなしに応答し、インストール済み provider への enable や修復対象の無い repair も同様です。
+
 ## 参考
 
 - `docs/reference/mytty-ctl.md`: コマンドリファレンスとユースケース集。`agent` の失敗コードと job/実行バインディングの要点も含みます
