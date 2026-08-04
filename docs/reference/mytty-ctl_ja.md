@@ -333,7 +333,7 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 { "type": "waitResult", "state": "idle", "timedOut": false }
 ```
 
-`--timeout-seconds` のデフォルトは `120` です。`state` は wait が解決した時点で観測された `AgentRunState`(そのペインに一度もイベントが来ていなければ `null`)です。`timedOut` は、タイムアウトまでに条件を満たせなかった場合に `true` になります。詳細は下記「wait の挙動」を参照してください。
+`--timeout-seconds` のデフォルトは `120` です。`state` は wait が解決した時点で観測された `AgentRunState`(そのペインに一度もイベントが来ていなければ `null`)です。`timedOut` は、タイムアウトまでに条件を満たせなかった場合に `true` になります。hook 連携が未インストールのエージェントが既に動いているペインに対しては、ブロックせず即座に `provider-integration-not-installed` で失敗します。詳細は下記「wait の挙動」を参照してください。
 
 ### close-pane
 
@@ -372,7 +372,7 @@ mytty-ctl focus "$paneA"
 | `new-tab-failed` | `new-tab` がタブを作成できなかった |
 | `split-failed` | `split` が指定ペインを分割できなかった |
 | `pane-not-found` | 指定した `pane-id` が生存中のペインに解決できない(`send`、`send-key`、`read`、`wait`、`close-pane`、`focus` でも返り得る)。`agent spawn` も `--anchor` が生存中のペインに解決できない場合にこれを返す |
-| `provider-integration-not-installed` | `agent spawn`: 指定した provider の hook 連携が Settings で有効化されていない |
+| `provider-integration-not-installed` | `agent spawn`: 指定した provider の hook 連携が Settings で有効化されていない。`wait`: ペインのフォアグラウンドプロセスが既知のエージェントで、その連携が有効化されていない(下記「wait の挙動」参照) |
 | `provider-integration-needs-repair` | `agent spawn`: provider の hook 連携は導入済みだが古くなっている、または壊れている |
 | `invalid-cwd` | `agent spawn`: `--cwd` が実在するディレクトリを指していない |
 | `invalid-label` | `agent spawn`: `--label` に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
@@ -390,7 +390,7 @@ mytty-ctl focus "$paneA"
 
 - `--until idle` は、対象ペインの直近のエージェント実行が `idle` / `succeeded` / `failed` / `disconnected` のいずれかになった時点で解決します。一度もエージェントイベントを受け取っていないペインは、タイムアウトするまでブロックし続けます。「まだ何も来ていない=idle 扱い」というデフォルトはありません。
 - `--until attention` は、実行状態が `waiting-input` または `waiting-approval` になった時点で解決します。Antigravity の導入済み hook は承認・入力待ちイベントを一切出さないため([Agent providers](agent-providers_ja.md) 参照)、この provider が動くペインでは `wait --until attention` は常にタイムアウトします。Antigravity には `--until idle` を使ってください。Cursor も入力待ちイベントは出しませんが、承認待ちには到達しえます。mytty は Cursor の `preToolUse` hook と、対応する `postToolUse` / `postToolUseFailure` との間隔から、詰まった tool call を推定します。そのため、その推定が発火した時点(何も解決しなければ tool call 開始からおおよそ10秒後)で、Cursor ペインの `wait --until attention` も解決します。
-- 対象 provider の hook 連携が設定でまだ有効化されていない場合、エージェントイベントが一切 Mytty に届きません。そのため条件に関わらず、`wait` はタイムアウトするまでブロックし続けます。provider を初めてスクリプトから使うときに想定外のタイムアウトが起きる、最もよくある原因がこれです。
+- 対象 provider の hook 連携が設定でまだ有効化されていない場合、エージェントイベントが一切 Mytty に届きません。`wait` はポーリングループに入る前に一度だけこれを検査します: ペインのフォアグラウンドプロセスが既に既知のエージェント(0.5 秒周期のプロセスポーリングが見ているもの。`MYTTY_AGENT` ヒント込み)で、その連携が `not-installed` なら、タイムアウトまでブロックする代わりに即座に `provider-integration-not-installed` で失敗します。`mytty-ctl integration enable <provider>` か **設定 > Agents** で修復してください。検査が毎ポーリングでなく事前の 1 回だけなのは意図的です(wait の途中でエージェントが終了してシェルに戻っても、正当な wait を失敗させないため)。`needs-repair` の連携を素通しするのも意図的で、進行中のセッションからイベントが届き続けている可能性があるためです。wait 開始時点でエージェントがまだ起動していない場合(`split --command` の直後に `wait` する通常の流れ)、事前検査にはシェルしか見えないため従来どおりタイムアウトまでブロックします。provider を起動した直後のタイムアウトは、同じ連携未導入のシグナルとして扱ってください。
 
 `agent wait` も同じようにポーリングしますが、対象はペインではなく `agent spawn` が作った job です。条件も `wait`(`idle`/`attention`)とは異なる3種類(`running`/`attention`/`completed`)になります。詳細は上の [agent wait](#agent-wait) を参照してください。
 

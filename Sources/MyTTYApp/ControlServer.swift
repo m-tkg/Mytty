@@ -49,6 +49,17 @@ protocol ControlServerDelegate: AnyObject {
         agentStateForPaneID paneID: String
     ) -> AgentRunState??
 
+    /// Checked once before `wait` enters its poll loop: a non-nil failure
+    /// code aborts the wait immediately instead of letting it block to
+    /// timeout on a pane whose provider can never deliver an event (hook
+    /// integration not installed). Nil means proceed — including when the
+    /// pane's foreground process is no recognized provider at all, since
+    /// a shell about to launch an agent must stay waitable.
+    func controlServer(
+        _ server: ControlServer,
+        waitPreflightFailureCodeForPaneID paneID: String
+    ) -> String?
+
     func controlServer(
         _ server: ControlServer,
         closePaneID paneID: String
@@ -446,6 +457,15 @@ final class ControlServer {
         timeoutSeconds: Double,
         delegate: ControlServerDelegate
     ) async -> ControlResponse {
+        // Once, not per poll: mid-wait the agent can exit back to the
+        // shell, and a per-poll recheck would then mistake the shell for
+        // "no integration" and fail a wait that was legitimately running.
+        if let failureCode = delegate.controlServer(
+            self,
+            waitPreflightFailureCodeForPaneID: paneID
+        ) {
+            return .failure(code: failureCode)
+        }
         let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
         while true {
             guard let state = delegate.controlServer(
