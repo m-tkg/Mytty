@@ -286,6 +286,67 @@ struct ControlServerTests {
         #expect(response == .failure(code: "pane-not-found"))
     }
 
+    @Test("integration list, enable, and repair route to the delegate")
+    func integrationCommands() async throws {
+        let delegate = StubControlDelegate()
+        let statuses = [
+            ControlIntegrationInfo(
+                provider: "claude-code",
+                status: "installed",
+                error: nil
+            ),
+            ControlIntegrationInfo(
+                provider: "codex",
+                status: "not-installed",
+                error: nil
+            ),
+        ]
+        delegate.integrationStatuses = statuses
+        delegate.enableIntegrationResult = .success(statuses)
+        delegate.repairIntegrationsResult = .success(statuses)
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let listResponse = try await perform(.integrationList, to: socketURL)
+        #expect(listResponse == .integrationStatuses(statuses))
+
+        let enableResponse = try await perform(
+            .integrationEnable(provider: .codex),
+            to: socketURL
+        )
+        #expect(enableResponse == .integrationStatuses(statuses))
+        #expect(delegate.lastEnableProvider == .codex)
+
+        let repairAll = try await perform(
+            .integrationRepair(provider: nil),
+            to: socketURL
+        )
+        #expect(repairAll == .integrationStatuses(statuses))
+        #expect(delegate.lastRepairProvider == .some(nil))
+
+        let repairOne = try await perform(
+            .integrationRepair(provider: .cursor),
+            to: socketURL
+        )
+        #expect(repairOne == .integrationStatuses(statuses))
+        #expect(delegate.lastRepairProvider == .some(.cursor))
+    }
+
+    @Test("a declined integration install surfaces as integration-declined")
+    func integrationDeclined() async throws {
+        let delegate = StubControlDelegate()
+        delegate.enableIntegrationResult =
+            .failure(AgentControlFailure("integration-declined"))
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let response = try await perform(
+            .integrationEnable(provider: .claudeCode),
+            to: socketURL
+        )
+        #expect(response == .failure(code: "integration-declined"))
+    }
+
     @Test("malformed JSON is rejected without crashing the server")
     func rejectsMalformedRequest() async throws {
         let delegate = StubControlDelegate()
@@ -851,6 +912,38 @@ private final class StubControlDelegate: ControlServerDelegate {
         focusPaneID paneID: String
     ) -> Bool {
         knownPaneIDs.contains(paneID)
+    }
+
+    var integrationStatuses: [ControlIntegrationInfo] = []
+    var enableIntegrationResult:
+        Result<[ControlIntegrationInfo], AgentControlFailure> =
+            .failure(AgentControlFailure("integration-declined"))
+    var repairIntegrationsResult:
+        Result<[ControlIntegrationInfo], AgentControlFailure> =
+            .failure(AgentControlFailure("integration-declined"))
+    var lastEnableProvider: AgentProvider?
+    var lastRepairProvider: AgentProvider??
+
+    func controlServerIntegrationStatuses(
+        _ server: ControlServer
+    ) -> [ControlIntegrationInfo] {
+        integrationStatuses
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        enableIntegrationFor provider: AgentProvider
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        lastEnableProvider = provider
+        return enableIntegrationResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        repairIntegrationsFor provider: AgentProvider?
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        lastRepairProvider = .some(provider)
+        return repairIntegrationsResult
     }
 }
 

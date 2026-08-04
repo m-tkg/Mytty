@@ -15,6 +15,12 @@ final class ControlCoordinator {
     private let attentionCenter: AttentionCenter
     private let localizerProvider: () -> MyTTYLocalizer
     private let agentJobCoordinator: AgentJobCoordinator
+    private let integrationStates: () -> [AgentIntegrationSettingsState]
+    private let confirmIntegrationInstall: (
+        _ providers: [AgentProvider],
+        _ isRepair: Bool
+    ) -> Bool
+    private let installIntegration: (AgentProvider) -> Void
 
     init(
         socketURL: URL,
@@ -29,11 +35,30 @@ final class ControlCoordinator {
         agentIntegrationStatus: @escaping (
             AgentProvider
         ) -> AgentIntegrationStatus,
+        /// Fresh per-provider integration state for the `integration`
+        /// commands; `AppDelegate` refreshes the settings model from disk
+        /// before returning its states.
+        integrationStates: @escaping () -> [AgentIntegrationSettingsState],
+        /// Puts the install/repair confirmation dialog in front of a human
+        /// and reports their answer. Lives app-side (not here) so it can
+        /// activate the app and run a modal — and so no code path exists
+        /// that installs hooks without it.
+        confirmIntegrationInstall: @escaping (
+            _ providers: [AgentProvider],
+            _ isRepair: Bool
+        ) -> Bool,
+        /// Performs one provider's install after approval — the same
+        /// `AgentIntegrationSettingsModel.setInstalled` the Settings
+        /// toggle uses, pane-team pointer handling included.
+        installIntegration: @escaping (AgentProvider) -> Void,
         onError: @escaping (Error) -> Void
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenter = attentionCenter
         self.localizerProvider = localizerProvider
+        self.integrationStates = integrationStates
+        self.confirmIntegrationInstall = confirmIntegrationInstall
+        self.installIntegration = installIntegration
         agentJobCoordinator = AgentJobCoordinator(
             windowSessionCoordinator: windowSessionCoordinator,
             attentionCenter: attentionCenter,
@@ -222,5 +247,69 @@ extension ControlCoordinator: ControlServerDelegate {
             return false
         }
         return controller(owning: surfaceID)?.focus(pane: surfaceID) ?? false
+    }
+
+    func controlServerIntegrationStatuses(
+        _ server: ControlServer
+    ) -> [ControlIntegrationInfo] {
+        integrationStates().map { state in
+            ControlIntegrationInfo(
+                provider: state.provider.rawValue,
+                status: state.status.controlValue,
+                error: state.errorMessage
+            )
+        }
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        enableIntegrationFor provider: AgentProvider
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        installIntegrations(
+            targets: currentStatus(of: provider) == .installed
+                ? []
+                : [provider],
+            isRepair: false
+        )
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        repairIntegrationsFor provider: AgentProvider?
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        // An explicitly named provider is always repaired (repairing a
+        // not-yet-installed one is just an install); the no-argument form
+        // only touches integrations that report needs-repair.
+        let targets = provider.map { [$0] }
+            ?? integrationStates()
+                .filter { $0.status == .needsRepair }
+                .map(\.provider)
+        return installIntegrations(targets: targets, isRepair: true)
+    }
+
+    /// Shared enable/repair path: an empty `targets` is already satisfied
+    /// and returns fresh statuses without bothering a human; otherwise the
+    /// confirmation dialog decides between installing and
+    /// `integration-declined`.
+    private func installIntegrations(
+        targets: [AgentProvider],
+        isRepair: Bool
+    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        guard !targets.isEmpty else {
+            return .success(controlServerIntegrationStatuses(server))
+        }
+        guard confirmIntegrationInstall(targets, isRepair) else {
+            return .failure(AgentControlFailure("integration-declined"))
+        }
+        targets.forEach(installIntegration)
+        return .success(controlServerIntegrationStatuses(server))
+    }
+
+    private func currentStatus(
+        of provider: AgentProvider
+    ) -> AgentIntegrationStatus {
+        integrationStates()
+            .first { $0.provider == provider }?
+            .status ?? .notInstalled
     }
 }

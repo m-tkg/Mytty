@@ -349,6 +349,8 @@ enum MyTTYText: String {
     case needsRepair = "Needs repair"
     case repairIntegration = "Repair Integration"
     case installIntegration = "Install Integration"
+    case enableIntegration = "Enable Integration"
+    case integrationInstallPromptMessage = "A mytty-ctl command asked for this. Enabling installs Mytty's hook helper into the provider's configuration, so its sessions run that helper and report agent state to Mytty. Only approve if you ran the command yourself or trust the agent that did."
     case removeIntegration = "Remove Integration"
     case noItemsNeedAttention = "No items need attention"
     case resolved = "Resolved"
@@ -564,6 +566,20 @@ struct MyTTYLocalizer: Equatable {
         switch language {
         case .english: "\(title) key binding"
         case .japanese: "\(title) のキーバインド"
+        }
+    }
+
+    func integrationEnablePromptTitle(_ providers: String) -> String {
+        switch language {
+        case .english: "Enable the \(providers) hook integration?"
+        case .japanese: "\(providers) の hook 連携を有効化しますか？"
+        }
+    }
+
+    func integrationRepairPromptTitle(_ providers: String) -> String {
+        switch language {
+        case .english: "Repair the \(providers) hook integration?"
+        case .japanese: "\(providers) の hook 連携を修復しますか？"
         }
     }
 
@@ -910,6 +926,12 @@ struct MyTTYLocalizer: Equatable {
         case .needsRepair: "修復が必要"
         case .repairIntegration: "連携を修復"
         case .installIntegration: "連携をインストール"
+        case .enableIntegration: "連携を有効化"
+        case .integrationInstallPromptMessage: "mytty-ctl コマンドからの要求です。"
+            + "有効化すると Mytty の hook ヘルパーがこの provider の設定に組み込まれ、"
+            + "セッションがそのヘルパーを実行してエージェント状態を Mytty に報告する"
+            + "ようになります。自分でコマンドを実行したか、実行したエージェントを"
+            + "信頼できる場合のみ承認してください。"
         case .removeIntegration: "連携を削除"
         case .noItemsNeedAttention: "通知はありません"
         case .resolved: "確認済"

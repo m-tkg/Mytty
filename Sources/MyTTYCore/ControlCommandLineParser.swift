@@ -23,6 +23,10 @@ public enum ControlCommandLineParser {
       agent focus <job-id>
       agent close <job-id>
 
+      integration list
+      integration enable <codex|claude-code|opencode|antigravity|cursor>
+      integration repair [<provider>]
+
       list
       new-tab [--cwd <path>] [--command <text>]
       split <pane-id> <left|right|up|down> [--cwd <path>] [--command <text>]
@@ -136,6 +140,27 @@ public enum ControlCommandLineParser {
 
       agent close <job-id>
         Closes the job's pane once it's no longer needed.
+
+    HOOK INTEGRATIONS
+
+    Provider state detection (everything `wait` and the agent API rely on)
+    needs that provider's hook integration installed. Inspect and manage it
+    from the CLI:
+
+      integration list
+        Prints every provider's integration status
+        (installed | not-installed | needs-repair). Read-only.
+
+      integration enable <codex|claude-code|opencode|antigravity|cursor>
+      integration repair [<provider>]
+        Install or repair a provider's hooks. Both commands make the Mytty
+        app show a confirmation dialog that ONLY A HUMAN at the Mac can
+        approve -- there is no flag to skip it, because installing a hook
+        means Mytty-provided code runs inside that provider's sessions.
+        Declining answers with the failure code `integration-declined`.
+        If you hit a missing-integration failure while orchestrating, ask
+        the user to approve `mytty-ctl integration enable <provider>` (or
+        to enable it in Settings > Agents) instead of retrying.
 
     STAGED EXAMPLE: parallel investigation, then implementation, then review
 
@@ -401,10 +426,18 @@ public enum ControlCommandLineParser {
             timeoutSeconds
         case let .waitAgent(_, _, timeoutSeconds):
             timeoutSeconds
+        case .integrationEnable, .integrationRepair:
+            // Blocks on a human approving a dialog in the app — give them
+            // time to notice it before the socket client gives up.
+            integrationApprovalTimeoutSeconds
         default:
             nil
         }
     }
+
+    /// How long `integration enable`/`repair` waits for the in-app
+    /// confirmation dialog before the CLI's socket client times out.
+    public static let integrationApprovalTimeoutSeconds: Double = 180
 
     private static func makeRequest(
         command: String,
@@ -420,6 +453,9 @@ public enum ControlCommandLineParser {
                 arguments: arguments,
                 environment: environment
             )
+
+        case "integration":
+            return try makeIntegrationRequest(arguments: arguments)
 
         case "new-tab":
             var positional = arguments
@@ -559,6 +595,71 @@ public enum ControlCommandLineParser {
 
         default:
             throw ControlCommandLineError.invalidArguments(usage)
+        }
+    }
+
+    // MARK: - integration
+
+    private static let integrationUsage = """
+    mytty-ctl integration <list|enable|repair> [arguments]
+      integration list
+      integration enable <codex|claude-code|opencode|antigravity|cursor>
+      integration repair [<provider>]
+    enable and repair write provider config and require a human to approve
+    a confirmation dialog in the Mytty app; there is no flag to skip it.
+    """
+
+    /// `integration` takes `AgentProvider`'s five raw identifiers, not the
+    /// three-value `agent spawn --provider` vocabulary (`codex|claude|
+    /// cursor`) — integrations exist for every provider Mytty can track,
+    /// not only the ones `agent spawn` can launch.
+    private static func makeIntegrationRequest(
+        arguments: [String]
+    ) throws -> ControlRequest {
+        var arguments = arguments
+        guard !arguments.isEmpty else {
+            throw ControlCommandLineError.invalidArguments(integrationUsage)
+        }
+        let subcommand = arguments.removeFirst()
+        switch subcommand {
+        case "list":
+            guard arguments.isEmpty else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl integration list"
+                )
+            }
+            return .integrationList
+
+        case "enable":
+            guard arguments.count == 1,
+                  let provider = AgentProvider(rawValue: arguments[0])
+            else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl integration enable "
+                        + "<codex|claude-code|opencode|antigravity|cursor>"
+                )
+            }
+            return .integrationEnable(provider: provider)
+
+        case "repair":
+            guard arguments.count <= 1 else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl integration repair [<provider>]"
+                )
+            }
+            guard let providerValue = arguments.first else {
+                return .integrationRepair(provider: nil)
+            }
+            guard let provider = AgentProvider(rawValue: providerValue) else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl integration repair "
+                        + "[<codex|claude-code|opencode|antigravity|cursor>]"
+                )
+            }
+            return .integrationRepair(provider: provider)
+
+        default:
+            throw ControlCommandLineError.invalidArguments(integrationUsage)
         }
     }
 

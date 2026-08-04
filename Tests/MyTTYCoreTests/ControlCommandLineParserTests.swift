@@ -643,4 +643,88 @@ struct ControlCommandLineParserTests {
             ) == 45
         )
     }
+
+    @Test("parses integration subcommands")
+    func integrationParsing() throws {
+        #expect(
+            try ControlCommandLineParser.parse(["integration", "list"])
+                == .integrationList
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["integration", "enable", "claude-code"]
+            ) == .integrationEnable(provider: .claudeCode)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(["integration", "repair"])
+                == .integrationRepair(provider: nil)
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["integration", "repair", "opencode"]
+            ) == .integrationRepair(provider: .openCode)
+        )
+        #expect(
+            try ControlCommandLineParser.parseInvocation(
+                ["integration", "list"],
+                environment: [:]
+            ) == .request(.integrationList)
+        )
+    }
+
+    @Test("rejects invalid integration arguments")
+    func rejectsInvalidIntegrationArguments() {
+        // "claude" is agent spawn vocabulary; integrations use the
+        // five AgentProvider identifiers ("claude-code", ...).
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["integration", "enable", "claude"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["integration", "enable"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["integration"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["integration", "not-a-subcommand"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["integration", "list", "extra"]
+            )
+        }
+    }
+
+    @Test("integration enable and repair carry the approval timeout")
+    func integrationApprovalTimeout() {
+        #expect(
+            ControlCommandLineParser.waitTimeoutSeconds(
+                for: .integrationEnable(provider: .codex)
+            ) == ControlCommandLineParser.integrationApprovalTimeoutSeconds
+        )
+        #expect(
+            ControlCommandLineParser.waitTimeoutSeconds(
+                for: .integrationRepair(provider: nil)
+            ) == ControlCommandLineParser.integrationApprovalTimeoutSeconds
+        )
+        #expect(
+            ControlCommandLineParser.waitTimeoutSeconds(
+                for: .integrationList
+            ) == nil
+        )
+    }
+
+    @Test("usage and guide document the integration commands")
+    func integrationDocumentation() {
+        #expect(ControlCommandLineParser.usage.contains("integration enable"))
+        let guide = ControlCommandLineParser.paneTeamGuide
+        #expect(guide.contains("HOOK INTEGRATIONS"))
+        #expect(guide.contains("integration enable"))
+        #expect(guide.contains("integration-declined"))
+        #expect(guide.contains("ONLY A HUMAN"))
+    }
 }

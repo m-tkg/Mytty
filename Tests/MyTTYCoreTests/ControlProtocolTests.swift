@@ -96,6 +96,10 @@ struct ControlProtocolTests {
             .sendAgent(jobID: AgentJobID(), text: "hi", pressEnter: true),
             .focusAgent(jobID: AgentJobID()),
             .closeAgent(jobID: AgentJobID()),
+            .integrationList,
+            .integrationEnable(provider: .claudeCode),
+            .integrationRepair(provider: .codex),
+            .integrationRepair(provider: nil),
         ]
 
         for request in requests {
@@ -137,6 +141,19 @@ struct ControlProtocolTests {
             .waitResult(state: "idle", timedOut: false),
             .waitResult(state: nil, timedOut: true),
             .failure(code: "pane-not-found"),
+            .integrationStatuses([
+                ControlIntegrationInfo(
+                    provider: "claude-code",
+                    status: "installed",
+                    error: nil
+                ),
+                ControlIntegrationInfo(
+                    provider: "codex",
+                    status: "not-installed",
+                    error: "Hook helper is unavailable"
+                ),
+            ]),
+            .integrationStatuses([]),
             .agentJob(
                 AgentJobSnapshot(
                     jobID: AgentJobID(),

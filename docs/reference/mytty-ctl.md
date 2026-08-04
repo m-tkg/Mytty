@@ -56,6 +56,9 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
 | `agent focus` | `<job-id>` | `{"type":"ok"}` |
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
+| `integration list` | none | `{"type":"integrationStatuses","integrations":[...]}` |
+| `integration enable` | `<codex\|claude-code\|opencode\|antigravity\|cursor>` | `{"type":"integrationStatuses","integrations":[...]}` |
+| `integration repair` | `[<provider>]` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `guide` | none | pane-team playbook as plain text on stdout, no socket needed |
 | `list` | none | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
@@ -166,6 +169,27 @@ Prints the pane-team playbook -- environment variables, the split/send/wait/read
 ```bash
 mytty-ctl guide
 ```
+
+### integration list / integration enable / integration repair
+
+```bash
+mytty-ctl integration list
+mytty-ctl integration enable claude-code
+mytty-ctl integration repair
+```
+
+```json
+{ "type": "integrationStatuses", "integrations": [
+  { "provider": "claude-code", "status": "installed" },
+  { "provider": "codex", "status": "not-installed" }
+] }
+```
+
+`integration list` reports every provider's hook-integration status (`installed`, `not-installed`, or `needs-repair`) -- the same state **Settings > Agents** shows, re-read from each provider's config file on every call. An entry also carries an `error` string when the last install attempt failed.
+
+`integration enable <provider>` installs that provider's hooks, and `integration repair` re-installs the integrations that report `needs-repair` (or the one named provider, which also covers plain installs). Both take `AgentProvider`'s five identifiers (`codex`, `claude-code`, `opencode`, `antigravity`, `cursor`) -- note this is not `agent spawn --provider`'s three-value vocabulary, because integrations exist for every provider Mytty can track, not only the ones `agent spawn` can launch.
+
+Enabling a hook means Mytty-provided code runs inside that provider's sessions, so both mutating commands block while the Mytty app puts a confirmation dialog in front of whoever is at the Mac; there is deliberately no flag that skips it, which keeps an AI orchestrator able to *request* an install but never to approve one. The CLI waits up to 180 seconds for the answer. A decline fails with `integration-declined`; approval performs the same install as the Settings toggle (pane-team pointer handling included) and answers with the fresh statuses. Enabling an already-installed provider, or repairing when nothing needs repair, returns the current statuses without showing a dialog.
 
 ### list
 
@@ -360,6 +384,7 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `inherit-unavailable` | `agent spawn`: `--access inherit` was requested but the anchor pane's foreground process can't be read, or isn't the same provider as `--provider` |
 | `spawn-failed` | `agent spawn`: the pane could not be created |
 | `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: the given job ID is unknown -- either it never existed, or it was issued before the last Mytty restart (job IDs are not persisted) |
+| `integration-declined` | `integration enable`/`integration repair`: the human at the Mac declined the confirmation dialog (or nobody answered it) |
 | `job-lost` | `agent send`/`agent focus`: the job's pane disappeared (see `lost` below); `agent result` and `agent close` do not use this code -- they answer with the job's `lost` state and an empty result, and closing a job whose pane is already gone still exits `0` |
 
 ## Wait semantics
