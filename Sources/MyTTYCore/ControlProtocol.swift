@@ -42,6 +42,8 @@ public struct ControlPaneInfo: Codable, Equatable, Sendable {
     public let provider: String?
     /// `AgentRunState.rawValue` of that same run.
     public let agentState: String?
+    /// The pane agent's own latest `mytty-ctl status` self-report, if any.
+    public let statusNote: String?
 
     public init(
         paneID: String,
@@ -52,7 +54,8 @@ public struct ControlPaneInfo: Codable, Equatable, Sendable {
         workingDirectory: String?,
         isActive: Bool,
         provider: String?,
-        agentState: String?
+        agentState: String?,
+        statusNote: String? = nil
     ) {
         self.paneID = paneID
         self.windowID = windowID
@@ -63,6 +66,24 @@ public struct ControlPaneInfo: Codable, Equatable, Sendable {
         self.isActive = isActive
         self.provider = provider
         self.agentState = agentState
+        self.statusNote = statusNote
+    }
+}
+
+/// Validation for `mytty-ctl status` self-reports: a short, single-line,
+/// human-readable progress note. Mirrors the label rules `agent spawn`
+/// applies (100 Unicode scalars, no control characters — which also rules
+/// out newlines) with the addition that an explicit status must be
+/// nonempty; clearing is its own operation, not an empty-string write.
+public enum ControlStatusNoteValidation {
+    public static let maximumScalars = 100
+
+    public static func isValid(_ note: String) -> Bool {
+        !note.isEmpty
+            && note.unicodeScalars.count <= maximumScalars
+            && note.unicodeScalars.allSatisfy {
+                !CharacterSet.controlCharacters.contains($0)
+            }
     }
 }
 
@@ -142,6 +163,11 @@ public enum ControlRequest: Equatable, Sendable {
     )
     case closePane(paneID: String)
     case focus(paneID: String)
+    /// A pane agent's own progress self-report ("running tests", ...),
+    /// shown in the status bar and echoed in `list`/`agent result`
+    /// answers. Ephemeral by design — never persisted, cleared when the
+    /// pane's run starts or ends. `status: nil` clears an earlier report.
+    case setPaneStatus(paneID: String, status: String?)
 
     /// Creates a new worker pane split off `anchorPaneID`, launches
     /// `provider` in it with `access` and `task` as one shell input, and
@@ -213,6 +239,7 @@ extension ControlRequest: Codable {
         case wait
         case closePane
         case focus
+        case setPaneStatus
         case spawnAgent
         case waitAgent
         case agentResult
@@ -244,6 +271,7 @@ extension ControlRequest: Codable {
         case label
         case jobID
         case command
+        case status
     }
 
     public init(from decoder: Decoder) throws {
@@ -320,6 +348,14 @@ extension ControlRequest: Codable {
         case .focus:
             self = .focus(
                 paneID: try container.decode(String.self, forKey: .paneID)
+            )
+        case .setPaneStatus:
+            self = .setPaneStatus(
+                paneID: try container.decode(String.self, forKey: .paneID),
+                status: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .status
+                )
             )
         case .spawnAgent:
             self = .spawnAgent(
@@ -450,6 +486,10 @@ extension ControlRequest: Codable {
         case let .focus(paneID):
             try container.encode(RequestType.focus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
+        case let .setPaneStatus(paneID, status):
+            try container.encode(RequestType.setPaneStatus, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+            try container.encodeIfPresent(status, forKey: .status)
         case let .spawnAgent(
             anchorPaneID, direction, provider, cwd, access, model, task, label
         ):

@@ -126,7 +126,8 @@ extension ControlCoordinator: ControlServerDelegate {
                 workingDirectory: workingDirectory?.path,
                 isActive: item.isActive,
                 provider: run?.provider.rawValue,
-                agentState: run?.state.rawValue
+                agentState: run?.state.rawValue,
+                statusNote: attentionCenter.statusNote(for: item.paneID)
             )
         }
     }
@@ -230,6 +231,25 @@ extension ControlCoordinator: ControlServerDelegate {
               controller(owning: surfaceID) != nil
         else { return nil }
         return .some(attentionCenter.mostRelevantRun(for: surfaceID)?.state)
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        setStatusNote note: String?,
+        forPaneID paneID: String
+    ) -> String? {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              controller(owning: surfaceID) != nil
+        else { return "pane-not-found" }
+        guard let note else {
+            attentionCenter.clearStatusNote(for: surfaceID)
+            return nil
+        }
+        guard ControlStatusNoteValidation.isValid(note) else {
+            return "invalid-status"
+        }
+        attentionCenter.setStatusNote(note, for: surfaceID)
+        return nil
     }
 
     func controlServer(

@@ -66,6 +66,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
+| `status` | `(<text> \| --clear) [--pane <pane-id>]` | `{"type":"ok"}` |
 | `wait` | `<pane-id> --until <idle\|attention> [--timeout-seconds <n>]` | `{"type":"waitResult","state":"...","timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
@@ -323,6 +324,24 @@ mytty-ctl read "$paneA"
 
 `cursorRow` and `cursorColumn` are `null` when the pane has no cursor position to report.
 
+### status
+
+A pane agent's own progress self-report — one line, at most 100 Unicode scalars, no control characters.
+
+```bash
+mytty-ctl status "running tests"        # reports for $MYTTY_SURFACE_ID
+mytty-ctl status "reviewing" --pane "$pane"
+mytty-ctl status --clear
+```
+
+```json
+{ "type": "ok" }
+```
+
+The pane defaults to the caller's own `$MYTTY_SURFACE_ID` (the same fallback `agent spawn --anchor` uses), so a worker reports its own pane without knowing its ID. The note shows in the status bar next to the agent's name and model, and is echoed as `statusNote` in `list` pane entries and in every `agent` response's job snapshot — an orchestrator can follow a worker's phase without reading its screen. `agent spawn`'s worker contract instructs workers to report each phase this way.
+
+Notes are ephemeral by design: kept in memory only (an app restart forgets them), cleared automatically when the pane's run starts or ends (`started`, `idle`, `succeeded`, `failed`, `disconnected` events), and kept across mid-run transitions (`running`, approval/input requests). `--clear` removes one explicitly. An empty string is not a valid note — clearing is its own operation. Self-reports deliberately do not travel the agent-event pipeline: they change no run state and must never be persisted, so they live beside it (see [mytty-ctl architecture](../explanation/mytty-ctl-architecture.md)).
+
 ### wait
 
 Blocks until the pane's most relevant agent run satisfies a condition, or until the timeout elapses.
@@ -380,6 +399,7 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `invalid-cwd` | `agent spawn`: `--cwd` doesn't name an existing directory |
 | `invalid-label` | `agent spawn`: `--label` contains a control character or exceeds 100 Unicode scalars |
 | `invalid-model` | `agent spawn`: `--model` is empty, contains a control character or whitespace, or exceeds 100 Unicode scalars |
+| `invalid-status` | `status`: the text is empty, contains a control character, or exceeds 100 Unicode scalars |
 | `invalid-task` | `agent spawn`: the resolved task text is empty |
 | `inherit-unavailable` | `agent spawn`: `--access inherit` was requested but the anchor pane's foreground process can't be read, or isn't the same provider as `--provider` |
 | `spawn-failed` | `agent spawn`: the pane could not be created |

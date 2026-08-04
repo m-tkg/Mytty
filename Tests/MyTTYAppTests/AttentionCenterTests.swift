@@ -38,6 +38,61 @@ struct AttentionCenterTests {
         #expect(center.mostRelevantState(for: [surfaceID]) == .running)
     }
 
+    @Test("a run starting or ending expires the pane's status note")
+    @MainActor
+    func statusNoteLifecycle() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let otherSurfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        center.setStatusNote("running tests", for: surfaceID)
+        center.setStatusNote("unrelated", for: otherSurfaceID)
+        #expect(center.statusNote(for: surfaceID) == "running tests")
+
+        // Mid-run transitions keep the note alive.
+        try center.append(harness.event(
+            runID: runID,
+            surfaceID: surfaceID,
+            kind: .approvalRequested,
+            at: 1
+        ))
+        #expect(center.statusNote(for: surfaceID) == "running tests")
+        try center.append(harness.event(
+            runID: runID,
+            surfaceID: surfaceID,
+            kind: .running,
+            at: 2
+        ))
+        #expect(center.statusNote(for: surfaceID) == "running tests")
+
+        // A terminal event clears it; other panes are untouched.
+        try center.append(harness.event(
+            runID: runID,
+            surfaceID: surfaceID,
+            kind: .succeeded,
+            at: 3
+        ))
+        #expect(center.statusNote(for: surfaceID) == nil)
+        #expect(center.statusNote(for: otherSurfaceID) == "unrelated")
+
+        // A fresh run must not inherit the previous run's note either.
+        center.setStatusNote("stale", for: surfaceID)
+        try center.append(harness.event(
+            runID: AgentRunID(),
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 4
+        ))
+        #expect(center.statusNote(for: surfaceID) == nil)
+
+        center.setStatusNote("cleared by hand", for: surfaceID)
+        center.clearStatusNote(for: surfaceID)
+        #expect(center.statusNote(for: surfaceID) == nil)
+    }
+
     @Test("shows the newest result when no run remains active")
     @MainActor
     func newestTerminalState() throws {

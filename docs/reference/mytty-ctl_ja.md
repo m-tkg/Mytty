@@ -63,6 +63,7 @@ mytty-ctl list | jq .
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
+| `status` | `(<text> \| --clear) [--pane <pane-id>]` | `{"type":"ok"}` |
 | `wait` | `<pane-id> --until <idle\|attention> [--timeout-seconds <n>]` | `{"type":"waitResult","state":"...","timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
@@ -320,6 +321,24 @@ mytty-ctl read "$paneA"
 
 カーソル位置を報告できない場合、`cursorRow` と `cursorColumn` は `null` になります。
 
+### status
+
+ペインのエージェント自身による進捗の自己申告です。1 行・最大 100 Unicode スカラー・制御文字不可。
+
+```bash
+mytty-ctl status "running tests"        # $MYTTY_SURFACE_ID に対して申告
+mytty-ctl status "reviewing" --pane "$pane"
+mytty-ctl status --clear
+```
+
+```json
+{ "type": "ok" }
+```
+
+ペインは呼び出し元自身の `$MYTTY_SURFACE_ID` がデフォルトです(`agent spawn --anchor` と同じフォールバック)。worker は自分の pane ID を知らなくても自分のペインに申告できます。申告はステータスバーのエージェント名・モデル名の隣に表示され、`list` のペイン項目と各 `agent` レスポンスの job スナップショットに `statusNote` として入ります — オーケストレーターは画面を読まなくても worker の作業フェーズを追えます。`agent spawn` の worker contract は、フェーズごとにこの申告を行うよう worker に指示しています。
+
+申告は設計上 ephemeral です: メモリのみに保持(アプリ再起動で消える)、ペインの run の開始・終了(`started`、`idle`、`succeeded`、`failed`、`disconnected` イベント)で自動クリア、run 途中の遷移(`running`、承認・入力要求)では保持。`--clear` で明示的に消せます。空文字列は有効な申告ではありません — クリアは独立した操作です。自己申告は意図的にエージェントイベントのパイプラインに載せていません: run の状態を変えず、永続化してはならないものなので、その脇に置いています([mytty-ctl アーキテクチャ](../explanation/mytty-ctl-architecture_ja.md)参照)。
+
 ### wait
 
 対象ペインの直近のエージェント実行が条件を満たすか、タイムアウトするまでブロックします。
@@ -378,6 +397,7 @@ mytty-ctl focus "$paneA"
 | `invalid-label` | `agent spawn`: `--label` に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
 | `invalid-model` | `agent spawn`: `--model` が空、制御文字か空白を含む、または 100 Unicode スカラー値を超えている |
 | `inherit-unavailable` | `agent spawn`: `--access inherit` を指定したが、anchor ペインの前面プロセスが `--provider` と同じ provider ではない |
+| `invalid-status` | `status`: テキストが空、制御文字を含む、または 100 Unicode スカラーを超えている |
 | `invalid-task` | `agent spawn`: 解決後のタスクテキストが空 |
 | `spawn-failed` | `agent spawn`: ペインを作成できなかった |
 | `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: 指定した job ID が未知(そもそも存在しない、または直前の Mytty 再起動より前に発行されたもの。job ID は永続化されない) |

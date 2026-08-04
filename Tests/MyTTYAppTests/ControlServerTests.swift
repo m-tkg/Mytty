@@ -286,6 +286,42 @@ struct ControlServerTests {
         #expect(response == .failure(code: "pane-not-found"))
     }
 
+    @Test("status routes the note (and a clear) to the delegate")
+    func setPaneStatus() async throws {
+        let delegate = StubControlDelegate()
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let setResponse = try await perform(
+            .setPaneStatus(paneID: "pane-1", status: "running tests"),
+            to: socketURL
+        )
+        #expect(setResponse == .ok)
+        #expect(delegate.lastStatusNote == .some("running tests"))
+        #expect(delegate.lastStatusNotePaneID == "pane-1")
+
+        let clearResponse = try await perform(
+            .setPaneStatus(paneID: "pane-1", status: nil),
+            to: socketURL
+        )
+        #expect(clearResponse == .ok)
+        #expect(delegate.lastStatusNote == .some(nil))
+    }
+
+    @Test("status surfaces the delegate's failure code")
+    func setPaneStatusFailure() async throws {
+        let delegate = StubControlDelegate()
+        delegate.setStatusNoteResult = "pane-not-found"
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let response = try await perform(
+            .setPaneStatus(paneID: "missing", status: "hi"),
+            to: socketURL
+        )
+        #expect(response == .failure(code: "pane-not-found"))
+    }
+
     @Test("wait fails fast when the pane's provider integration is not installed")
     func waitFailsFastForMissingIntegration() async throws {
         let delegate = StubControlDelegate()
@@ -944,6 +980,20 @@ private final class StubControlDelegate: ControlServerDelegate {
         waitPreflightFailureCodeForPaneID paneID: String
     ) -> String? {
         waitPreflightFailureCodes[paneID]
+    }
+
+    var setStatusNoteResult: String?
+    var lastStatusNote: String??
+    var lastStatusNotePaneID: String?
+
+    func controlServer(
+        _ server: ControlServer,
+        setStatusNote note: String?,
+        forPaneID paneID: String
+    ) -> String? {
+        lastStatusNote = .some(note)
+        lastStatusNotePaneID = paneID
+        return setStatusNoteResult
     }
 
     func controlServer(

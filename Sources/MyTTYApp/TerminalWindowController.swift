@@ -133,6 +133,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var remotes: [TerminalSurfaceID: RemotePaneView] = [:]
     private let remoteConnections: RemotePaneConnectionCoordinator
     private var attentionObserver: AnyCancellable?
+    private var statusNoteObserver: AnyCancellable?
     private lazy var scheduledInput = ScheduledInputCoordinator(
         scheduler: paneInputScheduler,
         localizer: localizer,
@@ -1986,6 +1987,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         attentionObserver = attentionCenter.$items.sink { [weak self] _ in
             self?.refreshPresentation(focusTerminal: false)
         }
+        // A pane's self-reported status only surfaces in the status bar,
+        // so its changes redraw just that instead of the full
+        // presentation pass `$items` triggers.
+        statusNoteObserver = attentionCenter.$paneStatusNotes
+            .sink { [weak self] _ in
+                self?.updateStatusBar()
+            }
     }
 
     private func updateScheduledInputStatus(
@@ -3194,6 +3202,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             agentModelName: remote != nil
                 ? remoteAgent?.modelName
                 : agentSessionStatus?.modelName,
+            // The pane agent's own `mytty-ctl status` self-report. Local
+            // panes only: a remote pane's snapshot doesn't carry notes.
+            agentState: remote == nil
+                ? attentionCenter.statusNote(for: focusedID)
+                : nil,
             agentUsage: remote == nil ? agentUsage : nil,
             agentContext: (
                 remote != nil

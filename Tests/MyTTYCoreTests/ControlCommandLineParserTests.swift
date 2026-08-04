@@ -644,6 +644,54 @@ struct ControlCommandLineParserTests {
         )
     }
 
+    @Test("parses status with the env-default pane, --pane, and --clear")
+    func statusParsing() throws {
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["status", "running tests"],
+                environment: ["MYTTY_SURFACE_ID": "pane-env"]
+            ) == .setPaneStatus(paneID: "pane-env", status: "running tests")
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["status", "reviewing diff", "--pane", "pane-9"],
+                environment: ["MYTTY_SURFACE_ID": "pane-env"]
+            ) == .setPaneStatus(paneID: "pane-9", status: "reviewing diff")
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["status", "--clear"],
+                environment: ["MYTTY_SURFACE_ID": "pane-env"]
+            ) == .setPaneStatus(paneID: "pane-env", status: nil)
+        )
+    }
+
+    @Test("rejects invalid status invocations")
+    func rejectsInvalidStatus() {
+        // No pane resolvable at all.
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["status", "hello"],
+                environment: [:]
+            )
+        }
+        // Empty, control characters, too long, or text alongside --clear.
+        for arguments in [
+            ["status", ""],
+            ["status", "line\nbreak"],
+            ["status", String(repeating: "x", count: 101)],
+            ["status", "text", "--clear"],
+            ["status"],
+        ] {
+            #expect(throws: ControlCommandLineError.self) {
+                try ControlCommandLineParser.parse(
+                    arguments,
+                    environment: ["MYTTY_SURFACE_ID": "pane-env"]
+                )
+            }
+        }
+    }
+
     @Test("parses integration subcommands")
     func integrationParsing() throws {
         #expect(

@@ -60,6 +60,15 @@ protocol ControlServerDelegate: AnyObject {
         waitPreflightFailureCodeForPaneID paneID: String
     ) -> String?
 
+    /// Stores (or clears, for nil) a pane agent's `mytty-ctl status`
+    /// self-report. Returns a failure code (`pane-not-found`,
+    /// `invalid-status`) or nil on success.
+    func controlServer(
+        _ server: ControlServer,
+        setStatusNote note: String?,
+        forPaneID paneID: String
+    ) -> String?
+
     func controlServer(
         _ server: ControlServer,
         closePaneID paneID: String
@@ -313,6 +322,16 @@ final class ControlServer {
         case let .focus(paneID):
             guard delegate.controlServer(self, focusPaneID: paneID) else {
                 return .failure(code: "pane-not-found")
+            }
+            return .ok
+
+        case let .setPaneStatus(paneID, status):
+            if let failureCode = delegate.controlServer(
+                self,
+                setStatusNote: status,
+                forPaneID: paneID
+            ) {
+                return .failure(code: failureCode)
             }
             return .ok
 
