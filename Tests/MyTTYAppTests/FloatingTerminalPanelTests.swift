@@ -222,7 +222,9 @@ struct FloatingTerminalPanelTests {
             withIntermediateDirectories: true
         )
         let file = directory.appendingPathComponent("terminal.conf")
-        try "font-size = 13\n".write(
+        // `zsh -f` keeps test shells away from the developer's rc files
+        // and real `~/.zsh_history` (see GhosttySurfaceIntegrationTests).
+        try "font-size = 13\ncommand = direct:/bin/zsh -f\n".write(
             to: file,
             atomically: true,
             encoding: .utf8
