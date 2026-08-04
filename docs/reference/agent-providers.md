@@ -4,6 +4,16 @@ Mytty supports five agent providers, identified in code by `AgentProvider` (`Sou
 
 The Antigravity provider covers two distinct binaries under one event category. `AgentProvider.antigravity` is a single protocol-level category for both the Google Antigravity IDE's agent and the standalone Gemini CLI; their hook events look identical to Mytty. Session resume is where they diverge. Mytty inspects the foreground process's executable basename and picks `gemini --resume=<id>` when it looks like the Gemini CLI (basename `gemini` or `gemini-cli`, or a path containing `/gemini-cli/`), and `agy --conversation=<id>` otherwise. See `AgentResumeLaunchPlan.isGeminiCLI` in `Sources/MyTTYApp/AgentSessionRestoration.swift`. Some in-app labels and older docs shorten this to "Gemini (Antigravity)"; that label names the provider, not a resume command.
 
+## Foreground provider detection and the `MYTTY_AGENT` hint
+
+The status bar identifies the agent running in a pane by inspecting the foreground process's executable path and the first argv entries (`TerminalAgentProcessDetector.provider(executablePath:arguments:)` in `Sources/MyTTYApp/TerminalAgentProcessDetector.swift`). That works for agents launched directly, but gives no signal when the agent runs behind a wrapper whose binary name says nothing about it — `ssh` into a remote box, `docker exec` into a container, or a launcher script.
+
+For those cases, export `MYTTY_AGENT=<provider>` in the wrapper's environment before launching it. When path/argv detection identifies no provider, Mytty falls back to reading this variable from the wrapper process's exec-time environment. The value must be one of the `AgentProvider` identifiers — `codex`, `claude-code`, `opencode`, `antigravity`, `cursor` — compared after trimming whitespace and lowercasing; anything else is ignored. A hint never overrides real detection, and it only affects provider identification (the status bar label and provider-scoped lookups). Hook events still have to reach Mytty's event socket, which a remote host or container cannot do, so panes detected via the hint typically show the provider without run states.
+
+```sh
+MYTTY_AGENT=claude-code ssh devbox
+```
+
 ## Owned files and handlers
 
 The shared hook helper binary lives at `~/Library/Application Support/mytty/bin/mytty-agent-hook`. Enabling a provider in **Settings > Agents** writes to:

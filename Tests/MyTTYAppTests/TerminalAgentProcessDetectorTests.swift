@@ -90,6 +90,58 @@ struct TerminalAgentProcessDetectorTests {
         ) == nil)
     }
 
+    @Test("falls back to the MYTTY_AGENT environment hint")
+    func agentEnvironmentHint() {
+        #expect(TerminalAgentProcessDetector.provider(
+            executablePath: "/usr/bin/ssh",
+            arguments: ["ssh", "devbox"],
+            environment: ["MYTTY_AGENT": "claude-code"]
+        ) == .claudeCode)
+        #expect(TerminalAgentProcessDetector.provider(
+            executablePath: "/usr/local/bin/docker",
+            arguments: ["docker", "exec", "-it", "box", "codex"],
+            environment: ["MYTTY_AGENT": "codex"]
+        ) == .codex)
+
+        // Real detection wins over a contradicting hint.
+        #expect(TerminalAgentProcessDetector.provider(
+            executablePath: "/Users/tester/.local/bin/codex",
+            arguments: ["codex"],
+            environment: ["MYTTY_AGENT": "cursor"]
+        ) == .codex)
+
+        // Hints are normalized (trimmed, lowercased) before matching.
+        #expect(TerminalAgentProcessDetector.provider(
+            executablePath: "/usr/bin/ssh",
+            arguments: ["ssh"],
+            environment: ["MYTTY_AGENT": " CODEX\n"]
+        ) == .codex)
+
+        // Only exact provider identifiers are accepted.
+        for invalid in ["", "gpt5", "claude code", "claude-code\u{1B}[0m", "claude"] {
+            #expect(TerminalAgentProcessDetector.provider(
+                executablePath: "/usr/bin/ssh",
+                arguments: ["ssh"],
+                environment: ["MYTTY_AGENT": invalid]
+            ) == nil, "hint \(invalid) should be rejected")
+        }
+        #expect(TerminalAgentProcessDetector.provider(
+            executablePath: "/usr/bin/ssh",
+            arguments: ["ssh"],
+            environment: [:]
+        ) == nil)
+    }
+
+    @Test("reads a running process's exec-time environment")
+    func processEnvironment() {
+        let environment = TerminalAgentProcessDetector.environment(
+            processID: getpid()
+        )
+        #expect(environment["PATH"]?.isEmpty == false)
+        #expect(TerminalAgentProcessDetector.environment(processID: 0).isEmpty)
+        #expect(TerminalAgentProcessDetector.environment(processID: -1).isEmpty)
+    }
+
     @Test("identifies shell command names")
     func shellCommandNameDetection() {
         for name in ["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "pwsh"] {
