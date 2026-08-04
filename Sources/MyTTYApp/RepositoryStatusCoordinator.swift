@@ -1,8 +1,8 @@
 import AppKit
 import MyTTYCore
 
-/// Owns the 2s "which GitHub repository does the focused pane's working
-/// directory belong to" poll: the `GitHubRepositoryLoader`, the timer, and
+/// Owns the 2s "which git repository / GitHub page does the focused pane's
+/// working directory belong to" poll: the `GitHubRepositoryLoader`, the timer, and
 /// the request-ID bookkeeping that discards a load once a different
 /// directory became focused before it completed. Extracted from
 /// `TerminalWindowController.refreshRepositoryIfNeeded` /

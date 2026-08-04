@@ -192,12 +192,13 @@ struct TerminalStatusBarView: View {
                             .buttonStyle(.plain)
                             .help(openRepositoryTitle)
                             .accessibilityLabel(openRepositoryTitle)
-
-                            if let branchName = model.content.branchName {
-                                Text(branchName)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
+                        }
+                        if let branchName = model.content.branchName {
+                            Image(systemName: "arrow.triangle.branch")
+                                .frame(width: 14, height: 14)
+                            Text(branchName)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         if model.content.canRevealInFinder {
                             Button(action: revealResourceInFinder) {

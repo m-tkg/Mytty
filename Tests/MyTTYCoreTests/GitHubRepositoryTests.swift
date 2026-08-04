@@ -73,6 +73,52 @@ struct GitHubRepositoryTests {
         #expect(status?.branchName == "a1b2c3d")
     }
 
+    @Test("resolves a plain branch name when no remote is on GitHub")
+    func nonGitHubRemote() async {
+        let runner = StubGitCommandRunner(outputs: [
+            ["branch", "--show-current"]: "feature/local\n",
+            ["remote"]: "origin\n",
+            ["remote", "get-url", "origin"]: "git@gitlab.com:foo/bar.git\n",
+        ])
+        let loader = GitHubRepositoryLoader(runner: runner)
+
+        let status = await loader.load(
+            from: URL(fileURLWithPath: "/repo", isDirectory: true)
+        )
+
+        #expect(status == GitHubRepositoryStatus(branchName: "feature/local"))
+    }
+
+    @Test("resolves a plain branch name when the repository has no remotes")
+    func noRemotes() async {
+        let runner = StubGitCommandRunner(outputs: [
+            ["branch", "--show-current"]: "main\n",
+            ["remote"]: "",
+        ])
+        let loader = GitHubRepositoryLoader(runner: runner)
+
+        let status = await loader.load(
+            from: URL(fileURLWithPath: "/repo", isDirectory: true)
+        )
+
+        #expect(status == GitHubRepositoryStatus(branchName: "main"))
+    }
+
+    @Test("returns nil when there are no remotes and the branch cannot be resolved")
+    func noRemotesNoBranch() async {
+        let runner = StubGitCommandRunner(outputs: [
+            ["remote"]: "",
+            ["branch", "--show-current"]: "",
+        ])
+        let loader = GitHubRepositoryLoader(runner: runner)
+
+        let status = await loader.load(
+            from: URL(fileURLWithPath: "/repo", isDirectory: true)
+        )
+
+        #expect(status == nil)
+    }
+
     @Test("reads the branch after remote discovery to publish fresh status")
     func freshBranchSnapshot() async {
         let runner = RecordingGitCommandRunner(outputs: [
