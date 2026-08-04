@@ -33,6 +33,8 @@ public enum ControlCommandLineParser {
       send <pane-id> <text> [--enter]
       send-key <pane-id> <key> [--modifiers <mod,mod,...>]
       read <pane-id>
+      status <text> [--pane <pane-id>]
+      status --clear [--pane <pane-id>]
       wait <pane-id> --until <idle|attention> [--timeout-seconds <n>]
       close-pane <pane-id>
       focus <pane-id>
@@ -140,6 +142,18 @@ public enum ControlCommandLineParser {
 
       agent close <job-id>
         Closes the job's pane once it's no longer needed.
+
+      status <text> [--pane <pane-id>]  /  status --clear
+        A pane agent's own progress self-report ("running tests", one
+        line, at most 100 characters). The pane defaults to the caller's
+        own $MYTTY_SURFACE_ID, so a worker just runs
+        `mytty-ctl status "implementing"` as it moves between phases.
+        The note shows in Mytty's status bar and comes back in `list` and
+        `agent result` responses (statusNote), so an orchestrator can see
+        what a worker is doing without reading its screen. It's ephemeral:
+        cleared automatically when the pane's run starts or ends, never
+        persisted. `agent spawn`'s worker contract already tells workers
+        to report phases this way.
 
     HOOK INTEGRATIONS
 
@@ -290,6 +304,8 @@ public enum ControlCommandLineParser {
           instead of stopping to ask.
         - If a design choice is ambiguous, pick one, note the choice and the
           reasoning, and continue rather than asking a question back.
+        - Report each phase of the work with `mytty-ctl status "<a few
+          words>"` so the orchestrator and the human can follow along.
         - End with a bulleted summary: changed files, test results, and any
           remaining issues.
       (`agent spawn` appends an equivalent worker contract automatically.)
@@ -582,6 +598,48 @@ public enum ControlCommandLineParser {
                 until: until,
                 timeoutSeconds: timeoutSeconds
             )
+
+        case "status":
+            let statusUsage = "mytty-ctl status (<text> | --clear) "
+                + "[--pane <pane-id>]"
+            var positional = arguments
+            let options = try parseOptions(
+                &positional,
+                flags: ["--clear"],
+                valued: ["--pane"]
+            )
+            // The pane defaults to the caller's own — a worker reporting
+            // its progress is the common case, and it knows itself only as
+            // $MYTTY_SURFACE_ID (the same fallback `agent spawn --anchor`
+            // uses).
+            guard let paneID = options.values["--pane"]
+                ?? environment["MYTTY_SURFACE_ID"],
+                !paneID.isEmpty
+            else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl status requires --pane <pane-id> (or "
+                        + "MYTTY_SURFACE_ID to be set)"
+                )
+            }
+            if options.flags.contains("--clear") {
+                guard positional.isEmpty else {
+                    throw ControlCommandLineError.invalidArguments(
+                        statusUsage
+                    )
+                }
+                return .setPaneStatus(paneID: paneID, status: nil)
+            }
+            guard positional.count == 1,
+                  ControlStatusNoteValidation.isValid(positional[0])
+            else {
+                throw ControlCommandLineError.invalidArguments(
+                    statusUsage + " -- the text must be nonempty, a "
+                        + "single line, and at most "
+                        + "\(ControlStatusNoteValidation.maximumScalars) "
+                        + "characters"
+                )
+            }
+            return .setPaneStatus(paneID: paneID, status: positional[0])
 
         case "close-pane":
             guard arguments.count == 1 else {

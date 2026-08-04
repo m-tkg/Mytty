@@ -1,10 +1,24 @@
 import Foundation
 import MyTTYCore
 
+/// A pane agent's own `mytty-ctl status` self-report ("running tests").
+/// Deliberately not an `AgentEvent`: it changes no run state, must never
+/// be persisted, and doesn't come from a hook — see
+/// `docs/explanation/mytty-ctl-architecture.md`.
+struct PaneStatusNote: Equatable {
+    let text: String
+    let updatedAt: Date
+}
+
 @MainActor
 final class AttentionCenter: ObservableObject {
     @Published private(set) var items: [AttentionItem] = []
     @Published private(set) var runs: [AgentRunID: AgentRun] = [:]
+    /// In-memory only, keyed by pane. Not touched by `reload()`'s full
+    /// re-reduce, and gone after an app restart — matching the ephemeral
+    /// contract `mytty-ctl status` documents.
+    @Published private(set) var paneStatusNotes:
+        [TerminalSurfaceID: PaneStatusNote] = [:]
 
     private let repository: SQLiteAgentEventRepository
     private let policy: AttentionPolicy
@@ -23,9 +37,44 @@ final class AttentionCenter: ObservableObject {
     func append(_ event: AgentEvent) throws -> Bool {
         let inserted = try repository.append(event)
         if inserted {
+            expireStatusNote(for: event)
             try reload()
         }
         return inserted
+    }
+
+    func setStatusNote(
+        _ text: String,
+        for surfaceID: TerminalSurfaceID,
+        at updatedAt: Date = Date()
+    ) {
+        paneStatusNotes[surfaceID] = PaneStatusNote(
+            text: text,
+            updatedAt: updatedAt
+        )
+    }
+
+    func clearStatusNote(for surfaceID: TerminalSurfaceID) {
+        paneStatusNotes[surfaceID] = nil
+    }
+
+    func statusNote(for surfaceID: TerminalSurfaceID) -> String? {
+        paneStatusNotes[surfaceID]?.text
+    }
+
+    /// A run starting or ending obsoletes whatever the pane's agent last
+    /// self-reported — "running tests" must not outlive the run it
+    /// described, and a fresh run must not inherit the previous one's
+    /// note. Mid-run transitions (`running`, `input-requested`,
+    /// `approval-requested`) keep the note: the reported activity is
+    /// still the one in progress.
+    private func expireStatusNote(for event: AgentEvent) {
+        switch event.kind {
+        case .idle, .started, .succeeded, .failed, .disconnected:
+            clearStatusNote(for: event.surfaceID)
+        case .running, .inputRequested, .approvalRequested:
+            break
+        }
     }
 
     func acknowledge(_ item: AttentionItem) throws {

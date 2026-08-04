@@ -57,6 +57,17 @@ final class AgentJobCoordinator {
         )
     }
 
+    /// Folds the pane's current `mytty-ctl status` self-report into a
+    /// snapshot on its way over the wire. `AgentJobTracker` never stores
+    /// it: the note is per-pane ephemeral state owned by
+    /// `AttentionCenter`, and stamping it here keeps every response
+    /// current without widening the tracker's reconcile contract.
+    private func enriched(_ snapshot: AgentJobSnapshot) -> AgentJobSnapshot {
+        snapshot.withStatusNote(
+            attentionCenter.statusNote(for: snapshot.paneID)
+        )
+    }
+
     private func isValidLabel(_ label: String?) -> Bool {
         guard let label else { return true }
         return label.unicodeScalars.count <= Self.maximumLabelScalars
@@ -232,7 +243,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             launchWindow: launchWindow
         )
         trackers[tracker.jobID] = tracker
-        return .success(tracker.snapshot)
+        return .success(enriched(tracker.snapshot))
     }
 
     func controlServer(
@@ -244,7 +255,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         }
         refresh(&tracker)
         trackers[jobID] = tracker
-        return .success(tracker.snapshot)
+        return .success(enriched(tracker.snapshot))
     }
 
     func controlServer(
@@ -270,7 +281,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             // snapshot rather than failing the whole request; there's
             // simply no screen text left to show.
             return .success((
-                tracker.snapshot,
+                enriched(tracker.snapshot),
                 ControlPaneContent(
                     paneID: paneIDString,
                     text: "",
@@ -280,7 +291,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             ))
         }
         return .success((
-            tracker.snapshot,
+            enriched(tracker.snapshot),
             ControlPaneContent(
                 paneID: paneIDString,
                 text: remoteContent.text,

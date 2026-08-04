@@ -104,6 +104,11 @@ public struct AgentJobSnapshot: Codable, Equatable, Sendable {
     public let runID: AgentRunID?
     public let sessionID: String?
     public let message: String?
+    /// The worker's own latest `mytty-ctl status` self-report for this
+    /// job's pane, if any. Filled in by `AgentJobCoordinator` when a
+    /// snapshot is sent over the wire — `AgentJobTracker` itself never
+    /// sees it, since it's per-pane ephemeral state, not job lifecycle.
+    public let statusNote: String?
 
     public init(
         jobID: AgentJobID,
@@ -113,7 +118,8 @@ public struct AgentJobSnapshot: Codable, Equatable, Sendable {
         state: AgentJobState,
         runID: AgentRunID?,
         sessionID: String?,
-        message: String?
+        message: String?,
+        statusNote: String? = nil
     ) {
         self.jobID = jobID
         self.paneID = paneID
@@ -123,6 +129,21 @@ public struct AgentJobSnapshot: Codable, Equatable, Sendable {
         self.runID = runID
         self.sessionID = sessionID
         self.message = message
+        self.statusNote = statusNote
+    }
+
+    public func withStatusNote(_ statusNote: String?) -> AgentJobSnapshot {
+        AgentJobSnapshot(
+            jobID: jobID,
+            paneID: paneID,
+            provider: provider,
+            label: label,
+            state: state,
+            runID: runID,
+            sessionID: sessionID,
+            message: message,
+            statusNote: statusNote
+        )
     }
 }
 

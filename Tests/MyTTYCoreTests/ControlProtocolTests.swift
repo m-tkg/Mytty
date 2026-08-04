@@ -52,6 +52,8 @@ struct ControlProtocolTests {
             ),
             .closePane(paneID: "pane-1"),
             .focus(paneID: "pane-1"),
+            .setPaneStatus(paneID: "pane-1", status: "running tests"),
+            .setPaneStatus(paneID: "pane-1", status: nil),
             .spawnAgent(
                 anchorPaneID: "pane-1",
                 direction: .right,
@@ -124,7 +126,8 @@ struct ControlProtocolTests {
                     workingDirectory: "/tmp/repo",
                     isActive: true,
                     provider: "claude-code",
-                    agentState: "running"
+                    agentState: "running",
+                    statusNote: "running tests"
                 ),
             ]),
             .list(panes: []),
