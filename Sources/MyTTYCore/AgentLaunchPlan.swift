@@ -29,16 +29,25 @@ public enum AgentLaunchPlan {
     /// cannot prevent the write — the unset has to happen inside the shell
     /// itself, on the very line being typed. Stock zsh flushes history to
     /// `HISTFILE` from memory when the shell exits, so unsetting it here
-    /// suppresses persistence of the whole pane while leaving in-memory
-    /// history (arrow-key recall) intact. Setups with
+    /// suppresses persistence of the whole pane. `fc -p` then pushes the
+    /// in-memory history list — which already contains this very line,
+    /// plus everything loaded from `HISTFILE` at startup — onto zsh's
+    /// history stack and switches to an empty list, so the injected line
+    /// never shows up in arrow-key/Ctrl-R recall either; stock zsh has no
+    /// `hist_ignore_space`, so the leading space alone doesn't keep it out
+    /// of memory. The pushed list is never flushed (nothing pops it, and
+    /// `HISTFILE` is already unset), while commands the user types later
+    /// still get normal recall on the fresh list. The cost is that recall
+    /// of pre-existing global history is gone in this pane. Setups with
     /// `inc_append_history`/`share_history` write each line as it is
-    /// accepted — before the unset runs — which is what the leading space
-    /// covers: such setups (oh-my-zsh and friends) also enable
+    /// accepted — before any of this runs — which is what the leading
+    /// space covers: such setups (oh-my-zsh and friends) also enable
     /// `hist_ignore_space`, which drops space-prefixed lines entirely.
     /// `builtin` dodges a shadowing user function; `2>/dev/null` silences
-    /// shells without an `unset` builtin (fish).
+    /// shells without an `unset` builtin (fish) and shells whose `fc` has
+    /// no `-p` (bash) — there the unset alone still blocks persistence.
     public static let historySuppressionPrefix
-        = " builtin unset HISTFILE 2>/dev/null; "
+        = " builtin unset HISTFILE 2>/dev/null; builtin fc -p 2>/dev/null; "
 
     /// The transient `initialInput` for a newly spawned worker pane: one
     /// fully quoted shell command ending in a trailing newline, so the pane
