@@ -53,6 +53,11 @@ final class WindowSessionCoordinator {
         _ surfaceID: TerminalSurfaceID,
         _ exitCode: Int?
     ) -> Void
+    private let onNativeTurnObserved: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider,
+        _ turn: AgentTurnObservation
+    ) -> Void
 
     init(
         updateAgentSleepPrevention: @escaping () -> Void,
@@ -68,7 +73,12 @@ final class WindowSessionCoordinator {
         onNativeCommandFinished: @escaping (
             _ surfaceID: TerminalSurfaceID,
             _ exitCode: Int?
-        ) -> Void = { _, _ in }
+        ) -> Void = { _, _ in },
+        onNativeTurnObserved: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider,
+            _ turn: AgentTurnObservation
+        ) -> Void = { _, _, _ in }
     ) {
         self.updateAgentSleepPrevention = updateAgentSleepPrevention
         self.setAgentSleepPreventionMode = setAgentSleepPreventionMode
@@ -77,6 +87,7 @@ final class WindowSessionCoordinator {
         self.closeSettingsIfNeeded = closeSettingsIfNeeded
         self.onNativeProviderTransition = onNativeProviderTransition
         self.onNativeCommandFinished = onNativeCommandFinished
+        self.onNativeTurnObserved = onNativeTurnObserved
     }
 
     var activeController: TerminalWindowController? {
@@ -259,6 +270,9 @@ final class WindowSessionCoordinator {
             },
             onNativeCommandFinished: { [weak self] surfaceID, exitCode in
                 self?.onNativeCommandFinished(surfaceID, exitCode)
+            },
+            onNativeTurnObserved: { [weak self] surfaceID, provider, turn in
+                self?.onNativeTurnObserved(surfaceID, provider, turn)
             }
         )
         controllers.append(controller)

@@ -159,10 +159,21 @@ struct AgentRunInterruption: Equatable {
 struct AgentProviderPollResult: Equatable {
     let status: AgentSessionStatus?
     let interruption: AgentRunInterruption?
+    /// The current prompt-turn's lifecycle, when the provider's inspector
+    /// derives one (Claude Code, Codex) -- feeds `NativeAgentRunEstimator
+    /// .turnObserved` via `AgentStatusPollingCoordinator`. `nil` for every
+    /// other provider, and for these two whenever the transcript tail
+    /// carries no real prompt.
+    let turn: AgentTurnObservation?
 
-    init(status: AgentSessionStatus?, interruption: AgentRunInterruption? = nil) {
+    init(
+        status: AgentSessionStatus?,
+        interruption: AgentRunInterruption? = nil,
+        turn: AgentTurnObservation? = nil
+    ) {
         self.status = status
         self.interruption = interruption
+        self.turn = turn
     }
 }
 
@@ -189,10 +200,12 @@ struct CodexProviderRuntime: AgentProviderRuntime {
         context: AgentSessionQueryContext,
         throttle: AgentSessionThrottleCache
     ) -> AgentProviderPollResult {
-        AgentProviderPollResult(
-            status: CodexSessionInspector.status(
-                processID: context.surface.foregroundProcessID
-            )
+        let snapshot = CodexSessionInspector.snapshot(
+            processID: context.surface.foregroundProcessID
+        )
+        return AgentProviderPollResult(
+            status: snapshot.status,
+            turn: snapshot.turn
         )
     }
 }
@@ -250,7 +263,8 @@ struct ClaudeCodeProviderRuntime: AgentProviderRuntime {
                     runKey: $0.promptID,
                     interruptionKey: $0.messageID
                 )
-            }
+            },
+            turn: snapshot.turn
         )
     }
 }

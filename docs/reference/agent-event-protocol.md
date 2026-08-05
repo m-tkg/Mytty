@@ -111,6 +111,8 @@ For a provider whose hook integration isn't installed, Mytty still detects a run
 
 This estimation only runs for a provider whose integration status is not installed; once hooks are installed for a provider, its runs go back to being reported by the provider's own hooks exclusively, and the native estimator stays out of the way. More generally, any `hookName` beginning with `mytty.` (not just `mytty.native.`) marks an event Mytty synthesized itself rather than received from a provider's hooks — see `Sources/MyTTYCore/NativeAgentRunEstimator.swift` and `Sources/MyTTYCore/AgentHookEventAdapter.swift`.
 
+For Claude Code and Codex specifically, Mytty goes a step further: it also reads the provider's own transcript — the same file the session inspector already parses on every poll tick for the model name and context remaining — to split that one coarse run into a run per prompt turn, matching what a real hook integration would report (`UserPromptSubmit` on a new prompt, `Stop` when it finishes). The moment the transcript reports a turn, the coarse process-level run goes idle and per-turn runs (`event.hookName` under `mytty.native.turn*`, e.g. `mytty.native.turnStarted`, `mytty.native.turnCompleted`) take over reporting the lifecycle. Each turn run's ID is derived from the same turn identifier the provider's own hooks use for that turn (Claude Code's prompt ID, Codex's turn ID), so a hook that starts covering the pane mid-turn — or Claude Code's ESC-interruption handling, which has no hook of its own — lands on the exact same run rather than opening a duplicate one.
+
 ## See also
 
 - [Agent providers](agent-providers.md) covers file locations, per-provider hook-to-event mapping, and status bar/session-inspector sources.

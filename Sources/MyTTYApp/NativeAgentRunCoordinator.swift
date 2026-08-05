@@ -62,6 +62,25 @@ final class NativeAgentRunCoordinator: NSObject {
         deliverAndReschedule(events)
     }
 
+    /// Forwards a transcript-derived turn observation (Claude Code, Codex)
+    /// to the estimator, delivering whatever it hands back the same way
+    /// every other signal here does. See `NativeAgentRunEstimator
+    /// .turnObserved` for the epoch handoff / per-turn run rules.
+    func turnObserved(
+        surfaceID: TerminalSurfaceID,
+        provider: AgentProvider,
+        turn: AgentTurnObservation,
+        now: Date = Date()
+    ) {
+        let events = estimator.turnObserved(
+            surfaceID: surfaceID,
+            provider: provider,
+            turn: turn,
+            now: now
+        )
+        deliverAndReschedule(events)
+    }
+
     func observe(_ event: AgentEvent) {
         estimator.observeRealEvent(event)
         reschedule(for: estimator.nextDeadline)

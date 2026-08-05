@@ -131,6 +131,86 @@ struct CodexSessionInspectorTests {
         )
     }
 
+    // MARK: - Turn observation (Phase 2: transcript-derived turns)
+
+    @Test("a task_started with no task_complete/turn_aborted yet reads as an active turn")
+    func turnActive() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"agent_message","message":"working"}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "turn-1", phase: .active)
+        )
+    }
+
+    @Test("a task_complete after task_started completes the turn")
+    func turnCompleted() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"done"}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "turn-1", phase: .completed)
+        )
+    }
+
+    @Test("a turn_aborted after task_started interrupts the turn")
+    func turnAborted() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn-1","reason":"interrupted"}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "turn-1", phase: .interrupted)
+        )
+    }
+
+    @Test("a later task_started supersedes an earlier completed turn")
+    func turnFollowedByNewTaskStarted() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-2"}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "turn-2", phase: .active)
+        )
+    }
+
+    @Test("malformed lines are skipped without breaking turn parsing")
+    func turnToleratesMalformedLines() {
+        let data = Data("""
+        not json at all
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+        {"broken
+        {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "turn-1", phase: .completed)
+        )
+    }
+
+    @Test("a tail with no task_started yields no turn")
+    func turnNilWithoutTaskStarted() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"agent_message","message":"hi"}}
+        {"type":"event_msg","payload":{"type":"token_count","info":{}}}
+        """.utf8)
+
+        #expect(CodexSessionInspector.turn(from: data) == nil)
+    }
+
     @Test("prefers the process-bound identifier and preserves hook fallback")
     func selection() {
         #expect(

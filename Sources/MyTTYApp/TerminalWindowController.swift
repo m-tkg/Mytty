@@ -210,6 +210,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         },
         onProviderTransition: { [weak self] surfaceID, provider, processID in
             self?.onNativeProviderTransition(surfaceID, provider, processID)
+        },
+        onTurnObservation: { [weak self] surfaceID, provider, turn in
+            self?.onNativeTurnObserved(surfaceID, provider, turn)
         }
     )
     private lazy var repositoryStatus = RepositoryStatusCoordinator(
@@ -324,6 +327,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ surfaceID: TerminalSurfaceID,
         _ exitCode: Int?
     ) -> Void
+    /// Forwards `AgentStatusPollingCoordinator`'s transcript-derived turn
+    /// observations (Claude Code, Codex) the same way, so
+    /// `NativeAgentRunEstimator` can split a native-estimated run into
+    /// per-turn runs (see `NativeAgentRunEstimator.turnObserved`).
+    private let onNativeTurnObserved: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider,
+        _ turn: AgentTurnObservation
+    ) -> Void
 
     private(set) var session: WindowSession
 
@@ -354,7 +366,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         onNativeCommandFinished: @escaping (
             _ surfaceID: TerminalSurfaceID,
             _ exitCode: Int?
-        ) -> Void = { _, _ in }
+        ) -> Void = { _, _ in },
+        onNativeTurnObserved: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider,
+            _ turn: AgentTurnObservation
+        ) -> Void = { _, _, _ in }
     ) throws {
         self.session = session
         // Seed the cache from what the session was restored (or adopted)
@@ -388,6 +405,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         self.onTabDragSessionEnded = onTabDragSessionEnded
         self.onNativeProviderTransition = onNativeProviderTransition
         self.onNativeCommandFinished = onNativeCommandFinished
+        self.onNativeTurnObserved = onNativeTurnObserved
 
         let windowFrame = NSRect(
             x: session.frame.x,
