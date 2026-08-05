@@ -365,9 +365,11 @@ public enum ControlCommandLineParser {
       `events` replaces one `wait`/`agent wait` per pane run in parallel
       background shells with a single long-poll: it blocks until at least
       one new agent event has landed on any pane, or the timeout elapses.
-      Call it once with no `--after` (or `--after 0`) to get a cursor
-      without replaying history, then loop, feeding each response's
-      `latestSequence` back in as the next call's `--after`:
+      Call it once with no `--after` to establish a cursor at the current
+      tip without replaying history, then loop, feeding each response's
+      `latestSequence` back in as the next call's `--after`. An explicit
+      `--after 0` is not the same as omitting the flag -- it fetches every
+      retained record from the beginning instead of establishing a cursor:
 
         cursor=$("$MYTTY_CTL_BIN" events | jq -r '.latestSequence')
         while true; do
@@ -689,7 +691,7 @@ public enum ControlCommandLineParser {
             guard positional.isEmpty else {
                 throw ControlCommandLineError.invalidArguments(eventsUsage)
             }
-            let afterSequence: UInt64
+            let afterSequence: UInt64?
             if let afterValue = options.values["--after"] {
                 guard let parsed = UInt64(afterValue) else {
                     throw ControlCommandLineError.invalidArguments(
@@ -698,7 +700,7 @@ public enum ControlCommandLineParser {
                 }
                 afterSequence = parsed
             } else {
-                afterSequence = 0
+                afterSequence = nil
             }
             let timeoutSeconds: Double
             if let timeoutValue = options.values["--timeout"] {

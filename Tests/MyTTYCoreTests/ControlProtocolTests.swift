@@ -54,7 +54,8 @@ struct ControlProtocolTests {
             .focus(paneID: "pane-1"),
             .setPaneStatus(paneID: "pane-1", status: "running tests"),
             .setPaneStatus(paneID: "pane-1", status: nil),
-            .events(afterSequence: 0, timeoutSeconds: 30),
+            .events(afterSequence: nil, timeoutSeconds: 30),
+            .events(afterSequence: 0, timeoutSeconds: 45),
             .events(afterSequence: 42, timeoutSeconds: 600),
             .spawnAgent(
                 anchorPaneID: "pane-1",
@@ -318,6 +319,15 @@ struct ControlProtocolTests {
             workingDirectory: nil,
             command: nil
         ))
+    }
+
+    @Test("decodes an events payload without an afterSequence key as nil (establish a cursor)")
+    func decodesEventsWithoutAfterSequence() throws {
+        let legacy = Data("""
+        {"type":"events","timeoutSeconds":30}
+        """.utf8)
+        let decoded: ControlRequest = try ControlMessageCodec.decode(legacy)
+        #expect(decoded == .events(afterSequence: nil, timeoutSeconds: 30))
     }
 
     @Test("rejects an agent request missing its required fields")
