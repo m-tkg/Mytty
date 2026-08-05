@@ -143,8 +143,9 @@ public enum ControlCommandLineParser {
         disconnected/launch-failed/lost. Default timeout is 120 seconds.
         `running` and `completed` work even without the provider's hook
         integration installed -- Mytty estimates the run's lifecycle
-        natively from the pane's foreground process and, for claude/codex,
-        their transcripts. `attention` still needs that provider's hooks
+        natively from the pane's foreground process and, for claude/codex/
+        cursor, their transcripts (store.db for cursor). `attention` still
+        needs that provider's hooks
         (native estimation deliberately never reports waiting-input/
         waiting-approval, to avoid a false actionable item) and fails fast
         with `provider-integration-not-installed` when they aren't
@@ -182,9 +183,14 @@ public enum ControlCommandLineParser {
 
     HOOK INTEGRATIONS
 
-    Provider state detection (everything `wait` and the agent API rely on)
-    needs that provider's hook integration installed. Inspect and manage it
-    from the CLI:
+    Lifecycle state (running/idle/succeeded/failed/disconnected) works even
+    without a provider's hook integration installed -- Mytty estimates it
+    natively from the pane's polled foreground process, OSC 133 command-end,
+    and, for claude/codex/cursor, that provider's own transcript or store.
+    Hooks remain the highest-fidelity source and are the only source of the
+    attention states (waiting-input/waiting-approval): native estimation
+    deliberately never reports those, to avoid a false actionable item.
+    Inspect and manage hook integrations from the CLI:
 
       integration list
         Prints every provider's integration status
@@ -298,8 +304,9 @@ public enum ControlCommandLineParser {
         - `wait --until idle` works even if the target provider's
           integration is not enabled in Mytty Settings: Mytty estimates the
           run's lifecycle natively from the pane's foreground process and,
-          for claude/codex, their transcripts, so idle/succeeded/failed/
-          disconnected are all observable without hooks. `wait --until
+          for claude/codex/cursor, their transcripts (store.db for cursor),
+          so idle/succeeded/failed/disconnected are all observable without
+          hooks. `wait --until
           attention` is the exception -- native estimation deliberately
           never reports waiting-input/waiting-approval, so it needs the
           provider's real hooks. On a pane whose foreground process is
@@ -315,6 +322,11 @@ public enum ControlCommandLineParser {
         - Cursor never emits an input-requested event. A shell approval instead
           surfaces as `waiting-approval` roughly 10 seconds after the command
           starts, once Mytty's delay-based estimate fires.
+        - On launch, Mytty closes out any run a previous app instance left
+          non-terminal (running/waiting-input/waiting-approval) -- a crash,
+          force-quit, or restart -- by recording a synthesized `disconnected`
+          event for it (hookName `mytty.startupSweep`). A wait or job bound
+          to that stale run resolves as disconnected rather than hanging.
         - Sending a launch command with `send` and then a separate `send`
           for the task can lose the task: the agent's TUI may still be initializing and drops
           input sent before its prompt is drawn. `split --command` (step 1
@@ -348,7 +360,7 @@ public enum ControlCommandLineParser {
       the same files. `agent spawn --worktree <branch>` does this for you:
       it creates (or, on a respawn, reuses) a git worktree next to the base
       repository and launches the worker there --
-      "$MYTTY_CTL_BIN" agent spawn --provider codex --worktree feat-a \
+      "$MYTTY_CTL_BIN" agent spawn --provider codex --worktree feat-a \\
         --task "..." spawns a worker checked out onto branch feat-a in
       `<repo>-worktrees/feat-a`, sibling to the repo itself so it never
       shows up in the main checkout's `git status`. A branch that doesn't

@@ -48,4 +48,4 @@ It's pronounced "mighty".
 - [Release a version](how-to/release-a-version.md)
 - [Build the iOS remote app](how-to/build-ios-remote-app.md)
 - [`cloudflare/push-relay/README.md`](../cloudflare/push-relay/README.md) covers self-hosting the push notification relay.
-- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md) has ready-made task recipes for driving Mytty with `mytty-ctl`.
+- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md) is a short pointer that tells an agent to run `mytty-ctl guide` for the pane-team playbook.

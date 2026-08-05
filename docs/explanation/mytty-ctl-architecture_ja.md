@@ -61,7 +61,7 @@ Mytty は新しいペインを開くたびに、そのペインのシェル環�
 
 司令塔は「今ユーザーと話しているペインの AI」自身であり、専用の常駐オーケストレータープロセスは存在しません。司令塔は `mytty-ctl` を Bash 相当のツールから呼び、複数ペインの完了待ちは Bash の `run_in_background: true` で並列に投げて、ハーネスの完了通知に任せる形で組み立てます。`wait` サブコマンドが `AttentionCenter` の `AgentRunState` をポーリングして返るまでブロックするため、司令塔側は自前でポーリングループを書く必要がありません。
 
-この設計だと、司令塔が終了したりクラッシュしたりしても、常駐プロセスとして状態を持ち続けるものが存在しないので、取り残されたペインがゾンビ化して残り続ける心配がありません。反面、`wait --until attention` は Cursor と Antigravity のフックが承認・入力待ちイベントを出さないためタイムアウトするまで返らない、対象プロバイダーの hook が Settings で有効化されていない環境でも同じく即座に失敗する(Mytty のネイティブな実行推定 — `docs/reference/agent-event-protocol.md` — は attention 状態をあえて一切合成しないため)、といった制約は司令塔側で認識しておく必要があります。`wait --until idle` と `agent wait --until running`/`completed` は hook 連携の有無に影響されません — ネイティブ推定がペインのポーリング済みフォアグラウンドプロセスからカバーします。詳しくは `docs/reference/mytty-ctl.md` の「`wait` の挙動」を参照してください。
+この設計だと、司令塔が終了したりクラッシュしたりしても、常駐プロセスとして状態を持ち続けるものが存在しないので、取り残されたペインがゾンビ化して残り続ける心配がありません。反面、`wait --until attention` は Antigravity のフックが承認・入力待ちイベントを一切出さないためタイムアウトするまで返りません(この provider には代わりに `wait --until idle` を使ってください)。Cursor はこれとは事情が異なります。入力待ちイベントは出しませんが、`preToolUse` hook のあと対応する `postToolUse` が届かない場合、mytty 自身がおおよそ10秒の遅延の末に `approval-requested` を合成するため、詰まった Cursor の tool call でも `wait --until attention` はちゃんと解決します。これとは別に、対象プロバイダーの hook が Settings でまだ有効化されていない場合は、タイムアウトまでブロックする代わりに `wait --until attention` が即座に失敗します(Mytty のネイティブな実行推定 — `docs/reference/agent-event-protocol.md` — は attention 状態をあえて一切合成しないため)。この制約は司令塔側で認識しておく必要があります。`wait --until idle` と `agent wait --until running`/`completed` は hook 連携の有無に影響されません — ネイティブ推定がペインのポーリング済みフォアグラウンドプロセスからカバーします。詳しくは `docs/reference/mytty-ctl.md` の「`wait` の挙動」を参照してください。
 
 ## agent の job に専用のバインディングが要る理由
 
@@ -99,4 +99,4 @@ job レジストリ自体は `TerminalSurfaceState` と違って永続化され�
 - `docs/reference/mytty-ctl.md`: コマンドリファレンスとユースケース集。`agent` の失敗コードと job/実行バインディングの要点も含みます
 - `docs/how-to/orchestrate-agents-with-mytty-ctl_ja.md`: `agent` コマンドを使った複数 worker の段階的な例
 - `docs/reference/agent-event-protocol.md`: エージェントフックが使う環境変数とイベントプロトコル(制御ソケットと同じ「ペイン起動時に環境変数を配る」パターン)
-- `.claude/skills/mytty-panes/SKILL.md`: 上記の仕組みをそのまま使えるスキルとしてまとめたもの
+- `.claude/skills/mytty-panes/SKILL.md`: 手順書は複製せず、`mytty-ctl guide` を実行するよう指示するだけの短いポインタ

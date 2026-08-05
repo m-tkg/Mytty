@@ -56,6 +56,9 @@ mytty-ctl list | jq .
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
 | `agent focus` | `<job-id>` | `{"type":"ok"}` |
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
+| `integration list` | なし | `{"type":"integrationStatuses","integrations":[...]}` |
+| `integration enable` | `<codex\|claude-code\|opencode\|antigravity\|cursor>` | `{"type":"integrationStatuses","integrations":[...]}` |
+| `integration repair` | `[<provider>]` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `guide` | なし | ペインチームの手順書をプレーンテキストで標準出力、ソケット不要 |
 | `list` | なし | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
@@ -100,7 +103,7 @@ job=$(mytty-ctl agent spawn \
 }
 ```
 
-`state` は最初 `launching` で、worker 自身の hook イベントが実行の開始を確認した時点で `running` に変わります。`--task`/`--task-file` はどちらか一方が必須です。エンコード後のリクエストが 64 KiB のソケットエンベロープを超えるタスクは、接続を開く前に CLI 側で拒否されます。`jobID` が実際に何を指しているかは、下の「job のバインディング」を参照してください。
+`state` は最初 `launching` で、worker 自身の hook イベント、または hook 連携が未インストールの場合は Mytty のネイティブな実行推定([ネイティブ推定による run 検出](agent-event-protocol_ja.md)参照)のいずれかが実行の開始を確認した時点で `running` に変わります。`--task`/`--task-file` はどちらか一方が必須です。エンコード後のリクエストが 64 KiB のソケットエンベロープを超えるタスクは、接続を開く前に CLI 側で拒否されます。`jobID` が実際に何を指しているかは、下の「job のバインディング」を参照してください。
 
 ### agent wait
 
@@ -386,7 +389,7 @@ mytty-ctl events --after 7 --timeout 60             # 次のイベントまで�
 }
 ```
 
-`--after` を省略するとカーソルを確立します。この場合は意図的に `records` を返しません -- 現在の `latestSequence` を返すだけで、呼び出し元が「今から」の監視を始められるようにするためです(それより前に起きたことを再生することはありません)。その値(または以降のレスポンスの `latestSequence`)を次回呼び出しの `--after` として渡してください。そのカーソルより新しいイベントが既に保持されていれば即座に返り、なければ、どこかのペインで新しいイベントが1つでも発生するか `--timeout` が経過するまでブロックします。明示的な `--after 0` はカーソル確立とは別物で、通常の取得カーソルとして扱われます -- 保持されている履歴を先頭から全部返す(なければ最初の1件が届くまでブロックする)ので、ledger が空の状態から追いつきたいときはこちらを使ってください。`--timeout` のデフォルトは `30` 秒で、`600` に丸められます。タイムアウトしたレスポンスは `records` が空、`timedOut: true`、`latestSequence` は変わりません -- タイムアウトはエラーではなく、そのカーソルのままポーリングを続けてください。`records[].paneID`/`runID` は `list`/`agent` レスポンスと同じ UUID 文字列形式です。`kind` は `AgentEventKind` の raw value、`synthesized` は mytty 自身が生成したイベント(ネイティブな実行推定、Cursor の承認待ち推定など)である場合に `true` になります -- provider 本来の hook から来たイベントではありません。裏側の ledger はアプリ全体で最大 1000 件しか保持しないため、カーソルが十分古くなっていると、はみ出した分は黙ってスキップされます -- `events` は保持されている履歴を高々1回配信する仕組みであって、再生を保証するログではありません。
+`--after` を省略するとカーソルを確立します。この場合は意図的に `records` を返しません -- 現在の `latestSequence` を返すだけで、呼び出し元が「今から」の監視を始められるようにするためです(それより前に起きたことを再生することはありません)。その値(または以降のレスポンスの `latestSequence`)を次回呼び出しの `--after` として渡してください。そのカーソルより新しいイベントが既に保持されていれば即座に返り、なければ、どこかのペインで新しいイベントが1つでも発生するか `--timeout` が経過するまでブロックします。明示的な `--after 0` はカーソル確立とは別物で、通常の取得カーソルとして扱われます -- 保持されている履歴を先頭から全部返す(なければ最初の1件が届くまでブロックする)ので、ledger が空の状態から追いつきたいときはこちらを使ってください。`--timeout` のデフォルトは `30` 秒で、`600` に丸められます。タイムアウトしたレスポンスは `records` が空、`timedOut: true`、`latestSequence` は変わりません -- タイムアウトはエラーではなく、そのカーソルのままポーリングを続けてください。`records[].paneID`/`runID` は `list`/`agent` レスポンスと同じ UUID 文字列形式です。`kind` は `AgentEventKind` の raw value、`synthesized` は mytty 自身が生成したイベント(ネイティブな実行推定、Cursor の承認待ち推定など)である場合に `true` になります -- provider 本来の hook から来たイベントではありません。呼び出し元のフィードに現れうるそうした記録の一つが起動時スイープです。起動時に Mytty は前回の app インスタンスが非終端のまま残した run を掃除し、その run に対して合成した `disconnected` event(`hookName: "mytty.startupSweep"`)を記録します。裏側の ledger はアプリ全体で最大 1000 件しか保持しないため、カーソルが十分古くなっていると、はみ出した分は黙ってスキップされます -- `events` は保持されている履歴を高々1回配信する仕組みであって、再生を保証するログではありません。
 
 ```bash
 cursor=$(mytty-ctl events | jq -r '.latestSequence')
@@ -439,7 +442,7 @@ mytty-ctl focus "$paneA"
 | `invalid-cwd` | `agent spawn`: `--cwd` が実在するディレクトリを指していない |
 | `invalid-label` | `agent spawn`: `--label` に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
 | `invalid-model` | `agent spawn`: `--model` が空、制御文字か空白を含む、または 100 Unicode スカラー値を超えている |
-| `inherit-unavailable` | `agent spawn`: `--access inherit` を指定したが、anchor ペインの前面プロセスが `--provider` と同じ provider ではない |
+| `inherit-unavailable` | `agent spawn`: `--access inherit` を指定したが、anchor ペインの前面プロセスを読み取れないか、`--provider` と同じ provider ではない |
 | `invalid-worktree-branch` | `agent spawn --worktree`: branch が空、100 Unicode スカラー値を超えている、または git の branch 名として不正 |
 | `not-a-git-repository` | `agent spawn --worktree`: 解決済みの `--cwd`/anchor ペインのディレクトリが git リポジトリの中にない |
 | `worktree-create-failed` | `agent spawn --worktree`: git が worktree を作成できなかった -- たとえば対象パスがディスク上に存在するが、そのリポジトリに登録済みの worktree ではない場合 |
@@ -456,15 +459,17 @@ mytty-ctl focus "$paneA"
 
 - `--until idle` は、対象ペインの直近のエージェント実行が `idle` / `succeeded` / `failed` / `disconnected` のいずれかになった時点で解決します。一度もエージェントイベントを受け取っていないペインは、タイムアウトするまでブロックし続けます。「まだ何も来ていない=idle 扱い」というデフォルトはありません。
 - `--until attention` は、実行状態が `waiting-input` または `waiting-approval` になった時点で解決します。Antigravity の導入済み hook は承認・入力待ちイベントを一切出さないため([Agent providers](agent-providers_ja.md) 参照)、この provider が動くペインでは `wait --until attention` は常にタイムアウトします。Antigravity には `--until idle` を使ってください。Cursor も入力待ちイベントは出しませんが、承認待ちには到達しえます。mytty は Cursor の `preToolUse` hook と、対応する `postToolUse` / `postToolUseFailure` との間隔から、詰まった tool call を推定します。そのため、その推定が発火した時点(何も解決しなければ tool call 開始からおおよそ10秒後)で、Cursor ペインの `wait --until attention` も解決します。
-- 対象 provider の hook 連携が設定でまだ有効化されていない場合、Mytty は代わりに実行のライフサイクルをネイティブに推定します — ペインのポーリング済みフォアグラウンドプロセスから、Claude Code/Codex についてはそれぞれのトランスクリプトからも([Agent event protocol](agent-event-protocol_ja.md) 参照)。これで `--until idle` は完全にカバーされますが、ネイティブ推定は `waiting-input`/`waiting-approval` をあえて一切報告しません(誤検知が Attention Inbox に偽の要対応項目を出しかねないため)。そのため `--until attention` には引き続き provider 本来の hook が必要です。`wait` はポーリングループに入る前に一度だけこれを検査します: 条件が `attention` で、ペインのフォアグラウンドプロセスが既に既知のエージェント(0.5 秒周期のプロセスポーリングが見ているもの。`MYTTY_AGENT` ヒント込み)、かつその連携が `not-installed` なら、タイムアウトまでブロックする代わりに即座に `provider-integration-not-installed` で失敗します。`mytty-ctl integration enable <provider>` か **設定 > Agents** で修復してください。`--until idle` はこの事前検査で失敗することはありません。検査が毎ポーリングでなく事前の 1 回だけなのは意図的です(wait の途中でエージェントが終了してシェルに戻っても、正当な wait を失敗させないため)。`needs-repair` の連携をどちらの条件でも素通しするのも意図的で、進行中のセッションからイベントが届き続けている可能性があるためです — `needs-repair` にはネイティブ推定も関与しません。wait 開始時点でエージェントがまだ起動していない場合(`split --command` の直後に `wait` する通常の流れ)、事前検査にはシェルしか見えないため attention wait は従来どおりタイムアウトまでブロックします。provider を起動した直後の attention wait のタイムアウトは、同じ連携未導入のシグナルとして扱ってください。
+- 対象 provider の hook 連携が設定でまだ有効化されていない場合、Mytty は代わりに実行のライフサイクルをネイティブに推定します — ペインのポーリング済みフォアグラウンドプロセスから、Claude Code/Codex/Cursor についてはそれぞれの transcript や `store.db`(Cursor)からも([Agent event protocol](agent-event-protocol_ja.md) 参照)。これで `--until idle` は完全にカバーされますが、ネイティブ推定は `waiting-input`/`waiting-approval` をあえて一切報告しません(誤検知が Attention Inbox に偽の要対応項目を出しかねないため)。そのため `--until attention` には引き続き provider 本来の hook が必要です。`wait` はポーリングループに入る前に一度だけこれを検査します: 条件が `attention` で、ペインのフォアグラウンドプロセスが既に既知のエージェント(0.5 秒周期のプロセスポーリングが見ているもの。`MYTTY_AGENT` ヒント込み)、かつその連携が `not-installed` なら、タイムアウトまでブロックする代わりに即座に `provider-integration-not-installed` で失敗します。`mytty-ctl integration enable <provider>` か **設定 > Agents** で修復してください。`--until idle` はこの事前検査で失敗することはありません。検査が毎ポーリングでなく事前の 1 回だけなのは意図的です(wait の途中でエージェントが終了してシェルに戻っても、正当な wait を失敗させないため)。`needs-repair` の連携をどちらの条件でも素通しするのも意図的で、進行中のセッションからイベントが届き続けている可能性があるためです — `needs-repair` にはネイティブ推定も関与しません。wait 開始時点でエージェントがまだ起動していない場合(`split --command` の直後に `wait` する通常の流れ)、事前検査にはシェルしか見えないため attention wait は従来どおりタイムアウトまでブロックします。provider を起動した直後の attention wait のタイムアウトは、同じ連携未導入のシグナルとして扱ってください。
 
 `agent wait` も同じようにポーリングしますが、対象はペインではなく `agent spawn` が作った job です。条件も `wait`(`idle`/`attention`)とは異なる3種類(`running`/`attention`/`completed`)になります。詳細は上の [agent wait](#agent-wait) を参照してください。同じ attention 限定の事前検査が適用され、`not-installed` な provider に対して spawn した job でも `agent wait --until running`/`completed` は(どちらもネイティブ推定から)解決できますが、`--until attention` は即座に `provider-integration-not-installed` で失敗します。
 
 ## job のバインディング
 
-`agent spawn` が作る job は、「そのペインが今やっていること」全般ではなく、特定の1つの worker 実行を指します。内部では `AgentJobTracker` が、新しいペインが作られた瞬間に既に存在する実行 ID の集合(新規ペインなので通常は空)を記録しておきます。その後、そのペイン/provider について観測した実行のうち、ID がその集合に含まれていない最初の実行に job をバインドします。一度バインドすると、job が別の実行に切り替わることはありません。これにより、連続して spawn した2つの job が互いの実行を誤って観測することはなく、`agent wait --until completed` が job より前から存在していた実行で解決してしまうこともありません。
+`agent spawn` が作る job は、「そのペインが今やっていること」全般ではなく、特定の1つの worker 実行を指します。内部では `AgentJobTracker` が、新しいペインが作られた瞬間に既に存在する実行 ID の集合(新規ペインなので通常は空)を記録しておきます。その後、そのペイン/provider について観測した実行のうち、ID がその集合に含まれていない最初の実行に job をバインドします。一度バインドすると、job が自然に別の実行へ切り替わることはありません。これにより、連続して spawn した2つの job が互いの実行を誤って観測することはなく、`agent wait --until completed` が job より前から存在していた実行で解決してしまうこともありません。
 
-job の状態は、バインドした実行の `AgentRunState` を直接マッピングしたものです。ステータスバーが使う `AttentionCenter` の「このペインで最も関連度の高い実行」というロジックは経由しません。両者は別の問いに答えています。30秒以内にどの実行もバインドできなければ、job は `launch-failed` になります(実行ファイルが無い、TUI が一度も起動しなかった、hook が一度も発火しなかった、のいずれもこれでカバーされます)。job のペインが消えたら、まだ完了していない job は `lost` になります。どちらの遷移も後戻りしません。
+唯一の例外は意図的なものです。`agent send` が既に完了している job に追加指示を送ると、その job を再アーム(`AgentJobTracker.prepareForFollowUp`)します。これにより、以後の `agent wait --until completed` は、既に終端に達した古い実行ではなく、その追加指示が新たに始める実行を追跡します。まだ実行中の job に追加指示を送っても、この効果はありません -- 進行中の実行にバインドされたままです。
+
+job の状態は、バインドした実行の `AgentRunState` を直接マッピングしたものです。ステータスバーが使う `AttentionCenter` の「このペインで最も関連度の高い実行」というロジックは経由しません。両者は別の問いに答えています。30秒以内にどの実行もバインドできなければ、job は `launch-failed` になります(実行ファイルが無い、TUI が一度も起動しなかった、hook が一度も発火しなかった、のいずれもこれでカバーされます)。job のペインが消えたら、まだ完了していない job は `lost` になります。job がバインドしている実行が起動時スイープで掃除された場合、その job はほかの run と同様にその run の `disconnected` 状態を報告します。`launch-failed` と `lost` のどちらの遷移も後戻りしません。
 
 job のレジストリは実行中のアプリのメモリ上にしかなく、永続化されません。Mytty を再起動すると、それより前に発行された job ID は `job-not-found` になります。job が指していたペインやプロセス自体は影響を受けず、その job ID からはもう辿れなくなるだけです。
 
@@ -484,4 +489,4 @@ job のレジストリは実行中のアプリのメモリ上にしかなく、�
 - [mytty-ctl アーキテクチャ](../explanation/mytty-ctl-architecture_ja.md): control ソケットが事前設定不要で動く理由と、`agent wait` を支える job/実行のバインディングの仕組みを説明しています。
 - [Agent providers](agent-providers_ja.md): どの provider が承認・入力イベントを出すかをまとめています。`wait --until attention` に関係します。
 - [エージェントイベントプロトコル](agent-event-protocol_ja.md): `list` と `wait` に出てくる `AgentProvider` と `AgentRunState` の値を定義しています。
-- `.claude/skills/mytty-panes/SKILL.md`: これらのコマンドを使ったタスクレシピ集です。
+- `.claude/skills/mytty-panes/SKILL.md`: これらのコマンドを使ったレシピを読むために `mytty-ctl guide` を実行するよう指示する短いポインタです。
