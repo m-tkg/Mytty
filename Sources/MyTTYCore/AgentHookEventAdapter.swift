@@ -144,6 +144,42 @@ public enum AgentHookEventAdapter {
 
     static let startupSweepHookName = "mytty.startupSweep"
 
+    /// Builds the `idle` event that closes out a run a background-agent
+    /// wait left `.running` forever. A run stuck waiting on Claude Code
+    /// background subagents (see `claudeCodeMapping`'s `Stop` handling)
+    /// never gets a second `Stop` of its own -- the turn that resumes once
+    /// the background work finishes carries a new `prompt_id`, so it
+    /// starts a new run rather than reporting back on the old one. Without
+    /// this, the stale run stays `.running` indefinitely: `mostRelevantRun`
+    /// keeps preferring an active run over a terminal one, so the status
+    /// bar and sleep prevention would show the pane as busy forever. Call
+    /// this when a fresh `started` event lands on the same pane/provider
+    /// while an older run there is still non-terminal, superseding it.
+    /// `newRunID` only feeds the event ID, so re-detecting the same
+    /// (old run, new run) pair a second time is a no-op.
+    public static func supersededRunSweepEvent(
+        run: AgentRun,
+        supersededBy newRunID: AgentRunID,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}superseded\u{0}\(run.id.rawValue.uuidString)\u{0}\(newRunID.rawValue.uuidString)"
+                )
+            ),
+            runID: run.id,
+            sessionID: run.sessionID,
+            surfaceID: run.surfaceID,
+            provider: run.provider,
+            kind: .idle,
+            occurredAt: occurredAt,
+            hookName: supersededRunHookName
+        )
+    }
+
+    static let supersededRunHookName = "mytty.runSuperseded"
+
     /// The run ID formula real provider hooks use for a given `runKey`
     /// (Claude Code: the prompt ID; Codex: the turn ID) -- both `makeEvent`
     /// above and `interruptionEvent` derive a run ID this same way, and
@@ -552,6 +588,7 @@ public enum AgentHookEventAdapter {
         }
 
         let kind: AgentEventKind
+        var stopDirectMessage: String?
         switch eventName {
         case "SessionStart":
             kind = .idle
@@ -566,10 +603,18 @@ public enum AgentHookEventAdapter {
         case "PostToolBatch":
             kind = .running
         case "Notification":
+            // `idle_prompt` fires ~60s after Stop and is deliberately not
+            // mapped: with a background subagent keeping a run `.running`
+            // past its own Stop, this would otherwise arrive mid-wait and
+            // read as the user being asked for input, flipping the run to
+            // waitingInput and waking the Mac for nothing. In the ordinary
+            // case (no background wait) it always arrives after the run
+            // already went terminal, where the reducer drops it anyway --
+            // so mapping it was already dead weight there.
             switch object.string("notification_type") {
             case "permission_prompt":
                 kind = .approvalRequested
-            case "idle_prompt", "agent_needs_input", "elicitation_dialog":
+            case "agent_needs_input", "elicitation_dialog":
                 kind = .inputRequested
             case "agent_completed":
                 kind = .succeeded
@@ -577,7 +622,24 @@ public enum AgentHookEventAdapter {
                 return nil
             }
         case "Stop":
-            kind = .succeeded
+            // Stop fires at the end of the main turn even while background
+            // subagents Claude Code spawned are still running -- it does
+            // not mean the session is done. `background_tasks` lists every
+            // in-flight task; a nonzero in-flight subagent/workflow count
+            // keeps the run `.running` instead of closing it out, so sleep
+            // prevention and Attention don't treat the session as finished
+            // while background work continues. The resumed turn that
+            // follows carries a new prompt_id, so its own Stop (with an
+            // empty/absent background_tasks) reports the real completion.
+            let inFlight = inFlightBackgroundAgentCount(object)
+            if inFlight > 0 {
+                kind = .running
+                stopDirectMessage = inFlight == 1
+                    ? "Waiting for 1 background agent"
+                    : "Waiting for \(inFlight) background agents"
+            } else {
+                kind = .succeeded
+            }
         case "StopFailure":
             kind = .failed
         default:
@@ -591,12 +653,45 @@ public enum AgentHookEventAdapter {
             message: message(
                 for: kind,
                 toolName: object.string("tool_name"),
-                directMessage: object.string("message")
+                directMessage: stopDirectMessage
+                    ?? object.string("message")
                     ?? object.string("error_message")
             ),
             hookName: eventName,
             toolName: sanitizedToolName(object.string("tool_name"))
         )
+    }
+
+    /// Counts `background_tasks` entries that are still in flight and
+    /// belong to a kind of work that should keep a `Stop` from reading as
+    /// "session done": `subagent`/`workflow` tasks the same Claude Code
+    /// session spawned and is still waiting on. Long-lived `shell` tasks
+    /// (a dev server, `tail -f`) are deliberately excluded -- treating
+    /// those as in-flight would keep sleep prevention engaged for as long
+    /// as such a process happens to run, well past the point Claude itself
+    /// is done. `monitor`, `teammate`, `cloud session`, and `MCP task`
+    /// entries are excluded for the same reason. A missing `status` counts
+    /// as in-flight, since `background_tasks` only ever lists tasks that
+    /// haven't been reported finished; a missing `type` doesn't count at
+    /// all, since it can't be classified as subagent/workflow work.
+    private static func inFlightBackgroundAgentCount(
+        _ object: [String: Any]
+    ) -> Int {
+        guard let tasks = object.array("background_tasks") else { return 0 }
+        let finishedStatuses: Set<String> = [
+            "completed", "failed", "cancelled", "canceled", "killed",
+            "stopped", "done",
+        ]
+        return tasks.reduce(into: 0) { count, task in
+            guard let type = task.string("type")?.lowercased(),
+                  type == "subagent" || type == "workflow"
+            else { return }
+            let status = task.string("status")?.lowercased()
+            guard status == nil || !finishedStatuses.contains(status!) else {
+                return
+            }
+            count += 1
+        }
     }
 
     private static func openCodeMapping(

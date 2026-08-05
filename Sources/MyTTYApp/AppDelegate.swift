@@ -1401,6 +1401,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let attentionCenter else { return false }
         cursorApprovalCoordinator.observe(event)
         nativeAgentRunCoordinator.observe(event)
+
+        // A run left `.running` by a Claude Code background-agent wait
+        // (see AgentHookEventAdapter.claudeCodeMapping's `Stop` handling)
+        // never receives a second `Stop` of its own -- the resumed prompt
+        // carries a new prompt_id and starts a new run instead. Close the
+        // old one out here, the moment the new run starts on the same
+        // pane, so it doesn't linger `.running` forever.
+        if event.provider == .claudeCode, event.kind == .started,
+           !AgentHookEventAdapter.isMyttySynthesizedHookName(event.hookName) {
+            for run in attentionCenter.runs(forPane: event.surfaceID, provider: event.provider)
+            where run.id != event.runID && (run.state == .running || run.state == .waitingInput || run.state == .waitingApproval) {
+                let sweep = AgentHookEventAdapter.supersededRunSweepEvent(
+                    run: run, supersededBy: event.runID, occurredAt: event.occurredAt)
+                if try attentionCenter.append(sweep) {
+                    controlEventLedger.append(sweep)
+                }
+            }
+        }
+
         let inserted = try attentionCenter.append(event)
         if inserted {
             updateAgentSleepPrevention()
