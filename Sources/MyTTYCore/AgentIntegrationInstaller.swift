@@ -462,7 +462,7 @@ public struct AgentIntegrationInstaller {
                 """
                 ---
                 name: mytty-panes
-                description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude Code, Codex, Cursor, etc.) in other panes as a team. Use for requests like "split the pane and work in parallel," "run this across multiple panes," or "have another AI review this."
+                description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude Code, Codex, Cursor, etc.) in other panes as a team. Use whenever a request mentions Mytty at all -- "with mytty", "use mytty", "mytty's orchestration", 「myttyで」「myttyの機能で」「myttyのオーケストレーションで」 -- or asks to "split the pane and work in parallel," "run this across multiple panes," or "have another AI review this."
                 ---
 
                 # mytty-panes
@@ -486,7 +486,7 @@ public struct AgentIntegrationInstaller {
                 """
                 ---
                 name: mytty-panes
-                description: mytty-ctl を使って複数の Mytty ペイン (pane) を操作し、他のエージェント (Claude Code, Codex, Cursor などの sub-agent) を別ペインで並行 (parallel) に動かしてチームとして扱う。「ペインを分割して並行作業して」「複数ペインにまたがって実行して」「別の AI にレビュー (review) させて」のような依頼で使う。
+                description: mytty-ctl を使って複数の Mytty ペイン (pane) を操作し、他のエージェント (Claude Code, Codex, Cursor などの sub-agent) を別ペインで並行 (parallel) に動かしてチームとして扱う。依頼文に Mytty が出てきたら常に使う -- 「myttyで」「myttyの機能で」「myttyのオーケストレーションで」「with mytty」 -- ほか「ペインを分割して並行作業して」「複数ペインにまたがって実行して」「別の AI にレビュー (review) させて」のような依頼でも使う。
                 ---
 
                 # mytty-panes
@@ -523,10 +523,11 @@ public struct AgentIntegrationInstaller {
 
             This pane was opened by Mytty, which ships `mytty-ctl` -- a CLI for
             splitting panes, launching other AI agents in them, and coordinating
-            with them as a team. When asked to coordinate work across multiple
-            panes or run other AI agents as sub-agents, first read \(guidePath)
-            -- the full operating manual. The same content also prints from
-            "$MYTTY_CTL_BIN" guide.
+            with them as a team. When a request mentions Mytty ("with mytty",
+            「myttyで」「myttyの機能で」), or asks to coordinate work across
+            multiple panes or run other AI agents as sub-agents, first read
+            \(guidePath) -- the full operating manual. The same content also
+            prints from "$MYTTY_CTL_BIN" guide.
 
             mytty-ctl connects to a local Unix socket, so run it outside Codex's own sandbox.
 
@@ -541,8 +542,9 @@ public struct AgentIntegrationInstaller {
 
             このペインは Mytty が開いたもので、`mytty-ctl` という CLI が
             付属する。ペインを分割したり、別の AI エージェントをそこで
-            起動したり、チームとして連携させたりできる。複数ペインに
-            またがる作業や、別の AI エージェントをサブエージェントとして
+            起動したり、チームとして連携させたりできる。依頼文に Mytty が
+            出てきたとき(「myttyで」「myttyの機能で」など)や、複数ペインに
+            またがる作業・別の AI エージェントをサブエージェントとして
             動かす依頼を受けたときは、まず \(guidePath) を読む。手順の
             全文が書かれている。同じ内容は `"$MYTTY_CTL_BIN" guide` でも
             出せる。
