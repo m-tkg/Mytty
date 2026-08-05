@@ -111,6 +111,8 @@ hook integration が未インストールの provider についても、Mytty �
 
 この推定が動くのは、その provider の integration status が未インストールの間だけです。hook をインストールすればその provider の run は再び hook 自身の報告に一本化され、ネイティブ推定は関与しなくなります。より一般的に、`mytty.native.` に限らず `mytty.` で始まる `hookName` はすべて、Mytty が自ら合成した event(provider の hook から受け取ったものではない event)を表します。詳細は `Sources/MyTTYCore/NativeAgentRunEstimator.swift` と `Sources/MyTTYCore/AgentHookEventAdapter.swift` を参照してください。
 
+Claude Code と Codex に限っては、さらに一歩進んだ推定を行います。session inspector がポーリングのたびに読んでいるモデル名・残りコンテキスト用の transcript を使って、この粗い1本の run をプロンプトのターンごとの run に分割し、実際の hook integration が報告する内容(新しいプロンプトで `UserPromptSubmit`、ターン完了で `Stop`)に近づけます。transcript がターンを報告した時点で、プロセス単位の粗い run は idle になり、以降は `mytty.native.turn*` 系の `event.hookName`(`mytty.native.turnStarted`、`mytty.native.turnCompleted` など)を持つターンごとの run がライフサイクルの報告を引き継ぎます。各ターンの run ID は、そのターンに対して provider 自身の hook が使うのと同じターン識別子(Claude Code はプロンプト ID、Codex はターン ID)から導出されるため、途中から hook が効き始めた場合や、hook を持たない Claude Code の ESC 中断処理も、別の run を新たに作らず同じ run に着地します。
+
 ## 参考
 
 - [Agent providers](agent-providers_ja.md): 設定ファイルの場所、provider ごとの hook と event の対応、status bar / session inspector の情報源をまとめています。

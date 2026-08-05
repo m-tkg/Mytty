@@ -69,6 +69,17 @@ final class AgentStatusPollingCoordinator: NSObject {
         _ provider: AgentProvider?,
         _ processID: pid_t?
     ) -> Void
+    /// Reports a transcript-derived turn observation (Claude Code, Codex)
+    /// so `NativeAgentRunCoordinator` can split a native-estimated run into
+    /// per-turn runs -- see `AgentTurnObservation`. Fired only when the
+    /// observation *changed* for that surface (`lastTurnBySurface`), the
+    /// same "changed, not every tick" gate `onInterruptedRun` uses.
+    private let onTurnObservation: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider,
+        _ turn: AgentTurnObservation
+    ) -> Void
+    private var lastTurnBySurface: [TerminalSurfaceID: AgentTurnObservation] = [:]
 
     init(
         surfaces: @escaping () -> [TerminalSurfaceID: GhosttySurfaceView],
@@ -84,6 +95,11 @@ final class AgentStatusPollingCoordinator: NSObject {
             _ surfaceID: TerminalSurfaceID,
             _ provider: AgentProvider?,
             _ processID: pid_t?
+        ) -> Void = { _, _, _ in },
+        onTurnObservation: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider,
+            _ turn: AgentTurnObservation
         ) -> Void = { _, _, _ in }
     ) {
         self.surfaces = surfaces
@@ -92,6 +108,7 @@ final class AgentStatusPollingCoordinator: NSObject {
         self.onPoll = onPoll
         self.onInterruptedRun = onInterruptedRun
         self.onProviderTransition = onProviderTransition
+        self.onTurnObservation = onTurnObservation
         super.init()
     }
 
@@ -149,6 +166,17 @@ final class AgentStatusPollingCoordinator: NSObject {
         onInterruptedRun(surfaceID, provider, interruption)
     }
 
+    private func reportTurnObservation(
+        surfaceID: TerminalSurfaceID,
+        provider: AgentProvider,
+        turn: AgentTurnObservation?
+    ) {
+        guard let turn else { return }
+        guard lastTurnBySurface[surfaceID] != turn else { return }
+        lastTurnBySurface[surfaceID] = turn
+        onTurnObservation(surfaceID, provider, turn)
+    }
+
     @discardableResult
     func refreshProviders() -> Bool {
         let currentSurfaces = surfaces()
@@ -198,6 +226,9 @@ final class AgentStatusPollingCoordinator: NSObject {
         reportedInterruptions = reportedInterruptions.filter {
             currentSurfaces[$0.key] != nil
         }
+        lastTurnBySurface = lastTurnBySurface.filter {
+            currentSurfaces[$0.key] != nil
+        }
 
         var statuses: [TerminalSurfaceID: AgentSessionStatus] = [:]
         for (surfaceID, surface) in currentSurfaces {
@@ -220,6 +251,11 @@ final class AgentStatusPollingCoordinator: NSObject {
                 surfaceID: surfaceID,
                 provider: provider,
                 interruption: result.interruption
+            )
+            reportTurnObservation(
+                surfaceID: surfaceID,
+                provider: provider,
+                turn: result.turn
             )
         }
         let sessionIDs = statuses.reduce(

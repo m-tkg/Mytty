@@ -95,6 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 surfaceID: surfaceID,
                 exitCode: exitCode
             )
+        },
+        onNativeTurnObserved: { [weak self] surfaceID, provider, turn in
+            self?.nativeAgentRunCoordinator.turnObserved(
+                surfaceID: surfaceID,
+                provider: provider,
+                turn: turn
+            )
         }
     )
     private lazy var cursorApprovalCoordinator = CursorApprovalCoordinator(

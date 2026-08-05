@@ -41,9 +41,6 @@ public enum AgentHookEventAdapter {
             withJSONObject: object,
             options: [.sortedKeys, .withoutEscapingSlashes]
         )
-        let runID = StableAgentUUID.make(
-            from: "run\u{0}\(provider.rawValue)\u{0}\(runKey)"
-        )
         var eventIdentity = Data(
             "event\u{0}\(provider.rawValue)\u{0}\(mapping.kind.rawValue)\u{0}".utf8
         )
@@ -53,7 +50,7 @@ public enum AgentHookEventAdapter {
             id: AgentEventID(
                 rawValue: StableAgentUUID.make(from: eventIdentity)
             ),
-            runID: AgentRunID(rawValue: runID),
+            runID: hookAlignedRunID(provider: provider, runKey: runKey),
             sessionID: mapping.sessionID,
             surfaceID: surfaceID,
             provider: provider,
@@ -86,16 +83,30 @@ public enum AgentHookEventAdapter {
                     from: "event\u{0}\(provider.rawValue)\u{0}interrupted\u{0}\(runKey)\u{0}\(interruptionKey)"
                 )
             ),
-            runID: AgentRunID(
-                rawValue: StableAgentUUID.make(
-                    from: "run\u{0}\(provider.rawValue)\u{0}\(runKey)"
-                )
-            ),
+            runID: hookAlignedRunID(provider: provider, runKey: runKey),
             sessionID: sessionID,
             surfaceID: surfaceID,
             provider: provider,
             kind: .idle,
             occurredAt: occurredAt
+        )
+    }
+
+    /// The run ID formula real provider hooks use for a given `runKey`
+    /// (Claude Code: the prompt ID; Codex: the turn ID) -- both `makeEvent`
+    /// above and `interruptionEvent` derive a run ID this same way, and
+    /// `NativeAgentRunEstimator`'s turn-mode runs (`nativeTurnStartedEvent`
+    /// and friends) deliberately reuse this exact formula so a
+    /// transcript-derived turn and a real hook delivery for that same turn
+    /// (including Claude's ESC-interruption synthesis) land on one run.
+    public static func hookAlignedRunID(
+        provider: AgentProvider,
+        runKey: String
+    ) -> AgentRunID {
+        AgentRunID(
+            rawValue: StableAgentUUID.make(
+                from: "run\u{0}\(provider.rawValue)\u{0}\(runKey)"
+            )
         )
     }
 
@@ -222,10 +233,18 @@ public enum AgentHookEventAdapter {
     /// `disconnected` -- the only kind the reducer accepts unconditionally
     /// regardless of the run's current state, so an uncertain outcome is
     /// never mis-reported as a clean success or failure.
+    ///
+    /// `turnKey` is non-nil only once the estimator has handed an epoch
+    /// into turn-tracking mode and the process ends while a turn is still
+    /// active: the terminal event then lands on that turn's own run
+    /// (`hookAlignedRunID`) instead of the epoch-level run, since the turn
+    /// is the more precise unit of work by that point. `nil` (the default)
+    /// keeps the original epoch-run behavior and IDs unchanged.
     public static func nativeCommandFinishedEvent(
         provider: AgentProvider,
         surfaceID: TerminalSurfaceID,
         epochKey: String,
+        turnKey: String? = nil,
         exitCode: Int?,
         occurredAt: Date
     ) -> AgentEvent {
@@ -237,10 +256,11 @@ public enum AgentHookEventAdapter {
         return AgentEvent(
             id: AgentEventID(
                 rawValue: StableAgentUUID.make(
-                    from: "event\u{0}native\u{0}command-finished\u{0}\(epochKey)"
+                    from: "event\u{0}native\u{0}command-finished\u{0}\(idSuffix(epochKey: epochKey, turnKey: turnKey))"
                 )
             ),
-            runID: nativeRunID(epochKey: epochKey),
+            runID: turnKey.map { hookAlignedRunID(provider: provider, runKey: $0) }
+                ?? nativeRunID(epochKey: epochKey),
             surfaceID: surfaceID,
             provider: provider,
             kind: kind,
@@ -253,8 +273,56 @@ public enum AgentHookEventAdapter {
     /// the detected agent process simply disappears from a pane's
     /// foreground without OSC 133 ever reporting the command finished (e.g.
     /// the shell integration that emits OSC 133 isn't installed, or the
-    /// pane closed outright).
+    /// pane closed outright). `turnKey` behaves exactly as it does on
+    /// `nativeCommandFinishedEvent` above.
     public static func nativeProcessExitedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        turnKey: String? = nil,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}process-exited\u{0}\(idSuffix(epochKey: epochKey, turnKey: turnKey))"
+                )
+            ),
+            runID: turnKey.map { hookAlignedRunID(provider: provider, runKey: $0) }
+                ?? nativeRunID(epochKey: epochKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .disconnected,
+            occurredAt: occurredAt,
+            hookName: nativeProcessExitedHookName
+        )
+    }
+
+    private static func idSuffix(epochKey: String, turnKey: String?) -> String {
+        guard let turnKey else { return epochKey }
+        return "\(epochKey)\u{0}\(turnKey)"
+    }
+
+    // MARK: - Transcript-derived turn events (Phase 2)
+    //
+    // `NativeAgentRunEstimator.turnObserved` hands an epoch into
+    // turn-tracking mode once the provider's own transcript starts
+    // reporting prompt turns, splitting the coarse process-epoch lifecycle
+    // (`nativeStartedEvent` above) into one run per turn -- the native
+    // equivalent of a real hook's UserPromptSubmit-to-Stop cycle.
+
+    static let nativeTurnHandoffHookName = "\(nativeHookNamePrefix)turnHandoff"
+    static let nativeTurnSupersededHookName = "\(nativeHookNamePrefix)turnSuperseded"
+    static let nativeTurnStartedHookName = "\(nativeHookNamePrefix)turnStarted"
+    static let nativeTurnCompletedHookName = "\(nativeHookNamePrefix)turnCompleted"
+    static let nativeTurnInterruptedHookName = "\(nativeHookNamePrefix)turnInterrupted"
+
+    /// Parks the epoch-level run (already announced `started`) the moment
+    /// turn-tracking takes over for it: the reducer's `idle` transition is
+    /// accepted from any state, so this quietly stops the epoch run from
+    /// ever reporting `succeeded`/`failed` itself -- from here on, only the
+    /// per-turn runs below report the actual lifecycle.
+    public static func nativeTurnHandoffEvent(
         provider: AgentProvider,
         surfaceID: TerminalSurfaceID,
         epochKey: String,
@@ -263,15 +331,124 @@ public enum AgentHookEventAdapter {
         AgentEvent(
             id: AgentEventID(
                 rawValue: StableAgentUUID.make(
-                    from: "event\u{0}native\u{0}process-exited\u{0}\(epochKey)"
+                    from: "event\u{0}native\u{0}turn-handoff\u{0}\(epochKey)"
                 )
             ),
             runID: nativeRunID(epochKey: epochKey),
             surfaceID: surfaceID,
             provider: provider,
-            kind: .disconnected,
+            kind: .idle,
             occurredAt: occurredAt,
-            hookName: nativeProcessExitedHookName
+            hookName: nativeTurnHandoffHookName
+        )
+    }
+
+    /// Parks a turn's own run when a newer prompt starts before this one
+    /// ever reported completing -- the transcript moved on, so the
+    /// abandoned turn's run goes `idle` instead of staying `running`
+    /// forever.
+    public static func nativeTurnSupersededEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        turnKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}turn-superseded\u{0}\(epochKey)\u{0}\(turnKey)"
+                )
+            ),
+            runID: hookAlignedRunID(provider: provider, runKey: turnKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .idle,
+            occurredAt: occurredAt,
+            hookName: nativeTurnSupersededHookName
+        )
+    }
+
+    /// Builds the `started` event for one transcript-derived prompt turn --
+    /// the native-estimation equivalent of the provider's own
+    /// `UserPromptSubmit`/`beforeSubmitPrompt` hook, scoped to a single
+    /// turn rather than the whole process epoch. `runID` is
+    /// `hookAlignedRunID`, the exact formula a real hook delivery for this
+    /// turn would use, so a hook that starts covering the pane mid-turn (or
+    /// Claude's ESC-interruption synthesis) lands on this same run.
+    public static func nativeTurnStartedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        turnKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}turn-started\u{0}\(epochKey)\u{0}\(turnKey)"
+                )
+            ),
+            runID: hookAlignedRunID(provider: provider, runKey: turnKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .started,
+            occurredAt: occurredAt,
+            hookName: nativeTurnStartedHookName
+        )
+    }
+
+    /// Builds the `succeeded` event for a turn the transcript reports
+    /// completed normally (Claude Code: an `end_turn` assistant reply or a
+    /// `turn_duration` system record; Codex: `task_complete`).
+    public static func nativeTurnCompletedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        turnKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}turn-completed\u{0}\(epochKey)\u{0}\(turnKey)"
+                )
+            ),
+            runID: hookAlignedRunID(provider: provider, runKey: turnKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .succeeded,
+            occurredAt: occurredAt,
+            hookName: nativeTurnCompletedHookName
+        )
+    }
+
+    /// Builds the `idle` event for a turn the transcript reports aborted
+    /// (Codex's `turn_aborted`). Claude Code fires no such record -- its
+    /// ESC interrupt is caught by the existing `interruptionEvent` flow,
+    /// which lands on this same run (`hookAlignedRunID`) first in
+    /// practice; both are idempotent `idle` events, so whichever arrives
+    /// first wins and the second is harmless (idle-to-idle is a no-op
+    /// transition).
+    public static func nativeTurnInterruptedEvent(
+        provider: AgentProvider,
+        surfaceID: TerminalSurfaceID,
+        epochKey: String,
+        turnKey: String,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}native\u{0}turn-interrupted\u{0}\(epochKey)\u{0}\(turnKey)"
+                )
+            ),
+            runID: hookAlignedRunID(provider: provider, runKey: turnKey),
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: .idle,
+            occurredAt: occurredAt,
+            hookName: nativeTurnInterruptedHookName
         )
     }
 
