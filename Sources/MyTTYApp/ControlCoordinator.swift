@@ -254,7 +254,8 @@ extension ControlCoordinator: ControlServerDelegate {
 
     func controlServer(
         _ server: ControlServer,
-        waitPreflightFailureCodeForPaneID paneID: String
+        waitPreflightFailureCodeForPaneID paneID: String,
+        until condition: ControlWaitCondition
     ) -> String? {
         // An unresolvable pane is left to the poll loop's own
         // pane-not-found answer; an unrecognized foreground process
@@ -265,7 +266,8 @@ extension ControlCoordinator: ControlServerDelegate {
                   .foregroundAgentProvider(forPane: surfaceID)
         else { return nil }
         return AgentIntegrationPreflight.waitFailureCode(
-            for: agentIntegrationStatus(provider)
+            for: agentIntegrationStatus(provider),
+            until: condition
         )
     }
 

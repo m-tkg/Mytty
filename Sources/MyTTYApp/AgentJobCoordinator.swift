@@ -260,6 +260,21 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
 
     func controlServer(
         _ server: ControlServer,
+        agentWaitPreflightFailureCodeForJobID jobID: AgentJobID,
+        until condition: AgentWaitCondition
+    ) -> String? {
+        // A missing job is left to the poll loop's own job-not-found
+        // answer, mirroring the pane-level preflight's handling of an
+        // unresolvable pane.
+        guard let tracker = trackers[jobID] else { return nil }
+        return AgentIntegrationPreflight.agentWaitFailureCode(
+            for: integrationStatus(tracker.provider.agentProvider),
+            until: condition
+        )
+    }
+
+    func controlServer(
+        _ server: ControlServer,
         agentResultContentForJobID jobID: AgentJobID
     ) -> Result<(AgentJobSnapshot, ControlPaneContent), AgentControlFailure> {
         guard var tracker = trackers[jobID] else {

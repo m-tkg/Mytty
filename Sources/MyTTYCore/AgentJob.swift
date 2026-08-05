@@ -148,34 +148,73 @@ public struct AgentJobSnapshot: Codable, Equatable, Sendable {
 }
 
 /// Maps the provider integration status Mytty already tracks in Settings
-/// onto the `agent spawn` preflight failure codes. Pure and tiny on
-/// purpose: it's the one bit of `AgentJobCoordinator`'s preflight logic
-/// that's worth pulling out of app glue so it stays covered by a fast unit
-/// test independent of `AppDelegate`/`AgentIntegrationSettingsModel` wiring.
+/// onto the `agent spawn`/`wait` preflight failure codes. Pure and tiny on
+/// purpose: it's the one bit of `AgentJobCoordinator`'s and
+/// `ControlCoordinator`'s preflight logic that's worth pulling out of app
+/// glue so it stays covered by a fast unit test independent of
+/// `AppDelegate`/`AgentIntegrationSettingsModel` wiring.
+///
+/// Every case here answers the same question: is this spawn/wait
+/// *guaranteed* to end in silence? Before native run estimation (see
+/// `NativeAgentRunEstimator`), a `notInstalled` provider could never
+/// deliver a single event, so failing fast was correct everywhere.
+/// Now that a `notInstalled` provider's lifecycle
+/// (running/succeeded/failed/disconnected/idle) is synthesized natively
+/// from the polled process and, for Claude Code/Codex, their transcripts,
+/// spawning against it and waiting on anything but attention both resolve
+/// normally. Only an *attention* wait — waiting-input/waiting-approval —
+/// is still guaranteed to burn its timeout on a `notInstalled` provider,
+/// because native estimation deliberately never synthesizes attention
+/// states: a misread there could put a false actionable item in the
+/// Attention Inbox. `needsRepair` is the opposite asymmetry: it keeps
+/// failing spawn (unlike `notInstalled`) because native estimation stays
+/// out of the way for it too — its hooks may be half-delivering, so a
+/// `needsRepair` pane has neither reliable hooks nor native estimation,
+/// and repair is the only fix.
 public enum AgentIntegrationPreflight {
+    /// `agent spawn` preflight. `notInstalled` no longer fails: the job
+    /// binds to a natively estimated run instead of a hook-reported one —
+    /// `AgentJobTracker` eligibility only needs a run to progress past
+    /// unknown/idle, which native turn/epoch runs do. `needsRepair` keeps
+    /// failing, since native estimation intentionally skips it.
     public static func failureCode(
         for status: AgentIntegrationStatus
     ) -> String? {
         switch status {
-        case .notInstalled: "provider-integration-not-installed"
+        case .notInstalled, .installed: nil
         case .needsRepair: "provider-integration-needs-repair"
-        case .installed: nil
         }
     }
 
-    /// The pane-level `wait` preflight is stricter than `agent spawn`'s
-    /// about what it lets through: only `notInstalled` fails, because
-    /// that's the state where no event can ever arrive and the wait is
-    /// guaranteed to burn its full timeout in silence. A `needsRepair`
-    /// integration may still be delivering events from a live session, so
-    /// failing a wait over it could break an orchestration that's
-    /// actually working.
+    /// The pane-level `wait` preflight: fails fast only for `(.notInstalled,
+    /// .attention)`, the one combination still guaranteed to run out the
+    /// timeout. `.idle` waits on a `notInstalled` provider are allowed —
+    /// native estimation resolves them. `needsRepair`/`installed` stay nil
+    /// for both conditions: a `needsRepair` integration may still be
+    /// delivering events from a live session, so failing a wait over it
+    /// could break an orchestration that's actually working.
     public static func waitFailureCode(
-        for status: AgentIntegrationStatus
+        for status: AgentIntegrationStatus,
+        until condition: ControlWaitCondition
     ) -> String? {
-        switch status {
-        case .notInstalled: "provider-integration-not-installed"
-        case .needsRepair, .installed: nil
+        switch (status, condition) {
+        case (.notInstalled, .attention): "provider-integration-not-installed"
+        default: nil
+        }
+    }
+
+    /// `agent wait` counterpart of `waitFailureCode(for:until:)`: fails
+    /// fast only for `(.notInstalled, .attention)`. `.running` and
+    /// `.completed` are resolvable from native lifecycle estimation, so a
+    /// job spawned against a `notInstalled` provider is still waitable on
+    /// those two conditions.
+    public static func agentWaitFailureCode(
+        for status: AgentIntegrationStatus,
+        until condition: AgentWaitCondition
+    ) -> String? {
+        switch (status, condition) {
+        case (.notInstalled, .attention): "provider-integration-not-installed"
+        default: nil
         }
     }
 }

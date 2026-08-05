@@ -51,13 +51,17 @@ protocol ControlServerDelegate: AnyObject {
 
     /// Checked once before `wait` enters its poll loop: a non-nil failure
     /// code aborts the wait immediately instead of letting it block to
-    /// timeout on a pane whose provider can never deliver an event (hook
-    /// integration not installed). Nil means proceed — including when the
-    /// pane's foreground process is no recognized provider at all, since
-    /// a shell about to launch an agent must stay waitable.
+    /// timeout on a pane/condition combination that can never be
+    /// satisfied — only an `.attention` wait against a provider whose hook
+    /// integration isn't installed, since native run estimation covers
+    /// `.idle` but never synthesizes attention states. Nil means proceed —
+    /// including when the pane's foreground process is no recognized
+    /// provider at all, since a shell about to launch an agent must stay
+    /// waitable.
     func controlServer(
         _ server: ControlServer,
-        waitPreflightFailureCodeForPaneID paneID: String
+        waitPreflightFailureCodeForPaneID paneID: String,
+        until condition: ControlWaitCondition
     ) -> String?
 
     /// Stores (or clears, for nil) a pane agent's `mytty-ctl status`
@@ -165,6 +169,19 @@ protocol ControlServerAgentDelegate: AnyObject {
         _ server: ControlServer,
         closeAgentJobID jobID: AgentJobID
     ) -> Result<Void, AgentControlFailure>
+
+    /// Checked once before `agent wait` enters its poll loop, mirroring
+    /// the pane-level `wait` preflight: a non-nil failure code aborts
+    /// immediately instead of blocking to timeout on a condition that can
+    /// never be satisfied — only an `.attention` wait against a job whose
+    /// provider's hook integration isn't installed. A job that isn't
+    /// found returns nil here so the poll loop's own `job-not-found`
+    /// answer fires normally.
+    func controlServer(
+        _ server: ControlServer,
+        agentWaitPreflightFailureCodeForJobID jobID: AgentJobID,
+        until condition: AgentWaitCondition
+    ) -> String?
 }
 
 /// Local control server for `mytty-ctl`: the AI-facing counterpart to
@@ -450,6 +467,16 @@ final class ControlServer {
         timeoutSeconds: Double,
         delegate: ControlServerAgentDelegate
     ) async -> ControlResponse {
+        // Once, not per poll — see `wait`'s identical rationale: mid-wait
+        // hooks could still start delivering, and a per-poll recheck would
+        // just repeat the same fail-fast check for nothing.
+        if let failureCode = delegate.controlServer(
+            self,
+            agentWaitPreflightFailureCodeForJobID: jobID,
+            until: condition
+        ) {
+            return .failure(code: failureCode)
+        }
         let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
         while true {
             switch delegate.controlServer(
@@ -481,7 +508,8 @@ final class ControlServer {
         // "no integration" and fail a wait that was legitimately running.
         if let failureCode = delegate.controlServer(
             self,
-            waitPreflightFailureCodeForPaneID: paneID
+            waitPreflightFailureCodeForPaneID: paneID,
+            until: condition
         ) {
             return .failure(code: failureCode)
         }

@@ -122,9 +122,16 @@ public enum ControlCommandLineParser {
         `--until running` for confirmation the worker actually started;
         `--until attention` only resolves for waiting-input/waiting-
         approval; `--until completed` resolves for succeeded/failed/
-        disconnected/launch-failed/lost. Default timeout is 120 seconds. A
-        provider that never starts (missing executable, a hook integration
-        that isn't installed) surfaces as launch-failed within 30 seconds,
+        disconnected/launch-failed/lost. Default timeout is 120 seconds.
+        `running` and `completed` work even without the provider's hook
+        integration installed -- Mytty estimates the run's lifecycle
+        natively from the pane's foreground process and, for claude/codex,
+        their transcripts. `attention` still needs that provider's hooks
+        (native estimation deliberately never reports waiting-input/
+        waiting-approval, to avoid a false actionable item) and fails fast
+        with `provider-integration-not-installed` when they aren't
+        installed. A provider that never starts at all (missing
+        executable) still surfaces as launch-failed within 30 seconds,
         well before the full timeout.
 
       agent result <job-id>
@@ -270,16 +277,23 @@ public enum ControlCommandLineParser {
 
       WAIT PITFALLS
 
-        - If the target provider's integration is not enabled in Mytty Settings,
-          no agent events reach Mytty at all. `wait` on a pane whose
-          foreground process is already a recognized agent fails immediately
-          with `provider-integration-not-installed` -- ask the user to
-          approve `mytty-ctl integration enable <provider>` (or Settings >
-          Agents) instead of retrying. But if the agent hasn't been launched
-          yet when `wait` starts (the usual split-then-wait flow), the
+        - `wait --until idle` works even if the target provider's
+          integration is not enabled in Mytty Settings: Mytty estimates the
+          run's lifecycle natively from the pane's foreground process and,
+          for claude/codex, their transcripts, so idle/succeeded/failed/
+          disconnected are all observable without hooks. `wait --until
+          attention` is the exception -- native estimation deliberately
+          never reports waiting-input/waiting-approval, so it needs the
+          provider's real hooks. On a pane whose foreground process is
+          already a recognized agent, an attention wait against a
+          not-installed integration fails immediately with
+          `provider-integration-not-installed` -- ask the user to approve
+          `mytty-ctl integration enable <provider>` (or Settings > Agents)
+          instead of retrying. But if the agent hasn't been launched yet
+          when `wait` starts (the usual split-then-wait flow), the
           preflight sees only a shell and the wait still blocks to timeout,
-          so treat a wait timeout right after launching a provider as the
-          same missing-integration signal.
+          so treat an attention-wait timeout right after launching a
+          provider as the same missing-integration signal.
         - Cursor never emits an input-requested event. A shell approval instead
           surfaces as `waiting-approval` roughly 10 seconds after the command
           starts, once Mytty's delay-based estimate fires.

@@ -4,12 +4,11 @@ import Testing
 
 @Suite("Agent integration preflight")
 struct AgentIntegrationPreflightTests {
-    @Test("maps integration status to the documented spawn failure codes")
+    @Test("spawn preflight only fails a needs-repair integration")
     func mapsFailureCodes() {
-        #expect(
-            AgentIntegrationPreflight.failureCode(for: .notInstalled)
-                == "provider-integration-not-installed"
-        )
+        // Native run estimation binds a spawned job to an estimated run,
+        // so a not-installed provider no longer fails spawn.
+        #expect(AgentIntegrationPreflight.failureCode(for: .notInstalled) == nil)
         #expect(
             AgentIntegrationPreflight.failureCode(for: .needsRepair)
                 == "provider-integration-needs-repair"
@@ -17,19 +16,60 @@ struct AgentIntegrationPreflightTests {
         #expect(AgentIntegrationPreflight.failureCode(for: .installed) == nil)
     }
 
-    @Test("the wait preflight only fails a not-installed integration")
-    func waitFailureCodes() {
+    @Test(
+        "the pane wait preflight only fails an attention wait against a not-installed integration",
+        arguments: [
+            (AgentIntegrationStatus.notInstalled, ControlWaitCondition.idle, nil),
+            (
+                .notInstalled, .attention,
+                "provider-integration-not-installed"
+            ),
+            (.needsRepair, .idle, nil),
+            (.needsRepair, .attention, nil),
+            (.installed, .idle, nil),
+            (.installed, .attention, nil),
+        ] as [(AgentIntegrationStatus, ControlWaitCondition, String?)]
+    )
+    func waitFailureCodes(
+        status: AgentIntegrationStatus,
+        condition: ControlWaitCondition,
+        expected: String?
+    ) {
         #expect(
-            AgentIntegrationPreflight.waitFailureCode(for: .notInstalled)
-                == "provider-integration-not-installed"
+            AgentIntegrationPreflight.waitFailureCode(
+                for: status,
+                until: condition
+            ) == expected
         )
-        // needs-repair may still deliver events from a live session, so a
-        // wait against it must keep waiting rather than fail.
+    }
+
+    @Test(
+        "the agent wait preflight only fails an attention wait against a not-installed integration",
+        arguments: [
+            (AgentIntegrationStatus.notInstalled, AgentWaitCondition.running, nil),
+            (.notInstalled, .completed, nil),
+            (
+                .notInstalled, .attention,
+                "provider-integration-not-installed"
+            ),
+            (.needsRepair, .running, nil),
+            (.needsRepair, .attention, nil),
+            (.needsRepair, .completed, nil),
+            (.installed, .running, nil),
+            (.installed, .attention, nil),
+            (.installed, .completed, nil),
+        ] as [(AgentIntegrationStatus, AgentWaitCondition, String?)]
+    )
+    func agentWaitFailureCodes(
+        status: AgentIntegrationStatus,
+        condition: AgentWaitCondition,
+        expected: String?
+    ) {
         #expect(
-            AgentIntegrationPreflight.waitFailureCode(for: .needsRepair) == nil
-        )
-        #expect(
-            AgentIntegrationPreflight.waitFailureCode(for: .installed) == nil
+            AgentIntegrationPreflight.agentWaitFailureCode(
+                for: status,
+                until: condition
+            ) == expected
         )
     }
 }
