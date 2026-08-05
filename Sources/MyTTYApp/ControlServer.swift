@@ -73,6 +73,16 @@ protocol ControlServerDelegate: AnyObject {
         forPaneID paneID: String
     ) -> String?
 
+    /// Every recorded agent-event summary newer than `sequence`, plus the
+    /// ledger's current tip — the single source `events` polls. Called
+    /// once per poll iteration, the same way `agentStateForPaneID` is
+    /// called once per `wait` poll. See `ControlEventLedger.records
+    /// (after:)` for the eviction/cursor contract `records` follows.
+    func controlServer(
+        _ server: ControlServer,
+        eventsAfterSequence sequence: UInt64
+    ) -> (records: [ControlAgentEventRecord], latestSequence: UInt64)
+
     func controlServer(
         _ server: ControlServer,
         closePaneID paneID: String
@@ -352,6 +362,13 @@ final class ControlServer {
             }
             return .ok
 
+        case let .events(afterSequence, timeoutSeconds):
+            return await events(
+                after: afterSequence,
+                timeoutSeconds: timeoutSeconds,
+                delegate: delegate
+            )
+
         case .integrationList:
             return .integrationStatuses(
                 delegate.controlServerIntegrationStatuses(self)
@@ -526,6 +543,53 @@ final class ControlServer {
             }
             if Date() >= deadline {
                 return .waitResult(state: state?.rawValue, timedOut: true)
+            }
+            try? await Task.sleep(nanoseconds: Self.pollInterval)
+        }
+    }
+
+    /// Long-poll for `events`, mirroring `wait`'s poll loop above (same
+    /// fixed-interval `Task.sleep`, same deadline-vs-`Date()` shape) with
+    /// two differences `wait` doesn't need: `afterSequence == 0` answers
+    /// immediately without ever polling (a fresh cursor never replays
+    /// history — see `ControlRequest.events`), and there is no preflight,
+    /// since unlike a pane/job, "no events yet" is never a condition that
+    /// can be detected as permanently unsatisfiable.
+    private func events(
+        after afterSequence: UInt64,
+        timeoutSeconds: Double,
+        delegate: ControlServerDelegate
+    ) async -> ControlResponse {
+        guard afterSequence != 0 else {
+            let snapshot = delegate.controlServer(
+                self,
+                eventsAfterSequence: 0
+            )
+            return .events(
+                records: [],
+                latestSequence: snapshot.latestSequence,
+                timedOut: false
+            )
+        }
+        let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
+        while true {
+            let snapshot = delegate.controlServer(
+                self,
+                eventsAfterSequence: afterSequence
+            )
+            if !snapshot.records.isEmpty {
+                return .events(
+                    records: snapshot.records,
+                    latestSequence: snapshot.latestSequence,
+                    timedOut: false
+                )
+            }
+            if Date() >= deadline {
+                return .events(
+                    records: [],
+                    latestSequence: snapshot.latestSequence,
+                    timedOut: true
+                )
             }
             try? await Task.sleep(nanoseconds: Self.pollInterval)
         }

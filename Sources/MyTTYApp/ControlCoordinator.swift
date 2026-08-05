@@ -13,6 +13,7 @@ final class ControlCoordinator {
     let server: ControlServer
     private let windowSessionCoordinator: WindowSessionCoordinator
     private let attentionCenter: AttentionCenter
+    private let controlEventLedger: ControlEventLedger
     private let localizerProvider: () -> MyTTYLocalizer
     private let agentJobCoordinator: AgentJobCoordinator
     private let agentIntegrationStatus: (
@@ -29,6 +30,10 @@ final class ControlCoordinator {
         socketURL: URL,
         windowSessionCoordinator: WindowSessionCoordinator,
         attentionCenter: AttentionCenter,
+        /// Read-only from here: `AppDelegate.receiveAgentEvent` is the only
+        /// writer, via `AgentEventServer`'s `onEvent` callback, not this
+        /// coordinator.
+        controlEventLedger: ControlEventLedger,
         localizerProvider: @escaping () -> MyTTYLocalizer,
         /// Injected rather than read from `AgentIntegrationSettingsModel`
         /// directly, so `agent spawn`'s preflight can be tested with a
@@ -58,6 +63,7 @@ final class ControlCoordinator {
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenter = attentionCenter
+        self.controlEventLedger = controlEventLedger
         self.localizerProvider = localizerProvider
         self.agentIntegrationStatus = agentIntegrationStatus
         self.integrationStates = integrationStates
@@ -268,6 +274,16 @@ extension ControlCoordinator: ControlServerDelegate {
         return AgentIntegrationPreflight.waitFailureCode(
             for: agentIntegrationStatus(provider),
             until: condition
+        )
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        eventsAfterSequence sequence: UInt64
+    ) -> (records: [ControlAgentEventRecord], latestSequence: UInt64) {
+        (
+            records: controlEventLedger.records(after: sequence),
+            latestSequence: controlEventLedger.latestSequence
         )
     }
 

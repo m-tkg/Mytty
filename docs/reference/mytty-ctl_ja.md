@@ -65,6 +65,7 @@ mytty-ctl list | jq .
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
 | `status` | `(<text> \| --clear) [--pane <pane-id>]` | `{"type":"ok"}` |
 | `wait` | `<pane-id> --until <idle\|attention> [--timeout-seconds <n>]` | `{"type":"waitResult","state":"...","timedOut":false}` |
+| `events` | `[--after <seq>] [--timeout <seconds>]` | `{"type":"events","records":[...],"latestSequence":7,"timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 
@@ -354,6 +355,46 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 
 `--timeout-seconds` のデフォルトは `120` です。`state` は wait が解決した時点で観測された `AgentRunState`(そのペインに一度もイベントが来ていなければ `null`)です。`timedOut` は、タイムアウトまでに条件を満たせなかった場合に `true` になります。`--until idle` は、ペインの provider に hook 連携が導入されていなくても機能します — Mytty が実行のライフサイクルをネイティブに推定するためです。hook 連携が未インストールのエージェントが既に動いているペインに対して `--until attention` を実行すると、ブロックせず即座に `provider-integration-not-installed` で失敗します。詳細は下記「wait の挙動」を参照してください。
 
+### events
+
+全ペイン分のエージェントイベントをまとめて long-poll で取得します。複数の worker を並行して見張るオーケストレーター向けの機能で、ペインごとに `wait`/`agent wait` をバックグラウンドシェルで並列に走らせる代わりに、ループの中で `events` を1つ呼べば済みます。
+
+```bash
+mytty-ctl events                                    # カーソルだけ確立、履歴は返さない
+mytty-ctl events --after 7 --timeout 60             # 次のイベントまでブロック
+```
+
+```json
+{
+  "type": "events",
+  "records": [
+    {
+      "sequence": 8,
+      "paneID": "...",
+      "provider": "codex",
+      "runID": "...",
+      "kind": "approval-requested",
+      "occurredAt": "2026-01-01T00:00:00Z",
+      "toolName": "shell",
+      "synthesized": false
+    }
+  ],
+  "latestSequence": 8,
+  "timedOut": false
+}
+```
+
+`--after` のデフォルトは `0` で、この場合は意図的に `records` を返しません -- 現在の `latestSequence` を返すだけで、呼び出し元が「今から」の監視を始められるようにするためです(それより前に起きたことを再生することはありません)。その値(または以降のレスポンスの `latestSequence`)を次回呼び出しの `--after` として渡してください。そのカーソルより新しいイベントが既に保持されていれば即座に返り、なければ、どこかのペインで新しいイベントが1つでも発生するか `--timeout` が経過するまでブロックします。`--timeout` のデフォルトは `30` 秒で、`600` に丸められます。タイムアウトしたレスポンスは `records` が空、`timedOut: true`、`latestSequence` は変わりません -- タイムアウトはエラーではなく、そのカーソルのままポーリングを続けてください。`records[].paneID`/`runID` は `list`/`agent` レスポンスと同じ UUID 文字列形式です。`kind` は `AgentEventKind` の raw value、`synthesized` は mytty 自身が生成したイベント(ネイティブな実行推定、Cursor の承認待ち推定など)である場合に `true` になります -- provider 本来の hook から来たイベントではありません。裏側の ledger はアプリ全体で最大 1000 件しか保持しないため、カーソルが十分古くなっていると、はみ出した分は黙ってスキップされます -- `events` は保持されている履歴を高々1回配信する仕組みであって、再生を保証するログではありません。
+
+```bash
+cursor=$(mytty-ctl events | jq -r '.latestSequence')
+while true; do
+  response=$(mytty-ctl events --after "$cursor" --timeout 60)
+  cursor=$(echo "$response" | jq -r '.latestSequence')
+  echo "$response" | jq -c '.records[]'   # 新しいイベントごとに処理
+done
+```
+
 ### close-pane
 
 確認ダイアログを出さずに、即座にペインを閉じます。呼び出し元は人間が Close をクリックしたのではなく、自動化されたエージェントである、という前提に立っています。
@@ -434,6 +475,7 @@ job のレジストリは実行中のアプリのメモリ上にしかなく、�
 ## 参考
 
 - [mytty-ctl でエージェントのチームを動かす](../how-to/orchestrate-agents-with-mytty-ctl_ja.md): `agent` コマンドを使った複数worker の段階的な例を扱っています。
+- `mytty-ctl guide` の "WATCHING SEVERAL WORKERS AT ONCE" セクションにも、上記と同じ `events` カーソルループが載っています。CLI 自身が組み込みで持っているマニュアルとして、エージェントが読む前提で書かれています。
 - [mytty-ctl アーキテクチャ](../explanation/mytty-ctl-architecture_ja.md): control ソケットが事前設定不要で動く理由と、`agent wait` を支える job/実行のバインディングの仕組みを説明しています。
 - [Agent providers](agent-providers_ja.md): どの provider が承認・入力イベントを出すかをまとめています。`wait --until attention` に関係します。
 - [エージェントイベントプロトコル](agent-event-protocol_ja.md): `list` と `wait` に出てくる `AgentProvider` と `AgentRunState` の値を定義しています。

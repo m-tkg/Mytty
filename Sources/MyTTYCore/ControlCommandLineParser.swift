@@ -36,6 +36,7 @@ public enum ControlCommandLineParser {
       status <text> [--pane <pane-id>]
       status --clear [--pane <pane-id>]
       wait <pane-id> --until <idle|attention> [--timeout-seconds <n>]
+      events [--after <seq>] [--timeout <seconds>]
       close-pane <pane-id>
       focus <pane-id>
 
@@ -334,6 +335,31 @@ public enum ControlCommandLineParser {
       --command` example above, so it arrives as one shell argument instead
       of one `send` per line. For `send`, tell the sub-agent to read the
       file rather than pasting the task inline.
+
+      WATCHING SEVERAL WORKERS AT ONCE
+
+      `events` replaces one `wait`/`agent wait` per pane run in parallel
+      background shells with a single long-poll: it blocks until at least
+      one new agent event has landed on any pane, or the timeout elapses.
+      Call it once with no `--after` (or `--after 0`) to get a cursor
+      without replaying history, then loop, feeding each response's
+      `latestSequence` back in as the next call's `--after`:
+
+        cursor=$("$MYTTY_CTL_BIN" events | jq -r '.latestSequence')
+        while true; do
+          response=$("$MYTTY_CTL_BIN" events --after "$cursor" --timeout 60)
+          cursor=$(echo "$response" | jq -r '.latestSequence')
+          echo "$response" | jq -c '.records[]' | while read -r record; do
+            : # act on paneID/provider/kind/toolName from each record
+          done
+        done
+
+      A timed-out response (`timedOut: true`, empty `records`) still
+      carries a valid cursor -- keep polling with it rather than treating
+      the timeout as failure. `--timeout` defaults to 30 seconds and clamps
+      to 600. Records are evicted past 1000 in the ledger, so a cursor that
+      goes stale long enough silently skips whatever fell off the back
+      instead of erroring.
     """
 
     /// Everything `agent spawn --task-file <path>` needs to build a
@@ -462,6 +488,8 @@ public enum ControlCommandLineParser {
             timeoutSeconds
         case let .waitAgent(_, _, timeoutSeconds):
             timeoutSeconds
+        case let .events(_, timeoutSeconds):
+            timeoutSeconds
         case .integrationEnable, .integrationRepair:
             // Blocks on a human approving a dialog in the app — give them
             // time to notice it before the socket client gives up.
@@ -474,6 +502,16 @@ public enum ControlCommandLineParser {
     /// How long `integration enable`/`repair` waits for the in-app
     /// confirmation dialog before the CLI's socket client times out.
     public static let integrationApprovalTimeoutSeconds: Double = 180
+
+    /// `events --timeout`'s default, when omitted -- short relative to
+    /// `wait`'s 120s default, since an orchestrator loops `events` far
+    /// more often than it calls `wait` once per pane.
+    public static let eventsDefaultTimeoutSeconds: Double = 30
+
+    /// `events --timeout`'s ceiling: an explicit value above this is
+    /// clamped rather than rejected, the same forgiving treatment as a
+    /// caller passing an oversized `--timeout-seconds` to `wait`.
+    public static let eventsMaximumTimeoutSeconds: Double = 600
 
     private static func makeRequest(
         command: String,
@@ -613,6 +651,43 @@ public enum ControlCommandLineParser {
                 timeoutSeconds: timeoutSeconds
             )
 
+        case "events":
+            var positional = arguments
+            let options = try parseOptions(
+                &positional,
+                flags: [],
+                valued: ["--after", "--timeout"]
+            )
+            guard positional.isEmpty else {
+                throw ControlCommandLineError.invalidArguments(eventsUsage)
+            }
+            let afterSequence: UInt64
+            if let afterValue = options.values["--after"] {
+                guard let parsed = UInt64(afterValue) else {
+                    throw ControlCommandLineError.invalidArguments(
+                        eventsUsage
+                    )
+                }
+                afterSequence = parsed
+            } else {
+                afterSequence = 0
+            }
+            let timeoutSeconds: Double
+            if let timeoutValue = options.values["--timeout"] {
+                guard let parsed = Double(timeoutValue), parsed >= 0 else {
+                    throw ControlCommandLineError.invalidArguments(
+                        eventsUsage
+                    )
+                }
+                timeoutSeconds = min(parsed, eventsMaximumTimeoutSeconds)
+            } else {
+                timeoutSeconds = eventsDefaultTimeoutSeconds
+            }
+            return .events(
+                afterSequence: afterSequence,
+                timeoutSeconds: timeoutSeconds
+            )
+
         case "status":
             let statusUsage = "mytty-ctl status (<text> | --clear) "
                 + "[--pane <pane-id>]"
@@ -675,6 +750,11 @@ public enum ControlCommandLineParser {
             throw ControlCommandLineError.invalidArguments(usage)
         }
     }
+
+    // MARK: - events
+
+    private static let eventsUsage =
+        "mytty-ctl events [--after <seq>] [--timeout <seconds>]"
 
     // MARK: - integration
 
