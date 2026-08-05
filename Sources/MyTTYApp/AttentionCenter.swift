@@ -24,6 +24,8 @@ final class AttentionCenter: ObservableObject {
     private let policy: AttentionPolicy
     private var events: [AgentEvent] = []
     private var acknowledgements: [AttentionAcknowledgement] = []
+    private var pruneTimer: Timer?
+    private static let pruneInterval: TimeInterval = 60 * 60
 
     init(
         repository: SQLiteAgentEventRepository,
@@ -48,7 +50,19 @@ final class AttentionCenter: ObservableObject {
         if inserted {
             expireStatusNote(for: event)
             events.append(event)
-            recompute(now: Date())
+            let now = Date()
+            recompute(now: now)
+            // The event that just landed may have carried its run into a
+            // terminal state -- that's the cheapest moment to prune,
+            // since it's already paying for a recompute and needs no
+            // extra scan to find candidates beyond the one `prune(now:)`
+            // already does over `runs`. Most terminal transitions won't
+            // actually prune anything yet (the 24h retention window is
+            // rarely already elapsed), but this keeps a long-running
+            // session's log from just waiting on the hourly timer.
+            if let run = runs[event.runID], isTerminalRunState(run.state) {
+                try prune(now: now)
+            }
         }
         return inserted
     }
@@ -295,6 +309,112 @@ final class AttentionCenter: ObservableObject {
             now: now,
             policy: policy
         )
+    }
+
+    /// Deletes every event (and matching acknowledgement) belonging to a
+    /// run that's "used up": terminal, with no actionable item left, and
+    /// every relevant timestamp -- the run's own `updatedAt` and each of
+    /// its items' resolved/acknowledged time -- older than
+    /// `AttentionPolicy.resolvedRetention`. That mirrors the exact window
+    /// the Inbox already uses to keep showing a resolved item, so this
+    /// never deletes anything still visible there. Keeps the on-disk
+    /// `agent_event` log from growing without bound (it's append-only
+    /// otherwise), which is what let it reach 95k rows / 31MB before this
+    /// existed. Deletes from `repository` first, then drops the same rows
+    /// from `events`/`acknowledgements`/`runs`/`items` directly -- no
+    /// disk reload needed, since the in-memory state was already
+    /// authoritative for what got deleted.
+    @discardableResult
+    func prune(now: Date = Date()) throws -> Int {
+        let staleRunIDs = prunableRunIDs(now: now)
+        guard !staleRunIDs.isEmpty else { return 0 }
+
+        let staleEventIDs = Set(
+            events.filter { staleRunIDs.contains($0.runID) }.map(\.id)
+        )
+        guard !staleEventIDs.isEmpty else { return 0 }
+
+        try repository.deleteEvents(withIDs: Array(staleEventIDs))
+        try repository.deleteAcknowledgements(withEventIDs: Array(staleEventIDs))
+
+        events.removeAll { staleEventIDs.contains($0.id) }
+        acknowledgements.removeAll { staleEventIDs.contains($0.eventID) }
+        for runID in staleRunIDs {
+            runs.removeValue(forKey: runID)
+        }
+        recomputeItems(now: now)
+        return staleEventIDs.count
+    }
+
+    /// Runs eligible for `prune(now:)`: terminal, with no actionable item
+    /// left, and old enough -- by both the run's own `updatedAt` and every
+    /// one of its items' resolved/acknowledged time -- that nothing about
+    /// them is still within `AttentionPolicy.resolvedRetention` of `now`.
+    private func prunableRunIDs(now: Date) -> Set<AgentRunID> {
+        var result: Set<AgentRunID> = []
+        for run in runs.values {
+            guard isTerminalRunState(run.state) else { continue }
+            guard let updatedAt = run.updatedAt,
+                  now.timeIntervalSince(updatedAt) > policy.resolvedRetention
+            else { continue }
+
+            let runItems = items.filter { $0.runID == run.id }
+            guard !runItems.contains(where: \.isActionable) else { continue }
+            let allItemsOldEnough = runItems.allSatisfy { item in
+                guard let anchor = [item.resolvedAt, item.acknowledgedAt]
+                    .compactMap({ $0 })
+                    .min()
+                else { return true }
+                return now.timeIntervalSince(anchor) > policy.resolvedRetention
+            }
+            guard allItemsOldEnough else { continue }
+
+            result.insert(run.id)
+        }
+        return result
+    }
+
+    private func isTerminalRunState(_ state: AgentRunState) -> Bool {
+        switch state {
+        case .idle, .succeeded, .failed, .disconnected:
+            true
+        case .unknown, .running, .waitingInput, .waitingApproval:
+            false
+        }
+    }
+
+    /// Starts the hourly pruning sweep. A run's terminal transition
+    /// already triggers `prune(now:)` from `append(_:)` itself, but a run
+    /// can also age past `AttentionPolicy.resolvedRetention` with no new
+    /// event ever arriving for it (or for anything else), so this catches
+    /// those on a fixed interval instead of relying on activity. Call
+    /// once at startup; `stopPruneTimer()` tears it down at app
+    /// termination.
+    func startPruneTimer() {
+        guard pruneTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: Self.pruneInterval,
+            repeats: true
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                do {
+                    try self.prune()
+                } catch {
+                    WindowSessionCoordinator.reportPersistenceError(
+                        error,
+                        operation: "prune attention log"
+                    )
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pruneTimer = timer
+    }
+
+    func stopPruneTimer() {
+        pruneTimer?.invalidate()
+        pruneTimer = nil
     }
 
     var actionableCount: Int {

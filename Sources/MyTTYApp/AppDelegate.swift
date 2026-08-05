@@ -280,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         agentEventServer?.stop()
         controlCoordinator?.stop()
         agentSleepPrevention.stop()
+        attentionCenter?.stopPruneTimer()
         appearanceObservation?.invalidate()
         shortcutRouter = nil
         globalHotKeyRegistrar?.unregister()
@@ -799,6 +800,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         do {
             try attentionCenter.reload()
+            // Sweeps out runs the retention window has already left
+            // behind before anything else touches the log — on an
+            // existing install this is what brings a long-neglected,
+            // never-pruned database back down to size on first launch
+            // after upgrading.
+            try attentionCenter.prune()
             // Every pane process died with the previous app instance, so
             // any run the log still shows as active can only be dead —
             // close those out before anything reads `attentionCenter` for
@@ -814,6 +821,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 operation: "restore attention"
             )
         }
+        attentionCenter.startPruneTimer()
         self.attentionCenter = attentionCenter
         windowSessionCoordinator.attentionCenter = attentionCenter
         if Bundle.main.bundleIdentifier != nil {

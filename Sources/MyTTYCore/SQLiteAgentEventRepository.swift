@@ -141,6 +141,72 @@ public struct SQLiteAgentEventRepository: Sendable {
         }
     }
 
+    /// Deletes events by ID -- `AttentionCenter`'s pruning uses this to
+    /// drop rows for runs that finished more than
+    /// `AttentionPolicy.resolvedRetention` ago with nothing actionable
+    /// left, keeping the log from growing without bound. Chunks the
+    /// `IN (...)` list at 500 host parameters so a large prune pass stays
+    /// under SQLite's per-statement parameter limit (999 by default, but
+    /// builds can set it lower).
+    public func deleteEvents(withIDs ids: [AgentEventID]) throws {
+        try deleteRows(
+            matching: ids.map { $0.rawValue.uuidString },
+            table: "agent_event",
+            column: "event_id"
+        )
+    }
+
+    /// Deletes acknowledgement rows for the given event IDs -- the
+    /// counterpart to `deleteEvents(withIDs:)`, called with the same IDs
+    /// so a pruned event's acknowledgement (if any) doesn't outlive it as
+    /// an orphaned row.
+    public func deleteAcknowledgements(withEventIDs ids: [AgentEventID]) throws {
+        try deleteRows(
+            matching: ids.map { $0.rawValue.uuidString },
+            table: "attention_acknowledgement",
+            column: "event_id"
+        )
+    }
+
+    private func deleteRows(
+        matching values: [String],
+        table: String,
+        column: String
+    ) throws {
+        guard !values.isEmpty else { return }
+        try withDatabase { database in
+            for chunk in Self.chunked(values, size: 500) {
+                let placeholders = Array(
+                    repeating: "?",
+                    count: chunk.count
+                ).joined(separator: ",")
+                let statement = try prepare(
+                    "DELETE FROM \(table) WHERE \(column) IN (\(placeholders))",
+                    in: database
+                )
+                defer { sqlite3_finalize(statement) }
+
+                for (offset, value) in chunk.enumerated() {
+                    try bind(
+                        value,
+                        at: Int32(offset + 1),
+                        to: statement,
+                        in: database
+                    )
+                }
+                guard sqlite3_step(statement) == SQLITE_DONE else {
+                    throw databaseError(database)
+                }
+            }
+        }
+    }
+
+    private static func chunked<T>(_ values: [T], size: Int) -> [[T]] {
+        stride(from: 0, to: values.count, by: size).map {
+            Array(values[$0..<Swift.min($0 + size, values.count)])
+        }
+    }
+
     private func withDatabase<T>(
         _ body: (OpaquePointer) throws -> T
     ) throws -> T {

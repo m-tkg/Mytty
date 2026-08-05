@@ -218,20 +218,28 @@ struct AttentionCenterTests {
         defer { harness.remove() }
         let center = harness.center
         let surfaceID = TerminalSurfaceID()
+        // Deliberately close to the real wall clock, not the epoch-based
+        // timestamps most tests use: the idle run below has no attention
+        // item at all, and `append`'s terminal-transition prune trigger
+        // compares its `updatedAt` against a real `Date()`, so an
+        // epoch-1970 timestamp would read as decades past
+        // `AttentionPolicy.resolvedRetention` and get pruned before this
+        // test ever gets to assert on it.
+        let now = Date()
 
-        try center.append(harness.event(
+        try center.append(AgentEvent(
             runID: AgentRunID(),
             surfaceID: surfaceID,
             provider: .claudeCode,
             kind: .started,
-            at: 1
+            occurredAt: now
         ))
-        try center.append(harness.event(
+        try center.append(AgentEvent(
             runID: AgentRunID(),
             surfaceID: surfaceID,
             provider: .claudeCode,
             kind: .idle,
-            at: 2
+            occurredAt: now.addingTimeInterval(1)
         ))
 
         #expect(center.latestRun(
@@ -586,6 +594,158 @@ struct AttentionCenterTests {
 
         #expect(center.runs == reloaded.runs)
         #expect(center.items == reloaded.items)
+    }
+
+    @Test("prune removes a terminal run past retention with nothing actionable left")
+    @MainActor
+    func pruneRemovesRetiredRun() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .succeeded, at: 2
+        ))
+
+        let acknowledgedAt = Date(timeIntervalSince1970: 100)
+        _ = try center.acknowledgeAllActionableItems(at: acknowledgedAt)
+
+        let now = acknowledgedAt.addingTimeInterval(
+            AttentionPolicy().resolvedRetention + 1
+        )
+        let prunedCount = try center.prune(now: now)
+
+        #expect(prunedCount == 2)
+        #expect(center.runs[runID] == nil)
+        #expect(!center.items.contains { $0.runID == runID })
+        #expect(
+            try harness.repository.loadEvents()
+                .allSatisfy { $0.runID != runID }
+        )
+        #expect(try harness.repository.loadAcknowledgements().isEmpty)
+    }
+
+    @Test("prune keeps a terminal run that still has an actionable item")
+    @MainActor
+    func pruneKeepsRunWithActionableItem() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .failed, at: 2
+        ))
+
+        // Never acknowledged, so the failure item stays actionable no
+        // matter how old the run gets.
+        let now = Date(
+            timeIntervalSince1970: 2 + AttentionPolicy().resolvedRetention * 10
+        )
+        let prunedCount = try center.prune(now: now)
+
+        #expect(prunedCount == 0)
+        #expect(center.runs[runID]?.state == .failed)
+        #expect(
+            center.items.contains { $0.runID == runID && $0.isActionable }
+        )
+    }
+
+    @Test("prune keeps a terminal run still inside the retention window")
+    @MainActor
+    func pruneKeepsRecentRun() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .succeeded, at: 2
+        ))
+
+        let acknowledgedAt = Date(timeIntervalSince1970: 100)
+        _ = try center.acknowledgeAllActionableItems(at: acknowledgedAt)
+
+        let now = acknowledgedAt.addingTimeInterval(
+            AttentionPolicy().resolvedRetention - 10
+        )
+        let prunedCount = try center.prune(now: now)
+
+        #expect(prunedCount == 0)
+        #expect(center.runs[runID] != nil)
+        #expect(center.items.contains { $0.runID == runID })
+    }
+
+    @Test("prune keeps a non-terminal run no matter how old")
+    @MainActor
+    func pruneKeepsActiveRun() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+        ))
+
+        let now = Date(
+            timeIntervalSince1970: 1 + AttentionPolicy().resolvedRetention * 10
+        )
+        let prunedCount = try center.prune(now: now)
+
+        #expect(prunedCount == 0)
+        #expect(center.runs[runID]?.state == .running)
+    }
+
+    @Test("a run's terminal transition prunes it immediately once past retention")
+    @MainActor
+    func appendTriggersPruneOnTerminalTransition() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        // Both events are timestamped decades in the past, so by the time
+        // `append` prunes using the real wall clock, the run is already
+        // long past `AttentionPolicy.resolvedRetention` -- no need to
+        // inject a fake clock into `append` itself to observe the
+        // terminal-transition trigger.
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .approvalRequested, at: 2
+        ))
+        #expect(center.runs[runID]?.state == .waitingApproval)
+
+        // Disconnecting resolves the pending approval item (no longer
+        // actionable) and carries the run into a terminal state in the
+        // same append call.
+        try center.append(harness.event(
+            runID: runID, surfaceID: surfaceID, kind: .disconnected, at: 3
+        ))
+
+        #expect(center.runs[runID] == nil)
+        #expect(!center.items.contains { $0.runID == runID })
+        #expect(
+            try harness.repository.loadEvents()
+                .allSatisfy { $0.runID != runID }
+        )
     }
 }
 
