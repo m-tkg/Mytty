@@ -99,14 +99,21 @@ public enum ControlCommandLineParser {
                   [--model <text>] [--label <text>] [--worktree <branch>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --access review is read-only
-        investigation; workspace-write (the default) lets the worker edit
-        files; inherit copies the mode flags of the agent running in the
-        anchor pane (your own process) into the worker's launch command --
-        use it when spawning a worker of the same provider as yourself so
-        it runs with your permission/sandbox mode; it fails with
-        inherit-unavailable when the anchor pane's foreground process is a
-        different provider. A mode you switched to interactively after
-        launch is not visible; inherit reads launch flags only. --model
+        investigation; workspace-write lets the worker edit files; inherit
+        copies the mode of the agent running in the anchor pane (your own
+        process) into the worker's launch command -- use it when spawning
+        a worker of the same provider as yourself so it runs with your
+        permission/sandbox mode; it fails with inherit-unavailable when
+        the anchor pane's foreground process is a different provider. For
+        Claude Code, the mode inherited includes one you switched to at
+        runtime with shift+tab, not just how you were launched -- Mytty
+        reads it from your own transcript when your launch flags don't
+        already say. Omitting --access is not the same as
+        --access workspace-write: it behaves as inherit when the worker's
+        --provider matches the anchor pane's current agent, and as
+        workspace-write otherwise -- spawning a worker of your own
+        provider without --access picks up your current mode
+        automatically. --model
         picks the provider's model, passed through to the provider CLI's
         model flag, e.g. --model sonnet for claude. --cwd
         defaults to the anchor pane's shell-reported working directory,
@@ -398,7 +405,7 @@ public enum ControlCommandLineParser {
         public let direction: ControlSplitDirection
         public let provider: AgentWorkerProvider
         public let cwd: String?
-        public let access: AgentAccessPolicy
+        public let access: AgentAccessPolicy?
         public let model: String?
         public let label: String?
         public let worktreeBranch: String?
@@ -409,7 +416,7 @@ public enum ControlCommandLineParser {
             direction: ControlSplitDirection,
             provider: AgentWorkerProvider,
             cwd: String?,
-            access: AgentAccessPolicy,
+            access: AgentAccessPolicy?,
             model: String?,
             label: String?,
             worktreeBranch: String?,
@@ -1053,10 +1060,20 @@ public enum ControlCommandLineParser {
             throw ControlCommandLineError.invalidArguments(agentSpawnUsage)
         }
 
-        let accessValue = options.values["--access"]
-            ?? AgentAccessPolicy.workspaceWrite.rawValue
-        guard let access = AgentAccessPolicy(rawValue: accessValue) else {
-            throw ControlCommandLineError.invalidArguments(agentSpawnUsage)
+        // An omitted `--access` is sent as `nil`, not defaulted to
+        // workspace-write here: the server-side resolution
+        // (`AgentAccessResolution.resolve`) needs to tell "the caller
+        // didn't say" apart from "the caller asked for workspace-write" to
+        // apply the new inherit-by-default behavior for a same-provider
+        // worker. An explicit `--access` still has to name a real policy.
+        let access: AgentAccessPolicy?
+        if let accessValue = options.values["--access"] {
+            guard let parsed = AgentAccessPolicy(rawValue: accessValue) else {
+                throw ControlCommandLineError.invalidArguments(agentSpawnUsage)
+            }
+            access = parsed
+        } else {
+            access = nil
         }
 
         // Fail fast client-side for an obviously-invalid branch, matching
@@ -1105,7 +1122,7 @@ public enum ControlCommandLineParser {
         direction: ControlSplitDirection,
         provider: AgentWorkerProvider,
         cwd: String?,
-        access: AgentAccessPolicy,
+        access: AgentAccessPolicy?,
         model: String?,
         task: String,
         label: String?,

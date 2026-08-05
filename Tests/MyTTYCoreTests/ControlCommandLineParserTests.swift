@@ -390,17 +390,59 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
+        // An omitted `--access` is sent as `nil`, not defaulted to
+        // workspace-write client-side -- the server resolves it via
+        // `AgentAccessResolution` (see `agentAccessOmittedProducesNilAccess`
+        // below and the resolution-order tests in
+        // `AgentAccessResolutionTests`).
         #expect(request == .spawnAgent(
             anchorPaneID: "anchor-1",
             direction: .right,
             provider: .codex,
             cwd: nil,
-            access: .workspaceWrite,
+            access: nil,
             model: nil,
             task: "investigate",
             label: nil,
             worktreeBranch: nil
         ))
+    }
+
+    @Test("agent spawn without --access produces a nil access field")
+    func agentAccessOmittedProducesNilAccess() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _) = request
+        else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(access == nil)
+    }
+
+    @Test("agent spawn with --access workspace-write produces that value")
+    func agentAccessExplicitWorkspaceWriteProducesValue() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--access", "workspace-write",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _) = request
+        else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(access == .workspaceWrite)
     }
 
     @Test("agent spawn accepts every explicit option")

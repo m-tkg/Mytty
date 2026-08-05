@@ -9,13 +9,18 @@ import Foundation
 /// `TerminalAgentProcessDetector.invocation(processID:)` and handing it
 /// here.
 ///
-/// This reads argv only, which is a snapshot of how the lead was
-/// *launched* — a mode switched interactively at runtime (e.g. Claude
-/// Code's shift+tab permission-mode cycling) never touches argv and is
-/// therefore invisible here. Argv is the best signal available short of
-/// scraping the provider's own UI state, which the rest of Mytty's agent
-/// integration deliberately never does (see "Agent integration model" in
-/// `CLAUDE.md`).
+/// Argv alone is a snapshot of how the lead was *launched* — a mode
+/// switched interactively at runtime (e.g. Claude Code's shift+tab
+/// permission-mode cycling) never touches argv and is therefore invisible
+/// to argv scanning alone. For providers whose own structured log records
+/// the current mode (currently just Claude Code — see
+/// `ClaudeCodeSessionInspector.permissionMode(from:)`), `inheritedModeArguments`
+/// below falls back to that transcript-derived value when argv has
+/// nothing, rather than scraping the provider's own UI state, which the
+/// rest of Mytty's agent integration deliberately never does (see "Agent
+/// integration model" in `CLAUDE.md`). Argv still wins when it has
+/// something to say: an explicitly launched mode is the strongest signal
+/// available.
 public enum AgentModeInheritance {
     private struct FlagSpec {
         let names: [String]
@@ -52,15 +57,49 @@ public enum AgentModeInheritance {
         }
     }
 
+    /// The `--permission-mode`-shaped flag each provider's own transcript
+    /// can supply a value for, keyed by provider. Only Claude Code has a
+    /// transcript reader today (`ClaudeCodeSessionInspector`), so this map
+    /// has exactly one entry; adding another provider's transcript-derived
+    /// mode later is a matter of supplying its mode reader upstream (the
+    /// caller passing `transcriptPermissionMode:`) and adding its flag
+    /// name here — the resolution order below (argv, then transcript,
+    /// then the caller's fallback) does not change.
+    private static let transcriptModeFlagName: [AgentWorkerProvider: String] = [
+        .claude: "--permission-mode",
+    ]
+
+    /// Resolves the mode flags to splice onto a worker of `provider`:
+    /// argv flags win when present (see `argvModeArguments` below); when
+    /// argv has nothing, `transcriptPermissionMode` — the lead's *current*
+    /// mode as read from its own transcript, for providers that have one
+    /// — is used instead, formatted as that provider's mode flag. Returns
+    /// `[]` when neither source has anything, which the caller treats as
+    /// "the lead runs in its default mode" and falls back to the normal
+    /// access-derived flags.
+    public static func inheritedModeArguments(
+        provider: AgentWorkerProvider,
+        leadArguments: [String],
+        transcriptPermissionMode: String? = nil
+    ) -> [String] {
+        let argvArguments = argvModeArguments(
+            provider: provider,
+            leadArguments: leadArguments
+        )
+        guard argvArguments.isEmpty else { return argvArguments }
+        guard let transcriptPermissionMode,
+              let flagName = transcriptModeFlagName[provider]
+        else { return [] }
+        return [flagName, transcriptPermissionMode]
+    }
+
     /// Scans `leadArguments` (the lead process's argv, KERN_PROCARGS2
     /// order — argv[0] is harmless to include since it's an executable
     /// path/name and can never match a flag spelling) for the flags this
     /// provider treats as mode-relevant, preserving the order they appear
     /// in. Both `--flag value` and `--flag=value` spellings are
-    /// recognized. Returns `[]` when nothing mode-relevant was found,
-    /// which the caller treats as "the lead runs in its default mode" and
-    /// falls back to the normal access-derived flags.
-    public static func inheritedModeArguments(
+    /// recognized. Returns `[]` when nothing mode-relevant was found.
+    private static func argvModeArguments(
         provider: AgentWorkerProvider,
         leadArguments: [String]
     ) -> [String] {

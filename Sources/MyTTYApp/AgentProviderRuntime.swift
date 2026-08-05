@@ -165,15 +165,26 @@ struct AgentProviderPollResult: Equatable {
     /// other provider, and for these two whenever the transcript tail
     /// carries no real prompt.
     let turn: AgentTurnObservation?
+    /// Claude Code's current `--permission-mode`, read from the same
+    /// transcript pass that yields `status`/`turn` (see
+    /// `ClaudeCodeSessionInspector.permissionMode(from:)`). `nil` for
+    /// every other provider, and for Claude Code whenever its transcript
+    /// tail carries no recognized mode record yet. `AgentJobCoordinator`
+    /// reads this (via `AgentStatusPollingCoordinator.permissionModesBySurface`)
+    /// to splice a worker's inherited mode onto a mode the lead switched
+    /// to at runtime, not just how it was launched.
+    let permissionMode: String?
 
     init(
         status: AgentSessionStatus?,
         interruption: AgentRunInterruption? = nil,
-        turn: AgentTurnObservation? = nil
+        turn: AgentTurnObservation? = nil,
+        permissionMode: String? = nil
     ) {
         self.status = status
         self.interruption = interruption
         self.turn = turn
+        self.permissionMode = permissionMode
     }
 }
 
@@ -264,7 +275,8 @@ struct ClaudeCodeProviderRuntime: AgentProviderRuntime {
                     interruptionKey: $0.messageID
                 )
             },
-            turn: snapshot.turn
+            turn: snapshot.turn,
+            permissionMode: snapshot.permissionMode
         )
     }
 }

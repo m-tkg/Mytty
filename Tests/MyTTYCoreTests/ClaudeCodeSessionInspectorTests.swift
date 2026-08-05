@@ -438,4 +438,95 @@ struct ClaudeCodeSessionInspectorTests {
         """.utf8)
         #expect(ClaudeCodeSessionInspector.turn(from: toolResultOnly) == nil)
     }
+
+    // MARK: - Permission mode
+
+    @Test("reads a standalone permission-mode record")
+    func permissionModeFromStandaloneRecord() {
+        let data = Data("""
+        {"type":"permission-mode","permissionMode":"plan","sessionId":"s"}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == "plan")
+    }
+
+    @Test("reads permissionMode carried on a user prompt record")
+    func permissionModeFromUserRecord() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","permissionMode":"acceptEdits","message":{"role":"user","content":"go"}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.permissionMode(from: data)
+                == "acceptEdits"
+        )
+    }
+
+    @Test("the later of a standalone and a user record wins")
+    func permissionModeLatestRecordWins() {
+        let standaloneFirst = Data("""
+        {"type":"permission-mode","permissionMode":"plan","sessionId":"s"}
+        {"type":"user","promptId":"prompt-1","permissionMode":"acceptEdits","message":{"role":"user","content":"go"}}
+        """.utf8)
+        #expect(
+            ClaudeCodeSessionInspector.permissionMode(from: standaloneFirst)
+                == "acceptEdits"
+        )
+
+        let userFirst = Data("""
+        {"type":"user","promptId":"prompt-1","permissionMode":"acceptEdits","message":{"role":"user","content":"go"}}
+        {"type":"permission-mode","permissionMode":"plan","sessionId":"s"}
+        """.utf8)
+        #expect(
+            ClaudeCodeSessionInspector.permissionMode(from: userFirst)
+                == "plan"
+        )
+    }
+
+    @Test("an unrecognized mode value is treated as nil")
+    func permissionModeUnknownValueYieldsNil() {
+        let data = Data("""
+        {"type":"permission-mode","permissionMode":"yolo-mode","sessionId":"s"}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == nil)
+    }
+
+    @Test("a mode value with a control character is treated as nil")
+    func permissionModeControlCharacterYieldsNil() {
+        let data = Data("""
+        {"type":"permission-mode","permissionMode":"pla\\u0007n","sessionId":"s"}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == nil)
+    }
+
+    @Test("an invalid later record does not clobber an earlier valid one")
+    func permissionModeInvalidLaterRecordKeepsEarlierValue() {
+        let data = Data("""
+        {"type":"permission-mode","permissionMode":"plan","sessionId":"s"}
+        {"type":"permission-mode","permissionMode":"not-a-real-mode","sessionId":"s"}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == "plan")
+    }
+
+    @Test("a sidechain permission-mode record is ignored")
+    func permissionModeIgnoresSidechain() {
+        let data = Data("""
+        {"type":"permission-mode","isSidechain":true,"permissionMode":"plan","sessionId":"s"}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == nil)
+    }
+
+    @Test("no permission-mode record at all yields nil")
+    func permissionModeAbsentYieldsNil() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"end_turn"}}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.permissionMode(from: data) == nil)
+    }
 }

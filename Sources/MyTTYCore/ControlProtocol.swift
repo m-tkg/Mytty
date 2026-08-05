@@ -198,12 +198,24 @@ public enum ControlRequest: Equatable, Sendable {
     /// sibling of the resolved base repository, reused as-is if it's
     /// already registered) instead of the plain resolved cwd — see
     /// `docs/reference/mytty-ctl.md`'s `agent spawn --worktree` section.
+    ///
+    /// `access` is optional so `AgentJobCoordinator` can tell "the caller
+    /// asked for workspace-write" apart from "the caller didn't say" —
+    /// they resolve differently. The resolution order (see
+    /// `AgentAccessResolution.resolve`): an explicit `access` always wins;
+    /// otherwise, when the worker's `provider` matches the anchor pane's
+    /// current foreground provider, the spawn behaves as `.inherit`
+    /// (copying that pane's live agent's mode — including a mode switched
+    /// at runtime, e.g. Claude Code's shift+tab, which `AgentModeInheritance`
+    /// reads from its transcript when argv has nothing); otherwise it
+    /// falls back to `.workspaceWrite`, same as an omitted `--access`
+    /// always has.
     case spawnAgent(
         anchorPaneID: String,
         direction: ControlSplitDirection,
         provider: AgentWorkerProvider,
         cwd: String?,
-        access: AgentAccessPolicy,
+        access: AgentAccessPolicy?,
         model: String?,
         task: String,
         label: String?,
@@ -423,7 +435,7 @@ extension ControlRequest: Codable {
                     String.self,
                     forKey: .cwd
                 ),
-                access: try container.decode(
+                access: try container.decodeIfPresent(
                     AgentAccessPolicy.self,
                     forKey: .access
                 ),
@@ -555,7 +567,7 @@ extension ControlRequest: Codable {
             try container.encode(direction, forKey: .direction)
             try container.encode(provider, forKey: .provider)
             try container.encodeIfPresent(cwd, forKey: .cwd)
-            try container.encode(access, forKey: .access)
+            try container.encodeIfPresent(access, forKey: .access)
             try container.encodeIfPresent(model, forKey: .model)
             try container.encode(task, forKey: .task)
             try container.encodeIfPresent(label, forKey: .label)

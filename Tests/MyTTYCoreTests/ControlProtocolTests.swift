@@ -90,6 +90,19 @@ struct ControlProtocolTests {
                 label: "worker-a",
                 worktreeBranch: "feat/worker-a"
             ),
+            // `access: nil` -- an omitted `--access`, resolved server-side
+            // by `AgentAccessResolution` rather than defaulted by the CLI.
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .codex,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "investigate the bug",
+                label: nil,
+                worktreeBranch: nil
+            ),
             .waitAgent(
                 jobID: AgentJobID(),
                 until: .running,
@@ -292,6 +305,45 @@ struct ControlProtocolTests {
             label: nil,
             worktreeBranch: nil
         ))
+    }
+
+    @Test("decoding a spawnAgent payload missing its access key yields nil")
+    func decodesSpawnAgentWithoutAccessKey() throws {
+        let payload = Data("""
+        {"type":"spawnAgent","anchorPaneID":"pane-1","direction":"right",\
+        "provider":"codex","task":"investigate"}
+        """.utf8)
+        let decoded: ControlRequest = try ControlMessageCodec.decode(payload)
+        #expect(decoded == .spawnAgent(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: nil,
+            model: nil,
+            task: "investigate",
+            label: nil,
+            worktreeBranch: nil
+        ))
+    }
+
+    @Test("encoding a spawnAgent request with a nil access omits the key")
+    func encodingSpawnAgentWithNilAccessOmitsKey() throws {
+        let request = ControlRequest.spawnAgent(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: nil,
+            model: nil,
+            task: "investigate",
+            label: nil,
+            worktreeBranch: nil
+        )
+        let encoded = try ControlMessageCodec.encode(request)
+        let object = try JSONSerialization.jsonObject(with: encoded)
+            as? [String: Any]
+        #expect(object?["access"] == nil)
     }
 
     @Test("decodes a legacy newTab/split payload without a command key")

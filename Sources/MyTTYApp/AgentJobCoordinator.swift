@@ -94,16 +94,22 @@ final class AgentJobCoordinator {
             }
     }
 
-    /// `--access inherit` support: reads the anchor pane's own foreground
+    /// `--access inherit` support (explicit or resolved via
+    /// `AgentAccessResolution`): reads the anchor pane's own foreground
     /// process (the lead agent that's asking to spawn a worker) and, if
     /// it's the same provider as the requested worker, extracts its mode
-    /// flags to carry onto the worker. Returns `.success(nil-or-flags)` on
-    /// a resolvable lead, `.failure("inherit-unavailable")` when the
-    /// anchor pane's foreground process can't be read at all or is a
-    /// different provider than `requestedProvider` -- inheriting another
-    /// provider's flags onto this worker would be meaningless (they don't
-    /// share a flag vocabulary) and silently ignoring the mismatch would
-    /// launch the worker in a mode the caller never asked for.
+    /// flags to carry onto the worker -- falling back to its *current*
+    /// permission mode as read from its own transcript (Claude Code only,
+    /// today) when argv has nothing mode-relevant to say, so a mode
+    /// switched at runtime with shift+tab is inherited too (see
+    /// `AgentModeInheritance.inheritedModeArguments`). Returns
+    /// `.success(nil-or-flags)` on a resolvable lead,
+    /// `.failure("inherit-unavailable")` when the anchor pane's foreground
+    /// process can't be read at all or is a different provider than
+    /// `requestedProvider` -- inheriting another provider's flags onto
+    /// this worker would be meaningless (they don't share a flag
+    /// vocabulary) and silently ignoring the mismatch would launch the
+    /// worker in a mode the caller never asked for.
     private func resolveInheritedMode(
         controller: TerminalWindowController,
         anchorSurfaceID: TerminalSurfaceID,
@@ -122,7 +128,10 @@ final class AgentJobCoordinator {
         }
         let arguments = AgentModeInheritance.inheritedModeArguments(
             provider: requestedProvider,
-            leadArguments: invocation.arguments
+            leadArguments: invocation.arguments,
+            transcriptPermissionMode: controller.currentAgentPermissionMode(
+                forPane: anchorSurfaceID
+            )
         )
         return .success(arguments)
     }
@@ -158,7 +167,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         direction: ControlSplitDirection,
         provider: AgentWorkerProvider,
         cwd: String?,
-        access: AgentAccessPolicy,
+        access: AgentAccessPolicy?,
         model: String?,
         task: String,
         label: String?,
@@ -223,9 +232,22 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             }
         }
 
-        var resolvedAccess = access
+        // See `ControlRequest.spawnAgent`'s doc comment for the full
+        // resolution order: an explicit `access` always wins; an absent
+        // one resolves to `.inherit` only when the worker's provider
+        // matches the anchor pane's *current* foreground agent, and to
+        // `.workspaceWrite` otherwise -- the same default an omitted
+        // `--access` always produced, now made explicit instead of
+        // silently defaulted client-side.
+        let workerProviderMatchesAnchor = controller.foregroundAgentProvider(
+            forPane: anchorSurfaceID
+        ) == provider.agentProvider
+        var resolvedAccess = AgentAccessResolution.resolve(
+            requestedAccess: access,
+            workerProviderMatchesAnchor: workerProviderMatchesAnchor
+        )
         var inheritedModeArguments: [String]?
-        if access == .inherit {
+        if resolvedAccess == .inherit {
             switch resolveInheritedMode(
                 controller: controller,
                 anchorSurfaceID: anchorSurfaceID,
