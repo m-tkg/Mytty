@@ -764,4 +764,116 @@ struct AgentHookEventAdapterTests {
             occurredAt: occurredAt
         )
     }
+
+    // MARK: - Startup sweep
+
+    @Test(
+        "sweeps only non-terminal states, leaving unknown/idle/terminal runs alone",
+        arguments: [
+            (AgentRunState.unknown, false),
+            (.idle, false),
+            (.running, true),
+            (.waitingInput, true),
+            (.waitingApproval, true),
+            (.succeeded, false),
+            (.failed, false),
+            (.disconnected, false),
+        ]
+    )
+    func runsNeedingStartupSweepStateMatrix(
+        state: AgentRunState,
+        needsSweep: Bool
+    ) throws {
+        let run = try #require(run(inState: state))
+
+        let swept = AgentHookEventAdapter.runsNeedingStartupSweep([run])
+
+        #expect(swept.map(\.id) == (needsSweep ? [run.id] : []))
+    }
+
+    @Test("startup sweep event is disconnected, carries the run's fields, and is deterministic per run")
+    func startupSweepEventFieldsAndDeterminism() throws {
+        let run = try #require(run(inState: .waitingApproval))
+
+        let first = AgentHookEventAdapter.startupSweepEvent(
+            run: run,
+            occurredAt: occurredAt
+        )
+        let second = AgentHookEventAdapter.startupSweepEvent(
+            run: run,
+            occurredAt: occurredAt.addingTimeInterval(3600)
+        )
+
+        #expect(first.kind == .disconnected)
+        #expect(first.runID == run.id)
+        #expect(first.surfaceID == run.surfaceID)
+        #expect(first.provider == run.provider)
+        #expect(first.sessionID == run.sessionID)
+        #expect(first.hookName == "mytty.startupSweep")
+        // Deterministic per run ID, not per call/occurredAt: a sweep of the
+        // same run on a later launch must land on the exact same event so
+        // replay dedup treats it as a no-op.
+        #expect(first.id == second.id)
+    }
+
+    @Test("applying a startup sweep event closes a running run, and re-applying it is a no-op")
+    func sweepEventClosesRunAndIsIdempotentOnReplay() throws {
+        let runID = AgentRunID()
+        let started = AgentEvent(
+            runID: runID,
+            surfaceID: surfaceID,
+            provider: .claudeCode,
+            kind: .started,
+            occurredAt: occurredAt
+        )
+        let runningRuns = AgentEventReducer.reduce([started])
+        let run = try #require(runningRuns[runID])
+        #expect(run.state == .running)
+
+        let sweep = AgentHookEventAdapter.startupSweepEvent(
+            run: run,
+            occurredAt: occurredAt.addingTimeInterval(60)
+        )
+
+        let sweptOnce = AgentEventReducer.reduce([started, sweep])
+        #expect(sweptOnce[runID]?.state == .disconnected)
+        let acceptedAfterOneSweep = sweptOnce[runID]?.acceptedEventCount
+
+        // The same event ID appearing twice (e.g. a sweep recorded, then
+        // the log replayed again on a later launch) must not be applied
+        // twice.
+        let sweptTwice = AgentEventReducer.reduce([started, sweep, sweep])
+        #expect(sweptTwice[runID]?.state == .disconnected)
+        #expect(sweptTwice[runID]?.acceptedEventCount == acceptedAfterOneSweep)
+    }
+
+    /// Builds an `AgentRun` sitting in `state` via the reducer -- `AgentRun`
+    /// has no public initializer, so tests can only produce one by
+    /// replaying events, the same way production code does.
+    private func run(inState state: AgentRunState) -> AgentRun? {
+        let runID = AgentRunID()
+        let kinds: [AgentEventKind] = switch state {
+        case .unknown: [.succeeded] // invalid from .unknown: stays unknown
+        case .idle: [.idle]
+        case .running: [.started]
+        case .waitingInput: [.started, .inputRequested]
+        case .waitingApproval: [.started, .approvalRequested]
+        case .succeeded: [.started, .succeeded]
+        case .failed: [.started, .failed]
+        case .disconnected: [.disconnected]
+        }
+        let events = kinds.enumerated().map { index, kind in
+            AgentEvent(
+                runID: runID,
+                sessionID: "session-\(state.rawValue)",
+                surfaceID: surfaceID,
+                provider: .claudeCode,
+                kind: kind,
+                occurredAt: occurredAt.addingTimeInterval(TimeInterval(index))
+            )
+        }
+        let run = AgentEventReducer.reduce(events)[runID]
+        precondition(run?.state == state, "test setup produced the wrong state")
+        return run
+    }
 }

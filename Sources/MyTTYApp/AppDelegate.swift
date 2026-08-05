@@ -819,6 +819,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         do {
             try attentionCenter.reload()
+            // Every pane process died with the previous app instance, so
+            // any run the log still shows as active can only be dead —
+            // close those out before anything reads `attentionCenter` for
+            // status, or the status bar would show a phantom running
+            // agent forever.
+            try attentionCenter.sweepInterruptedRuns()
             // Completions from before this launch were already lived
             // through — start the inbox without them.
             try attentionCenter.acknowledgeCompletions(before: Date())

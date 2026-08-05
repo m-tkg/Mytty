@@ -181,6 +181,31 @@ final class AttentionCenter: ObservableObject {
         return acknowledgedCount
     }
 
+    /// Closes out any run the replayed log still shows as non-terminal --
+    /// every pane process dies with the app, so a run left
+    /// `running`/`waitingInput`/`waitingApproval` after a crash,
+    /// force-quit, or SIGKILL can only be dead. Call once at startup, right
+    /// after `reload()`, before windows restore, so the status bar never
+    /// shows a phantom active agent for a session that can't exist
+    /// anymore. Appends through the normal `append(_:)` path (persistence
+    /// + reload), so it's idempotent the same way any other event is: a
+    /// second sweep of an already-swept run finds it already terminal and
+    /// its deterministic event ID already recorded, so `append` is a
+    /// no-op.
+    func sweepInterruptedRuns(now: Date = Date()) throws {
+        let staleRuns = AgentHookEventAdapter.runsNeedingStartupSweep(
+            Array(runs.values)
+        )
+        for run in staleRuns {
+            try append(
+                AgentHookEventAdapter.startupSweepEvent(
+                    run: run,
+                    occurredAt: now
+                )
+            )
+        }
+    }
+
     func reload(now: Date = Date()) throws {
         events = try repository.loadEvents()
         acknowledgements = try repository.loadAcknowledgements()

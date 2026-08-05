@@ -113,6 +113,8 @@ This estimation only runs for a provider whose integration status is not install
 
 For Claude Code and Codex specifically, Mytty goes a step further: it also reads the provider's own transcript — the same file the session inspector already parses on every poll tick for the model name and context remaining — to split that one coarse run into a run per prompt turn, matching what a real hook integration would report (`UserPromptSubmit` on a new prompt, `Stop` when it finishes). The moment the transcript reports a turn, the coarse process-level run goes idle and per-turn runs (`event.hookName` under `mytty.native.turn*`, e.g. `mytty.native.turnStarted`, `mytty.native.turnCompleted`) take over reporting the lifecycle. Each turn run's ID is derived from the same turn identifier the provider's own hooks use for that turn (Claude Code's prompt ID, Codex's turn ID), so a hook that starts covering the pane mid-turn — or Claude Code's ESC-interruption handling, which has no hook of its own — lands on the exact same run rather than opening a duplicate one.
 
+On launch, before anything else reads run state, Mytty also sweeps the log for a run a previous app instance left non-terminal — every pane process dies with the app, so a run still `running`/`waitingInput`/`waitingApproval` after a crash, force-quit, or SIGKILL can only be dead — and records a synthesized `disconnected` event for it (`event.hookName` is `mytty.startupSweep`).
+
 ## See also
 
 - [Agent providers](agent-providers.md) covers file locations, per-provider hook-to-event mapping, and status bar/session-inspector sources.
