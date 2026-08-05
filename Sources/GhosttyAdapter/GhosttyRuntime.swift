@@ -1,5 +1,12 @@
 import AppKit
+import Darwin
 import GhosttyKit
+import os
+
+let ghosttyAdapterLog = Logger(
+    subsystem: "dev.mytty.ghostty-adapter",
+    category: "runtime"
+)
 
 public enum GhosttyRuntimeError: Error, Equatable, Sendable {
     case creationFailed
@@ -67,6 +74,13 @@ public final class GhosttyRuntime {
             &runtimeConfiguration,
             configuration.native
         ) else {
+            let errnoMessage = String(cString: strerror(errno))
+            ghosttyAdapterLog.error(
+                """
+                ghostty_app_new returned nil \
+                (errno: \(errnoMessage, privacy: .public))
+                """
+            )
             throw GhosttyRuntimeError.creationFailed
         }
 
