@@ -784,7 +784,7 @@ struct AgentHookEventAdapterTests {
         state: AgentRunState,
         needsSweep: Bool
     ) throws {
-        let run = try #require(run(inState: state))
+        let run = try #require(makeRun(inState: state))
 
         let swept = AgentHookEventAdapter.runsNeedingStartupSweep([run])
 
@@ -793,7 +793,7 @@ struct AgentHookEventAdapterTests {
 
     @Test("startup sweep event is disconnected, carries the run's fields, and is deterministic per run")
     func startupSweepEventFieldsAndDeterminism() throws {
-        let run = try #require(run(inState: .waitingApproval))
+        let run = try #require(makeRun(inState: .waitingApproval))
 
         let first = AgentHookEventAdapter.startupSweepEvent(
             run: run,
@@ -850,7 +850,7 @@ struct AgentHookEventAdapterTests {
     /// Builds an `AgentRun` sitting in `state` via the reducer -- `AgentRun`
     /// has no public initializer, so tests can only produce one by
     /// replaying events, the same way production code does.
-    private func run(inState state: AgentRunState) -> AgentRun? {
+    private func makeRun(inState state: AgentRunState) -> AgentRun? {
         let runID = AgentRunID()
         let kinds: [AgentEventKind] = switch state {
         case .unknown: [.succeeded] // invalid from .unknown: stays unknown
