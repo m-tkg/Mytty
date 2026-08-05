@@ -33,12 +33,22 @@ final class AttentionCenter: ObservableObject {
         self.policy = policy
     }
 
+    /// Persists `event`, then updates `runs`/`items` by replaying the
+    /// in-memory `events`/`acknowledgements` arrays rather than reloading
+    /// from disk. `reload()` is a full `SQLiteAgentEventRepository
+    /// .loadEvents()` — every row read back and JSON-decoded — which made
+    /// every hook-delivered event this expensive to record; `events` here
+    /// already holds everything on disk (kept current by `reload()` at
+    /// startup and by every append/acknowledge since), so appending one
+    /// more event and re-running the same pure reducers over memory is the
+    /// only cost.
     @discardableResult
     func append(_ event: AgentEvent) throws -> Bool {
         let inserted = try repository.append(event)
         if inserted {
             expireStatusNote(for: event)
-            try reload()
+            events.append(event)
+            recompute(now: Date())
         }
         return inserted
     }
@@ -78,11 +88,24 @@ final class AttentionCenter: ObservableObject {
     }
 
     func acknowledge(_ item: AttentionItem) throws {
-        _ = try repository.acknowledge(
+        let acknowledgedAt = Date()
+        if try repository.acknowledge(
             eventID: item.id,
-            at: Date()
-        )
-        try reload()
+            at: acknowledgedAt
+        ) {
+            acknowledgements.append(
+                AttentionAcknowledgement(
+                    eventID: item.id,
+                    acknowledgedAt: acknowledgedAt
+                )
+            )
+        }
+        // Recompute unconditionally, matching the pre-in-memory behavior
+        // of always reloading: `now` advancing on its own can age a
+        // resolved/acknowledged item out of `AttentionPolicy
+        // .resolvedRetention` even when this particular call acknowledged
+        // nothing new.
+        recomputeItems(now: acknowledgedAt)
     }
 
     @discardableResult
@@ -116,11 +139,17 @@ final class AttentionCenter: ObservableObject {
                 eventID: item.id,
                 at: acknowledgedAt
             ) {
+                acknowledgements.append(
+                    AttentionAcknowledgement(
+                        eventID: item.id,
+                        acknowledgedAt: acknowledgedAt
+                    )
+                )
                 acknowledgedCount += 1
             }
         }
         if acknowledgedCount > 0 {
-            try reload(now: acknowledgedAt)
+            recomputeItems(now: acknowledgedAt)
         }
         return acknowledgedCount
     }
@@ -148,11 +177,17 @@ final class AttentionCenter: ObservableObject {
                 eventID: item.id,
                 at: acknowledgedAt
             ) {
+                acknowledgements.append(
+                    AttentionAcknowledgement(
+                        eventID: item.id,
+                        acknowledgedAt: acknowledgedAt
+                    )
+                )
                 acknowledgedCount += 1
             }
         }
         if acknowledgedCount > 0 {
-            try reload(now: acknowledgedAt)
+            recomputeItems(now: acknowledgedAt)
         }
         return acknowledgedCount
     }
@@ -172,11 +207,17 @@ final class AttentionCenter: ObservableObject {
                 eventID: item.id,
                 at: acknowledgedAt
             ) {
+                acknowledgements.append(
+                    AttentionAcknowledgement(
+                        eventID: item.id,
+                        acknowledgedAt: acknowledgedAt
+                    )
+                )
                 acknowledgedCount += 1
             }
         }
         if acknowledgedCount > 0 {
-            try reload(now: acknowledgedAt)
+            recomputeItems(now: acknowledgedAt)
         }
         return acknowledgedCount
     }
@@ -188,12 +229,13 @@ final class AttentionCenter: ObservableObject {
     /// after `reload()`, before windows restore, so the status bar never
     /// shows a phantom active agent for a session that can't exist
     /// anymore. Persists each sweep event directly through `repository`
-    /// rather than the normal `append(_:)` path, then reloads once at the
-    /// end -- with a stale-run count in the hundreds (a first launch after
-    /// this sweep shipped, or a long-neglected log), `append(_:)`'s
-    /// per-call `reload()` would replay the entire event log once per
-    /// stale run instead of once total. It's idempotent the same way any
-    /// other event is: a second sweep of an already-swept run finds it
+    /// rather than the normal `append(_:)` path, appending it to the
+    /// in-memory `events` too, and recomputes once at the end -- with a
+    /// stale-run count in the hundreds (a first launch after this sweep
+    /// shipped, or a long-neglected log), doing that per-run instead of
+    /// once total would be needlessly repeated work even now that
+    /// recomputing no longer touches disk. It's idempotent the same way
+    /// any other event is: a second sweep of an already-swept run finds it
     /// already terminal and its deterministic event ID already recorded,
     /// so `repository.append` reports no insertion for it.
     func sweepInterruptedRuns(now: Date = Date()) throws {
@@ -210,18 +252,43 @@ final class AttentionCenter: ObservableObject {
             )
             if try repository.append(event) {
                 expireStatusNote(for: event)
+                events.append(event)
                 insertedAny = true
             }
         }
         if insertedAny {
-            try reload(now: now)
+            recompute(now: now)
         }
     }
 
+    /// Reloads `events`/`acknowledgements` from disk and recomputes
+    /// `runs`/`items` from them. Full JSON-decode-every-row cost — reserve
+    /// this for startup, where there's no in-memory state yet to update
+    /// incrementally. Every other mutation (`append(_:)`, the
+    /// `acknowledge*` family, `sweepInterruptedRuns`) keeps `events`/
+    /// `acknowledgements` current itself and calls `recompute`/
+    /// `recomputeItems` directly instead of reloading.
     func reload(now: Date = Date()) throws {
         events = try repository.loadEvents()
         acknowledgements = try repository.loadAcknowledgements()
+        recompute(now: now)
+    }
+
+    /// Re-derives both `runs` and `items` from the in-memory `events`/
+    /// `acknowledgements` arrays -- no disk access. Use after a change
+    /// that can affect run state (a new event); an acknowledgement alone
+    /// only ever changes `items`, so use `recomputeItems(now:)` there
+    /// instead of paying for a redundant run replay.
+    private func recompute(now: Date) {
         runs = AgentEventReducer.reduce(events)
+        recomputeItems(now: now)
+    }
+
+    /// Re-derives `items` from the in-memory `events`/`acknowledgements`
+    /// arrays, leaving `runs` untouched -- acknowledgements never change
+    /// run state, and re-running `AgentEventReducer.reduce` on every
+    /// acknowledgement would replay the whole event log for no reason.
+    private func recomputeItems(now: Date) {
         items = AttentionReducer.reduce(
             events: events,
             acknowledgements: acknowledgements,
