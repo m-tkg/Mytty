@@ -177,10 +177,18 @@ struct ControlCommandLineParserTests {
         }
     }
 
-    @Test("events defaults --after to 0 and --timeout to 30")
+    @Test("events omits --after as nil (establish a cursor) and defaults --timeout to 30")
     func parsesEventsDefaults() throws {
         #expect(
             try ControlCommandLineParser.parse(["events"])
+                == .events(afterSequence: nil, timeoutSeconds: 30)
+        )
+    }
+
+    @Test("events treats an explicit --after 0 as a fetch cursor, not establishment")
+    func parsesEventsAfterZero() throws {
+        #expect(
+            try ControlCommandLineParser.parse(["events", "--after", "0"])
                 == .events(afterSequence: 0, timeoutSeconds: 30)
         )
     }
@@ -199,7 +207,7 @@ struct ControlCommandLineParserTests {
         #expect(
             try ControlCommandLineParser.parse(
                 ["events", "--timeout", "999999"]
-            ) == .events(afterSequence: 0, timeoutSeconds: 600)
+            ) == .events(afterSequence: nil, timeoutSeconds: 600)
         )
     }
 

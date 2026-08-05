@@ -557,17 +557,17 @@ final class ControlServer {
 
     /// Long-poll for `events`, mirroring `wait`'s poll loop above (same
     /// fixed-interval `Task.sleep`, same deadline-vs-`Date()` shape) with
-    /// two differences `wait` doesn't need: `afterSequence == 0` answers
-    /// immediately without ever polling (a fresh cursor never replays
-    /// history — see `ControlRequest.events`), and there is no preflight,
-    /// since unlike a pane/job, "no events yet" is never a condition that
-    /// can be detected as permanently unsatisfiable.
+    /// two differences `wait` doesn't need: `afterSequence == nil` answers
+    /// immediately without ever polling (establishing a cursor never
+    /// replays history — see `ControlRequest.events`), and there is no
+    /// preflight, since unlike a pane/job, "no events yet" is never a
+    /// condition that can be detected as permanently unsatisfiable.
     private func events(
-        after afterSequence: UInt64,
+        after afterSequence: UInt64?,
         timeoutSeconds: Double,
         delegate: ControlServerDelegate
     ) async -> ControlResponse {
-        guard afterSequence != 0 else {
+        guard let afterSequence else {
             let snapshot = delegate.controlServer(
                 self,
                 eventsAfterSequence: 0

@@ -172,17 +172,19 @@ public enum ControlRequest: Equatable, Sendable {
     /// Long-poll fan-in over every pane's agent events, for an
     /// orchestrator watching several workers at once: one `events` call
     /// replaces one `wait`/`agent wait` per pane. `afterSequence` is a
-    /// cursor from a previous `ControlResponse.events.latestSequence`; `0`
-    /// (the default for a first call) deliberately returns no history —
-    /// it only establishes a cursor at the current tip, so a fresh
-    /// listener doesn't replay everything that happened before it started
-    /// watching. A nonzero `afterSequence` with newer events retained
-    /// returns them immediately; otherwise the request blocks until a new
+    /// cursor from a previous `ControlResponse.events.latestSequence`.
+    /// `nil` (the default for a first call, and how the CLI encodes an
+    /// omitted `--after`) deliberately returns no history — it only
+    /// establishes a cursor at the current tip, so a fresh listener
+    /// doesn't replay everything that happened before it started
+    /// watching. Any present value — including an explicit `0` — is a
+    /// normal fetch cursor: events with a greater sequence are returned
+    /// immediately if retained; otherwise the request blocks until a new
     /// event arrives or `timeoutSeconds` elapses. `ControlEventLedger`
     /// retains at most 1000 records, so a cursor that goes stale long
     /// enough (a listener that stopped polling for a while) can silently
     /// skip evicted history — see `ControlEventLedger.records(after:)`.
-    case events(afterSequence: UInt64, timeoutSeconds: Double)
+    case events(afterSequence: UInt64?, timeoutSeconds: Double)
 
     /// Creates a new worker pane split off `anchorPaneID`, launches
     /// `provider` in it with `access` and `task` as one shell input, and
@@ -394,7 +396,7 @@ extension ControlRequest: Codable {
             )
         case .events:
             self = .events(
-                afterSequence: try container.decode(
+                afterSequence: try container.decodeIfPresent(
                     UInt64.self,
                     forKey: .afterSequence
                 ),
@@ -542,7 +544,7 @@ extension ControlRequest: Codable {
             try container.encodeIfPresent(status, forKey: .status)
         case let .events(afterSequence, timeoutSeconds):
             try container.encode(RequestType.events, forKey: .type)
-            try container.encode(afterSequence, forKey: .afterSequence)
+            try container.encodeIfPresent(afterSequence, forKey: .afterSequence)
             try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
         case let .spawnAgent(
             anchorPaneID, direction, provider, cwd, access, model, task,

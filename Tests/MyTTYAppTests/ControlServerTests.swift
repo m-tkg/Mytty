@@ -359,8 +359,51 @@ struct ControlServerTests {
         #expect(response == .waitResult(state: "succeeded", timedOut: false))
     }
 
-    @Test("events with --after 0 establishes a cursor without replaying history")
+    @Test("events with a nil cursor establishes it without replaying history")
     func eventsEstablishesCursor() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = [
+            Self.makeEventRecord(sequence: 1),
+            Self.makeEventRecord(sequence: 2),
+        ]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .events(afterSequence: nil, timeoutSeconds: 30),
+            to: socketURL,
+            timeoutSeconds: 30
+        )
+        #expect(
+            response == .events(records: [], latestSequence: 2, timedOut: false)
+        )
+        // A fresh cursor must never block or replay -- it answers instantly.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("events with a nil cursor on an empty ledger establishes latestSequence 0 without blocking")
+    func eventsEstablishesCursorOnEmptyLedger() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = []
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .events(afterSequence: nil, timeoutSeconds: 30),
+            to: socketURL,
+            timeoutSeconds: 30
+        )
+        #expect(
+            response == .events(records: [], latestSequence: 0, timedOut: false)
+        )
+        // Establishment never blocks, even when nothing has ever happened.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("events with an explicit --after 0 fetches every retained record on a non-empty ledger")
+    func eventsAfterZeroFetchesAllRetainedRecords() async throws {
         let delegate = StubControlDelegate()
         delegate.eventRecords = [
             Self.makeEventRecord(sequence: 1),
@@ -375,11 +418,54 @@ struct ControlServerTests {
             to: socketURL,
             timeoutSeconds: 30
         )
-        #expect(
-            response == .events(records: [], latestSequence: 2, timedOut: false)
-        )
-        // A fresh cursor must never block or replay -- it answers instantly.
+        // Unlike a nil cursor, an explicit 0 is a normal fetch cursor: it
+        // returns retained history rather than only establishing a cursor.
+        #expect(response == .events(
+            records: [
+                Self.makeEventRecord(sequence: 1),
+                Self.makeEventRecord(sequence: 2),
+            ],
+            latestSequence: 2,
+            timedOut: false
+        ))
         #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("events with --after 0 on an empty ledger blocks, then delivers sequence 1 once it arrives")
+    func eventsAfterZeroOnEmptyLedgerBlocksThenDeliversFirstEvent() async throws {
+        // Regression test for the deadlock: a client that establishes its
+        // cursor while the ledger is empty gets latestSequence 0 back, and
+        // every subsequent call it can make passes --after 0. Before the
+        // fix, --after 0 was itself treated as establishment, so such a
+        // client could never observe sequence 1 -- it had no way to ever
+        // obtain a nonzero cursor. Now an explicit 0 is a real fetch cursor
+        // that blocks for, and then delivers, the first event.
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = []
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        Task.detached {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await MainActor.run {
+                delegate.eventRecords = [Self.makeEventRecord(sequence: 1)]
+            }
+        }
+
+        let start = Date()
+        let response = try await perform(
+            .events(afterSequence: 0, timeoutSeconds: 10),
+            to: socketURL,
+            timeoutSeconds: 10
+        )
+        #expect(response == .events(
+            records: [Self.makeEventRecord(sequence: 1)],
+            latestSequence: 1,
+            timedOut: false
+        ))
+        // Confirms it actually blocked waiting for the record, rather than
+        // returning immediately the way a nil (establishment) cursor does.
+        #expect(Date().timeIntervalSince(start) >= 0.4)
     }
 
     @Test("events returns records already newer than the cursor immediately")
