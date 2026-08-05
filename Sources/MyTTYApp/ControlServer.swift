@@ -137,6 +137,10 @@ struct AgentControlFailure: Error, Equatable, Sendable {
 /// `docs/explanation/mytty-ctl-architecture.md`.
 @MainActor
 protocol ControlServerAgentDelegate: AnyObject {
+    /// `worktreeBranch` resolution (repo lookup, `git worktree add`/reuse)
+    /// shells out to git off the main actor, so this requirement is
+    /// `async` — unlike every other method on this protocol, which stay
+    /// synchronous because they only touch in-memory pane/job state.
     func controlServer(
         _ server: ControlServer,
         spawnAgentAnchorPaneID anchorPaneID: String,
@@ -146,8 +150,9 @@ protocol ControlServerAgentDelegate: AnyObject {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
-    ) -> Result<AgentJobSnapshot, AgentControlFailure>
+        label: String?,
+        worktreeBranch: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure>
 
     /// Re-reads the job's tracked state against a fresh `AttentionCenter`
     /// snapshot and returns the result — used both to answer `agent
@@ -409,10 +414,11 @@ final class ControlServer {
     ) async -> ControlResponse {
         switch request {
         case let .spawnAgent(
-            anchorPaneID, direction, provider, cwd, access, model, task, label
+            anchorPaneID, direction, provider, cwd, access, model, task,
+            label, worktreeBranch
         ):
             return Self.encodeAgentResult(
-                delegate.controlServer(
+                await delegate.controlServer(
                     self,
                     spawnAgentAnchorPaneID: anchorPaneID,
                     direction: direction,
@@ -421,7 +427,8 @@ final class ControlServer {
                     access: access,
                     model: model,
                     task: task,
-                    label: label
+                    label: label,
+                    worktreeBranch: worktreeBranch
                 )
             ) { .agentJob($0) }
 

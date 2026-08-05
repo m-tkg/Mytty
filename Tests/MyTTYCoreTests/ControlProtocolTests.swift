@@ -64,7 +64,8 @@ struct ControlProtocolTests {
                 access: .workspaceWrite,
                 model: nil,
                 task: "investigate the bug",
-                label: nil
+                label: nil,
+                worktreeBranch: nil
             ),
             .spawnAgent(
                 anchorPaneID: "pane-1",
@@ -74,7 +75,8 @@ struct ControlProtocolTests {
                 access: .review,
                 model: "sonnet",
                 task: "review the diff",
-                label: "review-a"
+                label: "review-a",
+                worktreeBranch: nil
             ),
             .spawnAgent(
                 anchorPaneID: "pane-1",
@@ -84,7 +86,8 @@ struct ControlProtocolTests {
                 access: .inherit,
                 model: nil,
                 task: "pair on the fix",
-                label: "worker-a"
+                label: "worker-a",
+                worktreeBranch: "feat/worker-a"
             ),
             .waitAgent(
                 jobID: AgentJobID(),
@@ -264,7 +267,29 @@ struct ControlProtocolTests {
             access: .workspaceWrite,
             model: nil,
             task: "investigate",
-            label: nil
+            label: nil,
+            worktreeBranch: nil
+        ))
+    }
+
+    @Test("decoding a legacy spawnAgent payload without a worktreeBranch key yields nil")
+    func decodesLegacySpawnAgentWithoutWorktreeBranch() throws {
+        let legacy = Data("""
+        {"type":"spawnAgent","anchorPaneID":"pane-1","direction":"right",\
+        "provider":"codex","access":"workspace-write","model":"gpt-5.2",\
+        "task":"investigate"}
+        """.utf8)
+        let decoded: ControlRequest = try ControlMessageCodec.decode(legacy)
+        #expect(decoded == .spawnAgent(
+            anchorPaneID: "pane-1",
+            direction: .right,
+            provider: .codex,
+            cwd: nil,
+            access: .workspaceWrite,
+            model: "gpt-5.2",
+            task: "investigate",
+            label: nil,
+            worktreeBranch: nil
         ))
     }
 

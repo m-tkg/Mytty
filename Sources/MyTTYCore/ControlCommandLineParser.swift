@@ -16,7 +16,7 @@ public enum ControlCommandLineParser {
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
-                  [--model <text>] [--label <text>]
+                  [--model <text>] [--label <text>] [--worktree <branch>]
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
       agent send <job-id> <text> [--enter]
@@ -96,7 +96,7 @@ public enum ControlCommandLineParser {
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
-                  [--model <text>] [--label <text>]
+                  [--model <text>] [--label <text>] [--worktree <branch>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --access review is read-only
         investigation; workspace-write (the default) lets the worker edit
@@ -113,7 +113,17 @@ public enum ControlCommandLineParser {
         not your own process cwd -- if you were started somewhere the
         pane's shell never cd'd into (e.g. `claude --worktree` chdirs
         into a git worktree while the shell stays put), pass --cwd "$PWD"
-        explicitly or workers start in the wrong checkout. Prints an
+        explicitly or workers start in the wrong checkout. --worktree
+        <branch> launches the worker inside a git worktree for <branch>
+        instead of the plain resolved cwd: Mytty creates (or, if that
+        worktree already exists, reuses) `<repo>-worktrees/<branch>` next
+        to the base repository, so each worker gets its own working
+        directory without the two of you fighting over the same files --
+        see RUNNING SEVERAL WORKERS IN PARALLEL below. Fails with
+        not-a-git-repository if the resolved cwd isn't a git repository, or
+        worktree-create-failed if git can't create it (e.g. the target path
+        exists but isn't a registered worktree) or invalid-worktree-branch
+        for a malformed branch name. Prints an
         agentJob response whose job.jobID.rawValue is the job ID every other
         agent command below takes.
 
@@ -327,10 +337,24 @@ public enum ControlCommandLineParser {
 
       RUNNING SEVERAL WORKERS IN PARALLEL
 
-      Give each sub-agent its own `git worktree` so their working directories
-      don't collide. `send` and `--command` both have a 64 KiB limit per
-      call, and any newline in the text becomes an Enter keypress -- so a
-      long or multi-line task should be written to a file first. For
+      Give each sub-agent its own working directory so they don't fight over
+      the same files. `agent spawn --worktree <branch>` does this for you:
+      it creates (or, on a respawn, reuses) a git worktree next to the base
+      repository and launches the worker there --
+      "$MYTTY_CTL_BIN" agent spawn --provider codex --worktree feat-a \
+        --task "..." spawns a worker checked out onto branch feat-a in
+      `<repo>-worktrees/feat-a`, sibling to the repo itself so it never
+      shows up in the main checkout's `git status`. A branch that doesn't
+      exist yet is created from the current HEAD; an existing branch is
+      checked out as-is. Mytty never removes the worktree automatically --
+      `agent close` only closes the pane -- so once a worker's branch is
+      merged or abandoned, remove it yourself with `git worktree remove
+      <path>` (from the base repository) to reclaim the disk space.
+      For a manual `split --command` flow instead of `agent spawn`, create
+      the worktree yourself the same way (`git worktree add ...`) and pass
+      its path as `--cwd`. `send` and `--command` both have a 64 KiB limit
+      per call, and any newline in the text becomes an Enter keypress -- so
+      a long or multi-line task should be written to a file first. For
       `--command`, pass it with `$(cat <task-file>)` as in the `split
       --command` example above, so it arrives as one shell argument instead
       of one `send` per line. For `send`, tell the sub-agent to read the
@@ -375,6 +399,7 @@ public enum ControlCommandLineParser {
         public let access: AgentAccessPolicy
         public let model: String?
         public let label: String?
+        public let worktreeBranch: String?
         public let taskFilePath: String
 
         public init(
@@ -385,6 +410,7 @@ public enum ControlCommandLineParser {
             access: AgentAccessPolicy,
             model: String?,
             label: String?,
+            worktreeBranch: String?,
             taskFilePath: String
         ) {
             self.anchorPaneID = anchorPaneID
@@ -394,6 +420,7 @@ public enum ControlCommandLineParser {
             self.access = access
             self.model = model
             self.label = label
+            self.worktreeBranch = worktreeBranch
             self.taskFilePath = taskFilePath
         }
     }
@@ -472,7 +499,8 @@ public enum ControlCommandLineParser {
             access: pending.access,
             model: pending.model,
             task: task,
-            label: pending.label
+            label: pending.label,
+            worktreeBranch: pending.worktreeBranch
         )
     }
 
@@ -832,7 +860,8 @@ public enum ControlCommandLineParser {
     mytty-ctl agent spawn --provider <codex|claude|cursor> \
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down>] [--cwd <path>] \
-    [--access <review|workspace-write|inherit>] [--model <text>] [--label <text>]
+    [--access <review|workspace-write|inherit>] [--model <text>] \
+    [--label <text>] [--worktree <branch>]
     """
 
     /// `agent` routed through `parseInvocation`: unlike every other
@@ -992,6 +1021,7 @@ public enum ControlCommandLineParser {
             valued: [
                 "--anchor", "--direction", "--provider", "--cwd",
                 "--access", "--model", "--task", "--task-file", "--label",
+                "--worktree",
             ]
         )
         guard positional.isEmpty else {
@@ -1027,6 +1057,22 @@ public enum ControlCommandLineParser {
             throw ControlCommandLineError.invalidArguments(agentSpawnUsage)
         }
 
+        // Fail fast client-side for an obviously-invalid branch, matching
+        // the treatment `--task`'s emptiness gets below -- the server
+        // still re-validates and answers `invalid-worktree-branch` since
+        // other clients can speak the socket directly without going
+        // through this parser.
+        if let worktreeBranch = options.values["--worktree"],
+           !AgentWorktreeValidation.isValid(worktreeBranch)
+        {
+            throw ControlCommandLineError.invalidArguments(
+                "mytty-ctl agent spawn --worktree: branch is invalid -- "
+                    + "must be nonempty, at most "
+                    + "\(AgentWorktreeValidation.maximumScalars) "
+                    + "characters, and a valid git branch name"
+            )
+        }
+
         let pending = PendingAgentSpawnRequest(
             anchorPaneID: anchorPaneID,
             direction: direction,
@@ -1035,6 +1081,7 @@ public enum ControlCommandLineParser {
             access: access,
             model: options.values["--model"],
             label: options.values["--label"],
+            worktreeBranch: options.values["--worktree"],
             taskFilePath: options.values["--task-file"] ?? ""
         )
 
@@ -1059,7 +1106,8 @@ public enum ControlCommandLineParser {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
+        label: String?,
+        worktreeBranch: String?
     ) throws -> ControlRequest {
         guard !task.isEmpty else {
             throw ControlCommandLineError.invalidArguments(
@@ -1074,7 +1122,8 @@ public enum ControlCommandLineParser {
             access: access,
             model: model,
             task: task,
-            label: label
+            label: label,
+            worktreeBranch: worktreeBranch
         )
         let encodedSize = (try? ControlMessageCodec.encode(request).count)
             ?? Int.max

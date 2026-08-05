@@ -20,6 +20,7 @@ final class AgentJobCoordinator {
     private let integrationStatus: (AgentProvider) -> AgentIntegrationStatus
     private let now: () -> Date
     private let launchWindow: TimeInterval
+    private let worktreePreparer: any AgentWorktreePreparing
 
     /// Label validation mirrors the other short free-text fields Mytty
     /// already accepts from hook payloads — see `AgentSessionValidation` —
@@ -31,13 +32,15 @@ final class AgentJobCoordinator {
         attentionCenter: AttentionCenter,
         integrationStatus: @escaping (AgentProvider) -> AgentIntegrationStatus,
         now: @escaping () -> Date = Date.init,
-        launchWindow: TimeInterval = 30
+        launchWindow: TimeInterval = 30,
+        worktreePreparer: any AgentWorktreePreparing = AgentWorktreePreparer()
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenter = attentionCenter
         self.integrationStatus = integrationStatus
         self.now = now
         self.launchWindow = launchWindow
+        self.worktreePreparer = worktreePreparer
     }
 
     private func refresh(_ tracker: inout AgentJobTracker) {
@@ -123,6 +126,29 @@ final class AgentJobCoordinator {
         )
         return .success(arguments)
     }
+
+    /// Resolves the worker's working directory when `agent spawn
+    /// --worktree <branch>` is given: validates the branch, then asks
+    /// `preparer` to create or reuse the sibling worktree derived from
+    /// `baseDirectory` (the spawn's already-resolved cwd — the `--cwd`
+    /// value if given, else the anchor pane's working directory). Pulled
+    /// out as a `static` function, rather than inlined in
+    /// `spawnAgentAnchorPaneID` below, purely so it's unit-testable with a
+    /// stubbed `AgentWorktreePreparing` — the containing method can't run
+    /// outside a real `WindowSessionCoordinator` with a live pane.
+    static func resolveWorktreeWorkingDirectory(
+        baseDirectory: URL,
+        branch: String,
+        preparer: any AgentWorktreePreparing
+    ) async -> Result<URL, AgentControlFailure> {
+        guard AgentWorktreeValidation.isValid(branch) else {
+            return .failure(AgentControlFailure("invalid-worktree-branch"))
+        }
+        return await preparer.prepareWorktree(
+            forDirectory: baseDirectory,
+            branch: branch
+        )
+    }
 }
 
 extension AgentJobCoordinator: ControlServerAgentDelegate {
@@ -135,8 +161,9 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
-    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        label: String?,
+        worktreeBranch: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         guard let anchorSurfaceID = TerminalSurfaceID(
             uuidString: anchorPaneID
         ),
@@ -164,7 +191,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             return .failure(AgentControlFailure(failureCode))
         }
 
-        let resolvedWorkingDirectory: URL
+        var resolvedWorkingDirectory: URL
         if let cwd {
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(
@@ -181,6 +208,19 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             resolvedWorkingDirectory = controller.workingDirectory(
                 forPane: anchorSurfaceID
             ) ?? controller.currentWorkingDirectory
+        }
+
+        if let worktreeBranch {
+            switch await Self.resolveWorktreeWorkingDirectory(
+                baseDirectory: resolvedWorkingDirectory,
+                branch: worktreeBranch,
+                preparer: worktreePreparer
+            ) {
+            case let .success(worktreeDirectory):
+                resolvedWorkingDirectory = worktreeDirectory
+            case let .failure(failure):
+                return .failure(failure)
+            }
         }
 
         var resolvedAccess = access
