@@ -441,6 +441,39 @@ struct AttentionCenterTests {
         // A second clear finds nothing left to acknowledge.
         #expect(try center.acknowledgeAllActionableItems() == 0)
     }
+
+    @Test("startup sweep disconnects a run a previous launch left running, and a second sweep is a no-op")
+    @MainActor
+    func sweepInterruptedRuns() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let runID = AgentRunID()
+
+        // Simulate a run replayed from a previous app instance that
+        // crashed while a Claude Code turn was still in flight -- no
+        // terminal event was ever recorded for it.
+        try center.append(harness.event(
+            runID: runID,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 1
+        ))
+        #expect(center.runs[runID]?.state == .running)
+
+        try center.sweepInterruptedRuns(now: Date(timeIntervalSince1970: 10))
+
+        #expect(center.runs[runID]?.state == .disconnected)
+
+        // A second sweep on a later launch appends nothing new: the
+        // deterministic sweep event ID is already recorded, so `append`
+        // reports it as a duplicate.
+        let eventCountAfterFirstSweep = try harness.repository.loadEvents().count
+        try center.sweepInterruptedRuns(now: Date(timeIntervalSince1970: 20))
+        #expect(try harness.repository.loadEvents().count == eventCountAfterFirstSweep)
+        #expect(center.runs[runID]?.state == .disconnected)
+    }
 }
 
 @MainActor
@@ -449,10 +482,12 @@ private struct AttentionHarness {
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
 
     var center: AttentionCenter {
-        AttentionCenter(
-            repository: SQLiteAgentEventRepository(
-                databaseURL: directory.appendingPathComponent("mytty.sqlite")
-            )
+        AttentionCenter(repository: repository)
+    }
+
+    var repository: SQLiteAgentEventRepository {
+        SQLiteAgentEventRepository(
+            databaseURL: directory.appendingPathComponent("mytty.sqlite")
         )
     }
 

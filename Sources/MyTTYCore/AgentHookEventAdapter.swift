@@ -92,6 +92,58 @@ public enum AgentHookEventAdapter {
         )
     }
 
+    /// Runs from `runs` a startup sweep must close out: any run replayed
+    /// from the log as still non-terminal (`.running`, `.waitingInput`,
+    /// `.waitingApproval`). Deliberately excludes `.unknown`/`.idle` — an
+    /// idle or never-started run drives no status-bar activity, so sweeping
+    /// it would only add a no-op event to the log without fixing anything a
+    /// user could see.
+    public static func runsNeedingStartupSweep(
+        _ runs: [AgentRun]
+    ) -> [AgentRun] {
+        runs.filter {
+            switch $0.state {
+            case .running, .waitingInput, .waitingApproval:
+                true
+            case .unknown, .idle, .succeeded, .failed, .disconnected:
+                false
+            }
+        }
+    }
+
+    /// Builds the `disconnected` event a startup sweep records for a run a
+    /// previous app instance left non-terminal. Every pane process dies
+    /// with the app -- crash, force-quit, or SIGKILL all leave no terminal
+    /// event behind, since the hooks that would report one can no longer
+    /// reach the socket -- so at launch any replayed run still
+    /// `running`/`waitingInput`/`waitingApproval` is provably dead. The
+    /// event ID is deterministic per run ID (not per launch), so once one
+    /// sweep lands the run is terminal and both replay dedup
+    /// (`seenEventIDs`) and the reducer's terminal-state handling make a
+    /// second sweep of the same run a no-op, including across further
+    /// launches.
+    public static func startupSweepEvent(
+        run: AgentRun,
+        occurredAt: Date
+    ) -> AgentEvent {
+        AgentEvent(
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}startup-sweep\u{0}\(run.id.rawValue.uuidString)"
+                )
+            ),
+            runID: run.id,
+            sessionID: run.sessionID,
+            surfaceID: run.surfaceID,
+            provider: run.provider,
+            kind: .disconnected,
+            occurredAt: occurredAt,
+            hookName: startupSweepHookName
+        )
+    }
+
+    static let startupSweepHookName = "mytty.startupSweep"
+
     /// The run ID formula real provider hooks use for a given `runKey`
     /// (Claude Code: the prompt ID; Codex: the turn ID) -- both `makeEvent`
     /// above and `interruptionEvent` derive a run ID this same way, and
