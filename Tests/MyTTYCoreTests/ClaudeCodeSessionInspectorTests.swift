@@ -341,4 +341,101 @@ struct ClaudeCodeSessionInspectorTests {
         #expect(prompts.first == "line one line two")
         #expect(prompts.last?.count == 400)
     }
+
+    // MARK: - Turn observation (Phase 2: transcript-derived turns)
+
+    @Test("a prompt with only tool_use replies so far reads as an active turn")
+    func turnActive() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"tool_use"}}
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "prompt-1", phase: .active)
+        )
+    }
+
+    @Test("an end_turn assistant reply after the prompt completes the turn")
+    func turnCompletedByEndTurn() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"tool_use"}}
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"end_turn"}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "prompt-1", phase: .completed)
+        )
+    }
+
+    @Test("a turn_duration system record after the prompt completes the turn")
+    func turnCompletedByTurnDuration() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"end_turn"}}
+        {"type":"system","subtype":"turn_duration","durationMs":1200}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "prompt-1", phase: .completed)
+        )
+    }
+
+    @Test("tool_result user records are not mistaken for a new prompt")
+    func turnIgnoresToolResultRecords() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"end_turn"}}
+        {"type":"system","subtype":"turn_duration","durationMs":1200}
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"stray tool output"}]}}
+        """.utf8)
+
+        // The tool_result record doesn't start a new turn (still keyed on
+        // prompt-1), but it does read as renewed activity on that turn.
+        #expect(
+            ClaudeCodeSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "prompt-1", phase: .active)
+        )
+    }
+
+    @Test("a later real prompt supersedes an earlier completed turn")
+    func turnFollowedByNewPrompt() {
+        let data = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        {"type":"assistant","isSidechain":false,"promptId":"prompt-1","message":{"stop_reason":"end_turn"}}
+        {"type":"system","subtype":"turn_duration","durationMs":1200}
+        {"type":"user","promptId":"prompt-2","message":{"role":"user","content":"go again"}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.turn(from: data)
+                == AgentTurnObservation(key: "prompt-2", phase: .active)
+        )
+    }
+
+    @Test("a tail with no real user prompt yields no turn")
+    func turnNilWithoutPrompt() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"message":{"stop_reason":"end_turn"}}
+        {"type":"system","subtype":"turn_duration","durationMs":1200}
+        """.utf8)
+
+        #expect(ClaudeCodeSessionInspector.turn(from: data) == nil)
+
+        let sidechainOnly = Data("""
+        {"type":"user","isSidechain":true,"promptId":"prompt-1","message":{"role":"user","content":"go"}}
+        """.utf8)
+        #expect(ClaudeCodeSessionInspector.turn(from: sidechainOnly) == nil)
+
+        let toolResultOnly = Data("""
+        {"type":"user","promptId":"prompt-1","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}
+        """.utf8)
+        #expect(ClaudeCodeSessionInspector.turn(from: toolResultOnly) == nil)
+    }
 }

@@ -1,5 +1,29 @@
 import Foundation
 
+/// What one read of a provider's own transcript says about the current
+/// prompt turn -- the finer-grained signal `NativeAgentRunEstimator.
+/// turnObserved` uses to split a process epoch's coarse `started`/`ended`
+/// lifecycle into one run per turn, mirroring the `UserPromptSubmit`-to-
+/// `Stop` cycle a real hook integration reports. `key` is the same
+/// identifier the provider's own hooks use for that turn (Claude Code: the
+/// prompt ID; Codex: the turn ID), so a turn run's ID always aligns with
+/// `AgentHookEventAdapter.hookAlignedRunID`.
+public struct AgentTurnObservation: Equatable, Sendable {
+    public enum Phase: Equatable, Sendable {
+        case active
+        case completed
+        case interrupted
+    }
+
+    public let key: String
+    public let phase: Phase
+
+    public init(key: String, phase: Phase) {
+        self.key = key
+        self.phase = phase
+    }
+}
+
 /// Estimates an agent run's start/finish for panes whose provider hook
 /// integration isn't installed. Without hooks, Mytty has no `started` /
 /// `succeeded` / `failed` events for that pane at all -- the status bar,
@@ -43,6 +67,24 @@ public final class NativeAgentRunEstimator {
         /// later `providerChanged`/`commandFinished` call for the same
         /// still-foreground process has something to silently clear.
         var hookCovered: Bool
+        /// Non-nil once `turnObserved` has fed this epoch its first
+        /// transcript-derived turn: from that point on the epoch is in
+        /// turn-tracking mode, and `commandFinished`/`providerChanged` route
+        /// their terminal event to the active turn's own run (if any)
+        /// instead of the epoch-level run.
+        var turnTracking: TurnTracking?
+    }
+
+    /// Per-epoch turn-mode bookkeeping: which turn (if any) is currently
+    /// active, and every turn key already announced `started` -- kept so a
+    /// turn key re-observed as active after being superseded never gets a
+    /// second `started` event (event IDs are deterministic per turn key, so
+    /// re-emitting would just be redundant, not wrong, but this keeps the
+    /// event stream itself minimal rather than relying on a downstream
+    /// consumer to dedupe).
+    private struct TurnTracking {
+        var activeTurnKey: String?
+        var startedTurnKeys: Set<String> = []
     }
 
     private struct OccurrenceKey: Hashable {
@@ -101,14 +143,31 @@ public final class NativeAgentRunEstimator {
                 return events
             }
             if case .started = existing.phase, !existing.hookCovered {
-                events.append(
-                    AgentHookEventAdapter.nativeProcessExitedEvent(
-                        provider: existing.provider,
-                        surfaceID: surfaceID,
-                        epochKey: existing.epochKey,
-                        occurredAt: now
+                if let tracking = existing.turnTracking {
+                    // In turn mode the epoch-level run was already parked
+                    // (or never announced) -- only the active turn, if any,
+                    // still needs a terminal event.
+                    if let activeTurnKey = tracking.activeTurnKey {
+                        events.append(
+                            AgentHookEventAdapter.nativeProcessExitedEvent(
+                                provider: existing.provider,
+                                surfaceID: surfaceID,
+                                epochKey: existing.epochKey,
+                                turnKey: activeTurnKey,
+                                occurredAt: now
+                            )
+                        )
+                    }
+                } else {
+                    events.append(
+                        AgentHookEventAdapter.nativeProcessExitedEvent(
+                            provider: existing.provider,
+                            surfaceID: surfaceID,
+                            epochKey: existing.epochKey,
+                            occurredAt: now
+                        )
                     )
-                )
+                }
             }
             epochs[surfaceID] = nil
         }
@@ -130,7 +189,8 @@ public final class NativeAgentRunEstimator {
                 occurrence: occurrence
             ),
             phase: .pendingStart(deadline: now.addingTimeInterval(startGrace)),
-            hookCovered: false
+            hookCovered: false,
+            turnTracking: nil
         )
         return events
     }
@@ -161,6 +221,25 @@ public final class NativeAgentRunEstimator {
             var updated = epoch
             updated.phase = .ended
             epochs[surfaceID] = updated
+
+            if let tracking = epoch.turnTracking {
+                // In turn mode the epoch-level run was already parked (or
+                // never announced) -- only the active turn, if any, still
+                // needs a terminal event.
+                guard let activeTurnKey = tracking.activeTurnKey else {
+                    return []
+                }
+                return [
+                    AgentHookEventAdapter.nativeCommandFinishedEvent(
+                        provider: epoch.provider,
+                        surfaceID: surfaceID,
+                        epochKey: epoch.epochKey,
+                        turnKey: activeTurnKey,
+                        exitCode: exitCode,
+                        occurredAt: now
+                    )
+                ]
+            }
             return [
                 AgentHookEventAdapter.nativeCommandFinishedEvent(
                     provider: epoch.provider,
@@ -194,6 +273,122 @@ public final class NativeAgentRunEstimator {
         else { return }
         epoch.hookCovered = true
         epochs[event.surfaceID] = epoch
+    }
+
+    /// Feed every transcript-derived turn observation `AgentStatusPolling
+    /// Coordinator` reports (Claude Code / Codex only, one call per *change*
+    /// -- see its `lastTurnBySurface`) here. The first call for a given
+    /// epoch hands it from the coarse process-epoch lifecycle into
+    /// per-turn tracking: a still-`pendingStart` epoch's grace timer is
+    /// cancelled outright (transcript activity is stronger evidence than
+    /// the timer), an already-`started` epoch's run is parked `idle`
+    /// (`nativeTurnHandoffEvent`) since per-turn runs take over reporting
+    /// from here, and an `ended` epoch enters turn mode silently (its
+    /// terminal event already went out). No epoch for the surface, a
+    /// provider mismatch, or an epoch the real hooks are already covering
+    /// all return `[]` and change nothing.
+    @discardableResult
+    public func turnObserved(
+        surfaceID: TerminalSurfaceID,
+        provider: AgentProvider,
+        turn: AgentTurnObservation,
+        now: Date
+    ) -> [AgentEvent] {
+        guard var epoch = epochs[surfaceID],
+              epoch.provider == provider,
+              !epoch.hookCovered
+        else { return [] }
+
+        var events: [AgentEvent] = []
+        var tracking: TurnTracking
+        if let existing = epoch.turnTracking {
+            tracking = existing
+        } else {
+            switch epoch.phase {
+            case .pendingStart:
+                // The epoch-level `started` this deadline would have
+                // produced never fires -- turn mode reports its own
+                // `started` for the active turn below instead.
+                epoch.phase = .started
+            case .started:
+                events.append(
+                    AgentHookEventAdapter.nativeTurnHandoffEvent(
+                        provider: provider,
+                        surfaceID: surfaceID,
+                        epochKey: epoch.epochKey,
+                        occurredAt: now
+                    )
+                )
+            case .ended:
+                // Terminal events for this epoch already went out; leave
+                // the phase as-is so a later stray providerChanged/
+                // commandFinished call still finds it `.ended` and no-ops.
+                break
+            }
+            tracking = TurnTracking()
+        }
+
+        switch turn.phase {
+        case .active:
+            if tracking.activeTurnKey != turn.key {
+                if let previousKey = tracking.activeTurnKey {
+                    events.append(
+                        AgentHookEventAdapter.nativeTurnSupersededEvent(
+                            provider: provider,
+                            surfaceID: surfaceID,
+                            epochKey: epoch.epochKey,
+                            turnKey: previousKey,
+                            occurredAt: now
+                        )
+                    )
+                }
+                if !tracking.startedTurnKeys.contains(turn.key) {
+                    events.append(
+                        AgentHookEventAdapter.nativeTurnStartedEvent(
+                            provider: provider,
+                            surfaceID: surfaceID,
+                            epochKey: epoch.epochKey,
+                            turnKey: turn.key,
+                            occurredAt: now
+                        )
+                    )
+                    tracking.startedTurnKeys.insert(turn.key)
+                }
+                tracking.activeTurnKey = turn.key
+            }
+
+        case .completed:
+            if tracking.activeTurnKey == turn.key {
+                events.append(
+                    AgentHookEventAdapter.nativeTurnCompletedEvent(
+                        provider: provider,
+                        surfaceID: surfaceID,
+                        epochKey: epoch.epochKey,
+                        turnKey: turn.key,
+                        occurredAt: now
+                    )
+                )
+                tracking.activeTurnKey = nil
+            }
+
+        case .interrupted:
+            if tracking.activeTurnKey == turn.key {
+                events.append(
+                    AgentHookEventAdapter.nativeTurnInterruptedEvent(
+                        provider: provider,
+                        surfaceID: surfaceID,
+                        epochKey: epoch.epochKey,
+                        turnKey: turn.key,
+                        occurredAt: now
+                    )
+                )
+                tracking.activeTurnKey = nil
+            }
+        }
+
+        epoch.turnTracking = tracking
+        epochs[surfaceID] = epoch
+        return events
     }
 
     /// Transitions every `pendingStart` epoch whose deadline has passed to

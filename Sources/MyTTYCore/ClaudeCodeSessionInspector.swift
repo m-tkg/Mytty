@@ -18,13 +18,21 @@ public struct ClaudeCodeTranscriptSnapshot: Equatable, Sendable {
     public let status: AgentSessionStatus?
     /// Set while the newest prompt ended in a user interrupt (ESC).
     public let interruption: ClaudeCodeInterruption?
+    /// The current prompt-turn's lifecycle, derived from the same tail
+    /// (see `ClaudeCodeSessionInspector.turn(from:)`) -- feeds
+    /// `NativeAgentRunEstimator.turnObserved` for panes whose hook
+    /// integration isn't installed. `nil` when the tail carries no real
+    /// user prompt at all.
+    public let turn: AgentTurnObservation?
 
     public init(
         status: AgentSessionStatus?,
-        interruption: ClaudeCodeInterruption?
+        interruption: ClaudeCodeInterruption?,
+        turn: AgentTurnObservation? = nil
     ) {
         self.status = status
         self.interruption = interruption
+        self.turn = turn
     }
 }
 
@@ -128,7 +136,8 @@ public enum ClaudeCodeSessionInspector {
         guard let data = readTail(from: url) else {
             return ClaudeCodeTranscriptSnapshot(
                 status: nil,
-                interruption: nil
+                interruption: nil,
+                turn: nil
             )
         }
         return ClaudeCodeTranscriptSnapshot(
@@ -143,7 +152,8 @@ public enum ClaudeCodeSessionInspector {
                     contextRemainingPercent: parsed.contextRemainingPercent
                 )
             },
-            interruption: interruption(from: data)
+            interruption: interruption(from: data),
+            turn: turn(from: data)
         )
     }
 
@@ -176,6 +186,90 @@ public enum ClaudeCodeSessionInspector {
         }
 
         return interruption
+    }
+
+    /// Reduces the transcript tail to the current prompt-turn's lifecycle,
+    /// mirroring the `UserPromptSubmit`-to-`Stop` cycle a real hook
+    /// integration reports: the latest real user prompt starts a turn,
+    /// keyed by its `promptId` -- the same identifier `interruption(from:)`
+    /// above and the interruption flow use as a run key, so a turn key
+    /// always lines up with a hook-derived run. An `end_turn` assistant
+    /// reply or a `turn_duration` system record after that prompt, with no
+    /// later real prompt, completes it; a `tool_use` assistant reply or a
+    /// `tool_result` user record keeps an already-started turn active
+    /// (relevant only if a completion marker were somehow followed by more
+    /// activity under the same prompt, which normal transcripts don't
+    /// produce, but keeps this robust to unexpected ordering). `nil` when
+    /// the tail carries no real user prompt at all.
+    static func turn(from data: Data) -> AgentTurnObservation? {
+        var turnKey: String?
+        var phase: AgentTurnObservation.Phase = .active
+
+        for line in data.split(separator: 0x0A) {
+            guard let object = try? JSONSerialization.jsonObject(
+                with: Data(line)
+            ) as? [String: Any],
+                  (object["isSidechain"] as? Bool) != true
+            else { continue }
+
+            switch object["type"] as? String {
+            case "user":
+                if let key = realUserPromptID(object) {
+                    turnKey = key
+                    phase = .active
+                } else if turnKey != nil,
+                          isToolResultContent(
+                              (object["message"] as? [String: Any])?["content"]
+                          ) {
+                    phase = .active
+                }
+            case "assistant":
+                guard turnKey != nil,
+                      let message = object["message"] as? [String: Any]
+                else { continue }
+                switch message["stop_reason"] as? String {
+                case "end_turn":
+                    phase = .completed
+                case "tool_use":
+                    phase = .active
+                default:
+                    break
+                }
+            case "system":
+                if turnKey != nil,
+                   object["subtype"] as? String == "turn_duration" {
+                    phase = .completed
+                }
+            default:
+                continue
+            }
+        }
+
+        guard let turnKey else { return nil }
+        return AgentTurnObservation(key: turnKey, phase: phase)
+    }
+
+    /// A record is a genuine user prompt under the same exclusions
+    /// `recentUserPrompts` applies (sidechain is filtered by the caller):
+    /// no `isMeta` records, no ESC-interrupted prompt (the interruption
+    /// flow handles those), and content that resolves to real,
+    /// non-injected prompt text. Returns the record's `promptId`.
+    private static func realUserPromptID(_ object: [String: Any]) -> String? {
+        guard (object["isMeta"] as? Bool) != true,
+              (object["interruptedMessageId"] as? String) == nil,
+              let message = object["message"] as? [String: Any],
+              let text = promptText(fromContent: message["content"]),
+              AgentSessionValidation.promptText(text) != nil,
+              let promptID = AgentSessionValidation.identifier(
+                  object["promptId"] as? String
+              )
+        else { return nil }
+        return promptID
+    }
+
+    private static func isToolResultContent(_ content: Any?) -> Bool {
+        guard let blocks = content as? [[String: Any]] else { return false }
+        return blocks.contains { $0["type"] as? String == "tool_result" }
     }
 
     /// Reads the tail of a session transcript and returns the user's most
