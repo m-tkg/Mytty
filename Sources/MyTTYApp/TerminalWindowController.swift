@@ -32,6 +32,33 @@ enum TerminalWindowGeometry {
     }
 }
 
+/// Decides whether a pane that just became the active pane of its window
+/// should force an ASCII input source. Pure, so the rule is testable
+/// without a live surface or process table.
+///
+/// Mirrors `FloatingPaneASCIIInputPolicy` for the standalone floating
+/// panel, which has its own "shell just launched, no foreground process to
+/// read yet" signal in place of `isAppActivation`/`paneChanged` -- the
+/// floating panel is always the same single pane, so it has no "which pane"
+/// question to answer, and the two policies don't reduce to one shared
+/// signature without distorting either.
+enum ASCIIInputFocusPolicy {
+    static func shouldForceASCII(
+        enabled: Bool,
+        scope: ForceASCIIInputScope,
+        foregroundCommandName: String?,
+        isAppActivation: Bool,
+        paneChanged: Bool
+    ) -> Bool {
+        guard enabled, isAppActivation || paneChanged else { return false }
+        guard scope == .shellIdleOnly else { return true }
+        guard let foregroundCommandName else { return false }
+        return TerminalAgentProcessDetector.isShellCommandName(
+            foregroundCommandName
+        )
+    }
+}
+
 enum TerminalWindowTitle {
     static func make(
         baseTitle: String,
@@ -292,6 +319,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var lastCommandResultBySurface:
         [TerminalSurfaceID: LastCommandResult] = [:]
     private var didBecomeActiveObserver: (any NSObjectProtocol)?
+    /// The pane `evaluateASCIIInputForActivePane` last ran its decision for,
+    /// so unrelated `refreshPresentation` calls that leave the focused pane
+    /// unchanged don't re-probe its foreground process every time. `nil`
+    /// until the first evaluation.
+    private var lastASCIIInputEvaluatedPaneID: TerminalSurfaceID?
 
     private var foregroundAgentProvider: AgentProvider? {
         agentStatusPolling.foregroundProvider(
@@ -438,16 +470,19 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         agentStatusPolling.start()
         agentUsagePolling.start()
         repositoryStatus.start()
-        // Only regaining focus from *another app* should force the input
-        // source -- window-to-window switches within Mytty go through
-        // `windowDidBecomeKey` instead, which must not trigger this.
+        // The app regaining focus from another app always re-evaluates the
+        // currently focused pane, even if it's the same pane this window
+        // last evaluated -- that's the case the feature was built for
+        // (coming back from another app's IME). Window-to-window switches
+        // within Mytty go through `windowDidBecomeKey`, which evaluates the
+        // same pane only when the active pane actually changed.
         didBecomeActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.forceASCIIInputIfNeeded()
+                self?.evaluateASCIIInputForActivePane(isAppActivation: true)
             }
         }
     }
@@ -1488,6 +1523,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         focusSelectedSurface()
+        // A window-to-window switch within Mytty makes a different pane
+        // (this window's focused one) the active pane; `paneChanged`
+        // tracking inside `evaluateASCIIInputForActivePane` keeps this from
+        // re-firing when the same pane was already the last one evaluated.
+        evaluateASCIIInputForActivePane()
     }
 
     func windowDidMove(_ notification: Notification) {
@@ -2578,6 +2618,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
         attachSelectedTab()
         paneLayout.updateFocus(focusedID: session.selectedTab?.focusedSurfaceID)
+        // The single funnel every pane-focus change (split navigation, tab
+        // selection, `focus(surface:)` from mytty-ctl or the pane-list
+        // window, the `focusChanged` surface event) passes through, so one
+        // call here covers all of them instead of one at each call site.
+        evaluateASCIIInputForActivePane()
         updateWindowMetadata()
         updateStatusBar()
         repositoryStatus.refreshIfNeeded()
@@ -2791,28 +2836,40 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         acknowledgeAttention(for: tab.focusedSurfaceID)
     }
 
-    /// Switches to an ASCII input source when the app just regained focus
-    /// from another app -- never on a window-to-window switch within Mytty
-    /// (callers must only invoke this from `didBecomeActiveNotification`,
-    /// not `windowDidBecomeKey`). With the default `.shellIdleOnly` scope
-    /// this stays out of the way whenever some other foreground process (an
-    /// agent, an editor, ...) is running, since that process's own input
-    /// expectations should win; `.always` switches regardless.
-    private func forceASCIIInputIfNeeded() {
+    /// Switches to an ASCII input source when a pane becomes *the* active
+    /// pane of this window -- split navigation, clicking into another pane,
+    /// tab selection, `focus(surface:)` (mytty-ctl, the pane-list window),
+    /// window activation, and the app regaining focus from another app all
+    /// route here via `refreshPresentation`, `windowDidBecomeKey`, and the
+    /// `didBecomeActiveNotification` observer. `isAppActivation` is the one
+    /// case that must re-evaluate even when the focused pane hasn't
+    /// changed -- coming back from another app's IME is the case this
+    /// feature was built for. Every other route is deduplicated against
+    /// `lastASCIIInputEvaluatedPaneID` so the several `focusChanged`/
+    /// presentation-refresh events one user action can produce don't each
+    /// re-probe the pane's foreground process.
+    private func evaluateASCIIInputForActivePane(isAppActivation: Bool = false) {
         guard window?.isKeyWindow == true,
               applicationPreferences.forceASCIIInputOnFocus,
               let tab = session.selectedTab,
               let surface = surfaces[tab.focusedSurfaceID]
         else { return }
-        if applicationPreferences.forceASCIIInputScope == .shellIdleOnly {
-            let processID = surface.foregroundProcessID
-            guard processID > 0,
-                  let name = TerminalAgentProcessDetector.commandName(
-                      processID: processID
-                  ),
-                  TerminalAgentProcessDetector.isShellCommandName(name)
-            else { return }
-        }
+        let paneID = tab.focusedSurfaceID
+        let paneChanged = paneID != lastASCIIInputEvaluatedPaneID
+        guard isAppActivation || paneChanged else { return }
+        lastASCIIInputEvaluatedPaneID = paneID
+
+        let processID = surface.foregroundProcessID
+        let foregroundCommandName = processID > 0
+            ? TerminalAgentProcessDetector.commandName(processID: processID)
+            : nil
+        guard ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: applicationPreferences.forceASCIIInputOnFocus,
+            scope: applicationPreferences.forceASCIIInputScope,
+            foregroundCommandName: foregroundCommandName,
+            isAppActivation: isAppActivation,
+            paneChanged: paneChanged
+        ) else { return }
         ASCIIInputSourceSwitcher.switchToASCIIIfNeeded()
     }
 

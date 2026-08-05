@@ -442,3 +442,96 @@ struct TerminalChromeLayoutTests {
         }
     }
 }
+
+@Suite("ASCII input focus policy")
+struct ASCIIInputFocusPolicyTests {
+    @Test("stays out of the way when the preference is off")
+    func disabledNeverSwitches() {
+        #expect(!ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: false,
+            scope: .always,
+            foregroundCommandName: "zsh",
+            isAppActivation: true,
+            paneChanged: true
+        ))
+    }
+
+    @Test("skips a pane that hasn't changed and isn't an app activation")
+    func unchangedPaneOutsideActivationSkips() {
+        #expect(!ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .always,
+            foregroundCommandName: "zsh",
+            isAppActivation: false,
+            paneChanged: false
+        ))
+    }
+
+    @Test("evaluates a newly focused pane even without app activation")
+    func changedPaneEvaluatesOutsideActivation() {
+        #expect(ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .always,
+            foregroundCommandName: "zsh",
+            isAppActivation: false,
+            paneChanged: true
+        ))
+    }
+
+    @Test("app activation re-evaluates the same pane it last evaluated")
+    func appActivationReevaluatesUnchangedPane() {
+        // This is the case the feature was built for: coming back to the
+        // same pane from another app's IME.
+        #expect(ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            foregroundCommandName: "zsh",
+            isAppActivation: true,
+            paneChanged: false
+        ))
+    }
+
+    @Test("the always scope switches whatever is running in the pane")
+    func alwaysScopeIgnoresForegroundProcess() {
+        #expect(ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .always,
+            foregroundCommandName: "vim",
+            isAppActivation: false,
+            paneChanged: true
+        ))
+    }
+
+    @Test("the idle scope leaves a running process's input source alone")
+    func idleScopeSkipsRunningProcess() {
+        #expect(!ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            foregroundCommandName: "vim",
+            isAppActivation: true,
+            paneChanged: false
+        ))
+    }
+
+    @Test("the idle scope switches at a bare prompt")
+    func idleScopeSwitchesAtPrompt() {
+        #expect(ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            foregroundCommandName: "zsh",
+            isAppActivation: false,
+            paneChanged: true
+        ))
+    }
+
+    @Test("an unreadable foreground process is left alone under the idle scope")
+    func unknownForegroundProcessSkips() {
+        #expect(!ASCIIInputFocusPolicy.shouldForceASCII(
+            enabled: true,
+            scope: .shellIdleOnly,
+            foregroundCommandName: nil,
+            isAppActivation: true,
+            paneChanged: true
+        ))
+    }
+}

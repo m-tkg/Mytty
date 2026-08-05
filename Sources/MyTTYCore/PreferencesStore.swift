@@ -99,9 +99,11 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var windowStartupBehavior: WindowStartupBehavior
     public var showStatusBar: Bool
     public var showPressedKeyToast: Bool
-    /// Whether regaining focus from another app forces the macOS input
-    /// source to ASCII/alphanumeric. `forceASCIIInputScope` decides whether
-    /// that only happens at a bare shell prompt or in every pane.
+    /// Whether a pane becoming the active pane -- split navigation, tab
+    /// selection, window activation, or the app regaining focus from
+    /// another app -- forces the macOS input source to ASCII/alphanumeric.
+    /// `forceASCIIInputScope` decides whether that only happens at a bare
+    /// shell prompt or in every pane.
     public var forceASCIIInputOnFocus: Bool
     /// Which panes `forceASCIIInputOnFocus` applies to. Meaningless while
     /// that flag is off.
