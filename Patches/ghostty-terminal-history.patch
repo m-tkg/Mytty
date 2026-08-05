@@ -72,7 +72,7 @@ index 72bbb57..1236374 100644
  
  #ifdef __APPLE__
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 7310159..1d732b0 100644
+index 7310159..236ddde 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -457,6 +457,11 @@ pub const Surface = struct {
@@ -87,7 +87,37 @@ index 7310159..1d732b0 100644
          /// Wait after the command exits
          wait_after_command: bool = false,
  
-@@ -570,6 +575,15 @@ pub const Surface = struct {
+@@ -555,13 +560,24 @@ pub const Surface = struct {
+             const alloc = config.arenaAlloc();
+ 
+             // We need to escape the string because the "raw" field
+-            // expects a Zig string.
++            // expects a Zig string. `std.zig.stringEscape` escapes every
++            // byte >= 0x7f as `\xNN`, but the reader (config/string.zig
++            // `parse`) decodes `\xNN` into a *codepoint* and re-encodes
++            // it as UTF-8, so non-ASCII input comes back mojibake'd
++            // (0xe4 -> U+00E4 -> 0xc3 0xa4). Escape only the backslash
++            // and the C0/DEL controls, whose escapes are all below 0x80
++            // and therefore round-trip, and pass every other byte
++            // through: valid UTF-8 is also a valid Zig string literal.
+             var buf: std.Io.Writer.Allocating = .init(alloc);
+             defer buf.deinit();
+-            try std.zig.stringEscape(
+-                std.mem.sliceTo(c_input, 0),
+-                &buf.writer,
+-            );
++            for (std.mem.sliceTo(c_input, 0)) |byte| switch (byte) {
++                '\\' => try buf.writer.writeAll("\\\\"),
++                0x00...0x1f, 0x7f => try buf.writer.print(
++                    "\\x{x:0>2}",
++                    .{byte},
++                ),
++                else => try buf.writer.writeByte(byte),
++            };
+ 
+             config.input.list.clearRetainingCapacity();
+             try config.input.list.append(
+@@ -570,6 +586,15 @@ pub const Surface = struct {
              );
          }
  
@@ -103,7 +133,7 @@ index 7310159..1d732b0 100644
          // Wait after command
          if (opts.wait_after_command) {
              config.@"wait-after-command" = true;
-@@ -1387,6 +1401,13 @@ pub const CAPI = struct {
+@@ -1387,6 +1412,13 @@ pub const CAPI = struct {
          }
      };
  
@@ -117,7 +147,7 @@ index 7310159..1d732b0 100644
      // Reference the conditional exports based on target platform
      // so they're included in the C API.
      comptime {
-@@ -1642,6 +1663,62 @@ pub const CAPI = struct {
+@@ -1642,6 +1674,62 @@ pub const CAPI = struct {
          return readTextLocked(surface, core_sel, result);
      }
  
@@ -180,7 +210,7 @@ index 7310159..1d732b0 100644
      fn readTextLocked(
          surface: *Surface,
          core_sel: terminal.Selection,
-@@ -1919,6 +1996,172 @@ pub const CAPI = struct {
+@@ -1919,6 +2007,172 @@ pub const CAPI = struct {
          height.* = pos.height;
      }
  
