@@ -95,6 +95,8 @@ status bar のモデル名と(取得できる場合の)残りコンテキスト�
 
 Claude Code の `<slug>` は作業ディレクトリのパス中の英数字以外の文字をすべて `-` に置き換えたものです。0.5秒間隔のフォアグラウンドポーリングを軽く保つため、Claude Code の transcript 読み取りは追跡している `(mtime, size)` の fingerprint が変化したときだけ行います。OpenCode、Cursor、Antigravity のルックアップは pane ごとの共有 cache を持ち、5秒に1回にスロットリングされ、hook session ID が変わった時点で即座に無効化されます。
 
+Cursor のモデル名とコンテキスト使用量を取得するのと同じ `store.db` の読み取りから、現在のプロンプトターンと、会話の `mode`(`meta` の `plan`/`ask`)も導出します。`ClaudeCodeSessionInspector`/`CodexSessionInspector` がそれぞれの transcript からターンを導出するのと同じ考え方です(「ネイティブ推定による run 検出」、[エージェントイベントプロトコル](agent-event-protocol_ja.md)を参照)。Claude Code の transcript から `--permission-mode` を導出するのも同様です。Cursor の lead の現在のモードは、`agent spawn --access inherit` が Cursor の worker に引き継ぐ値そのものです([mytty-ctl](mytty-ctl_ja.md) を参照)。
+
 ## Session restoration(resume コマンド)
 
 **On Launch** が **Restore last session** のとき、mytty はセッションスナップショット保存時にペインで動いていたエージェントを、次のいずれかのコマンドを再開後のシェルの初期入力として送ることで復元します。

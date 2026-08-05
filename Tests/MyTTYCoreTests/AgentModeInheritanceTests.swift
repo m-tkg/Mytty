@@ -232,18 +232,33 @@ struct AgentModeInheritanceTests {
         ) == [])
     }
 
-    @Test("codex and cursor have no transcript-derived mode, argv-empty yields nothing")
-    func nonClaudeProvidersIgnoreTranscriptMode() {
+    @Test("codex has no transcript-derived mode, argv-empty yields nothing")
+    func codexIgnoresTranscriptMode() {
         #expect(AgentModeInheritance.inheritedModeArguments(
             provider: .codex,
             leadArguments: ["codex"],
             transcriptPermissionMode: "auto"
         ) == [])
-        #expect(AgentModeInheritance.inheritedModeArguments(
+    }
+
+    @Test("falls back to Cursor's store.db-derived mode when argv has nothing")
+    func cursorTranscriptModeUsedWhenArgvEmpty() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
             provider: .cursor,
             leadArguments: ["cursor-agent"],
-            transcriptPermissionMode: "auto"
-        ) == [])
+            transcriptPermissionMode: "plan"
+        )
+        #expect(arguments == ["--mode", "plan"])
+    }
+
+    @Test("argv flags still take precedence over Cursor's store.db-derived mode")
+    func cursorArgvWinsOverTranscriptMode() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: .cursor,
+            leadArguments: ["cursor-agent", "--mode", "ask"],
+            transcriptPermissionMode: "plan"
+        )
+        #expect(arguments == ["--mode", "ask"])
     }
 
     @Test("the resolved launch command for an inherited transcript mode matches AgentLaunchPlan's shape")
@@ -263,6 +278,26 @@ struct AgentModeInheritanceTests {
         #expect(input.hasPrefix(
             AgentLaunchPlan.historySuppressionPrefix
                 + "command claude '--permission-mode' 'auto' -- "
+        ))
+    }
+
+    @Test("the resolved launch command for an inherited Cursor mode matches AgentLaunchPlan's shape")
+    func cursorTranscriptModeProducesExpectedLaunchCommand() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: .cursor,
+            leadArguments: ["cursor-agent"],
+            transcriptPermissionMode: "plan"
+        )
+        let input = AgentLaunchPlan.initialInput(
+            provider: .cursor,
+            access: .inherit,
+            model: nil,
+            inheritedModeArguments: arguments,
+            task: "do the thing"
+        )
+        #expect(input.hasPrefix(
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command cursor-agent '--mode' 'plan' -- "
         ))
     }
 }

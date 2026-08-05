@@ -48,6 +48,18 @@ final class AgentSessionThrottleCache {
             sessionID: String?, fetchedAt: Date, status: AgentSessionStatus?
         )
     ] = [:]
+    /// Cursor's own timed cache: it needs the whole `CursorConversation
+    /// Snapshot` (status *and* the turn/mode fields `timedStatus`'s
+    /// `AgentSessionStatus?` has no room for), kept separate rather than
+    /// widening `timedCache` for every other provider that only ever
+    /// caches a status.
+    private var cursorSnapshotCache: [
+        TerminalSurfaceID: (
+            sessionID: String?,
+            fetchedAt: Date,
+            snapshot: CursorConversationSnapshot
+        )
+    ] = [:]
 
     init(now: @escaping () -> Date = Date.init) {
         self.now = now
@@ -66,6 +78,9 @@ final class AgentSessionThrottleCache {
             active.contains($0.key)
         }
         timedCache = timedCache.filter { active.contains($0.key) }
+        cursorSnapshotCache = cursorSnapshotCache.filter {
+            active.contains($0.key)
+        }
     }
 
     func clearClaudeCodeFingerprint(surfaceID: TerminalSurfaceID) {
@@ -144,6 +159,35 @@ final class AgentSessionThrottleCache {
         )
         return status
     }
+
+    /// Same throttling strategy as `timedStatus` (reuse for `lifetime`
+    /// seconds unless the hook session ID changed), but for
+    /// `CursorProviderRuntime`, which needs the turn/mode fields alongside
+    /// the status -- caching only `status` here would mean a worker
+    /// spawned mid-window with `--access inherit` reads a mode up to 5
+    /// seconds stale, same staleness `timedStatus` already accepts for the
+    /// status fields.
+    func timedCursorSnapshot(
+        surfaceID: TerminalSurfaceID,
+        sessionID: String?,
+        lifetime: TimeInterval = 5,
+        fetch: () -> CursorConversationSnapshot
+    ) -> CursorConversationSnapshot {
+        let currentTime = now()
+        if let cached = cursorSnapshotCache[surfaceID],
+           cached.sessionID == sessionID,
+           currentTime.timeIntervalSince(cached.fetchedAt) < lifetime {
+            return cached.snapshot
+        }
+
+        let snapshot = fetch()
+        cursorSnapshotCache[surfaceID] = (
+            sessionID: sessionID,
+            fetchedAt: currentTime,
+            snapshot: snapshot
+        )
+        return snapshot
+    }
 }
 
 /// A run the user interrupted, for providers that fire no hook on
@@ -160,19 +204,22 @@ struct AgentProviderPollResult: Equatable {
     let status: AgentSessionStatus?
     let interruption: AgentRunInterruption?
     /// The current prompt-turn's lifecycle, when the provider's inspector
-    /// derives one (Claude Code, Codex) -- feeds `NativeAgentRunEstimator
-    /// .turnObserved` via `AgentStatusPollingCoordinator`. `nil` for every
-    /// other provider, and for these two whenever the transcript tail
-    /// carries no real prompt.
+    /// derives one (Claude Code, Codex, Cursor) -- feeds
+    /// `NativeAgentRunEstimator.turnObserved` via
+    /// `AgentStatusPollingCoordinator`. `nil` for every other provider,
+    /// and for these three whenever the transcript/database tail carries
+    /// no real prompt.
     let turn: AgentTurnObservation?
     /// Claude Code's current `--permission-mode`, read from the same
     /// transcript pass that yields `status`/`turn` (see
-    /// `ClaudeCodeSessionInspector.permissionMode(from:)`). `nil` for
-    /// every other provider, and for Claude Code whenever its transcript
-    /// tail carries no recognized mode record yet. `AgentJobCoordinator`
-    /// reads this (via `AgentStatusPollingCoordinator.permissionModesBySurface`)
-    /// to splice a worker's inherited mode onto a mode the lead switched
-    /// to at runtime, not just how it was launched.
+    /// `ClaudeCodeSessionInspector.permissionMode(from:)`), or Cursor's
+    /// current `mode` from its `store.db` `meta` row (see
+    /// `CursorSessionInspector.snapshot`). `nil` for every other provider,
+    /// and for these two whenever their local data carries no recognized
+    /// mode record yet. `AgentJobCoordinator` reads this (via
+    /// `AgentStatusPollingCoordinator.permissionModesBySurface`) to splice
+    /// a worker's inherited mode onto a mode the lead switched to at
+    /// runtime, not just how it was launched.
     let permissionMode: String?
 
     init(
@@ -310,15 +357,20 @@ struct CursorProviderRuntime: AgentProviderRuntime {
         throttle: AgentSessionThrottleCache
     ) -> AgentProviderPollResult {
         let hookSessionID = context.hookSessionID()
-        return AgentProviderPollResult(status: throttle.timedStatus(
+        let snapshot = throttle.timedCursorSnapshot(
             surfaceID: context.surfaceID,
             sessionID: hookSessionID
         ) {
-            CursorSessionInspector.status(
+            CursorSessionInspector.snapshot(
                 sessionID: hookSessionID,
                 workingDirectory: context.workingDirectory()
             )
-        })
+        }
+        return AgentProviderPollResult(
+            status: snapshot.status,
+            turn: snapshot.turn,
+            permissionMode: snapshot.mode
+        )
     }
 }
 
