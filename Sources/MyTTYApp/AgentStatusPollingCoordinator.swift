@@ -282,8 +282,16 @@ final class AgentStatusPollingCoordinator: NSObject {
             hookSessionID: { [hookSessionID] in
                 hookSessionID(surfaceID, provider)
             },
-            workingDirectory: { [workingDirectory] in
-                workingDirectory(surfaceID)
+            workingDirectory: { [weak self, workingDirectory] in
+                // Prefer the agent process's own working directory (from
+                // proc_pidinfo, so symlinks are resolved the same way the
+                // agent itself resolves them) over the shell's OSC 7 cwd.
+                // Claude Code names its transcript project directory after
+                // its resolved cwd, so a pane sitting in a symlinked path
+                // (e.g. ~/work -> Dropbox) never finds its transcript
+                // through the OSC 7 value alone.
+                self?.workingDirectoriesBySurface[surfaceID]
+                    ?? workingDirectory(surfaceID)
             }
         )
     }
