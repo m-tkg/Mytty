@@ -612,6 +612,37 @@ struct ControlServerTests {
         #expect(response == .failure(code: "job-not-found"))
     }
 
+    @Test(
+        "agent wait fails fast for an attention wait on a job whose provider integration is not installed"
+    )
+    func agentWaitFailsFastForMissingIntegration() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        agentDelegate.agentWaitPreflightFailureCode =
+            "provider-integration-not-installed"
+        // Even if a poll would otherwise resolve the wait, the preflight
+        // check happens before the loop is ever entered.
+        agentDelegate.refreshedSnapshotResult = .success(
+            Self.makeJob(state: .waitingApproval)
+        )
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .waitAgent(jobID: AgentJobID(), until: .attention, timeoutSeconds: 30),
+            to: socketURL
+        )
+        #expect(
+            response == .failure(code: "provider-integration-not-installed")
+        )
+        // Fail-fast means answering immediately, not after the timeout.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
     @Test("agent result returns the job snapshot and pane content")
     func agentResultReturnsSnapshotAndContent() async throws {
         let delegate = StubControlDelegate()
@@ -977,7 +1008,8 @@ private final class StubControlDelegate: ControlServerDelegate {
 
     func controlServer(
         _ server: ControlServer,
-        waitPreflightFailureCodeForPaneID paneID: String
+        waitPreflightFailureCodeForPaneID paneID: String,
+        until condition: ControlWaitCondition
     ) -> String? {
         waitPreflightFailureCodes[paneID]
     }
@@ -1089,6 +1121,16 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         refreshedSnapshotResult
     }
 
+    var agentWaitPreflightFailureCode: String?
+
+    func controlServer(
+        _ server: ControlServer,
+        agentWaitPreflightFailureCodeForJobID jobID: AgentJobID,
+        until condition: AgentWaitCondition
+    ) -> String? {
+        agentWaitPreflightFailureCode
+    }
+
     func controlServer(
         _ server: ControlServer,
         agentResultContentForJobID jobID: AgentJobID
@@ -1187,6 +1229,14 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         tracker.reconcile(runs: runs, paneExists: true, now: Date())
         return .success(tracker.snapshot)
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        agentWaitPreflightFailureCodeForJobID jobID: AgentJobID,
+        until condition: AgentWaitCondition
+    ) -> String? {
+        nil
     }
 
     func controlServer(
