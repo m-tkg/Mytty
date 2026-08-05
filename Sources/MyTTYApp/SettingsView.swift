@@ -8,7 +8,6 @@ struct SettingsView: View {
     @ObservedObject var integrations: AgentIntegrationSettingsModel
     @ObservedObject var updates: ApplicationUpdateModel
     @ObservedObject var defaultTerminal: DefaultTerminalModel
-    @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     @ObservedObject var remoteAccess: RemoteAccessSettingsModel
     @ObservedObject var remoteMacs: RemoteMacsSettingsModel
     let onOpenRemotePane: (PairedMac) -> Void
@@ -118,7 +117,6 @@ struct SettingsView: View {
             case .orchestration:
                 OrchestrationSettingsView(
                     model: integrations,
-                    commandLineToolInstall: commandLineToolInstall,
                     localizer: localizer
                 )
             case .keyBindings:

@@ -77,20 +77,6 @@ struct LocalizationTests {
         #expect(english[.defaultTerminal] == "Default Terminal")
         #expect(english[.makeDefaultTerminal] == "Make Mytty Default")
         #expect(english[.defaultTerminalActive] == "Mytty is the default terminal.")
-        #expect(english[.commandLineTool] == "Command Line Tool")
-        #expect(english[.installCommandLineTool] == "Install CLI")
-        #expect(english[.commandLineToolInstalled] == "%@ is on your PATH.")
-        #expect(
-            english[.commandLineToolConflict]
-                == "Something else already exists at ~/.local/bin/%@. Remove it, then try again."
-        )
-        #expect(
-            english[.commandLineToolInstallFailed] == "Couldn't install %@."
-        )
-        #expect(
-            english[.commandLineToolPathHint]
-                == "~/.local/bin isn't on your PATH yet. Add this to your shell profile: %@"
-        )
         #expect(english[.openOnGitHub] == "Open on GitHub")
         #expect(english[.copyLink] == "Copy link")
         #expect(english[.copy] == "Copy")
@@ -388,10 +374,6 @@ struct LocalizationTests {
             english[.orchestrationOverviewDescription].contains("mytty-ctl")
         )
         #expect(
-            english[.orchestrationCommandLineToolDescriptionFormat]
-                == "A symlink to mytty-ctl, placed at ~/.local/bin/%@. Panes Mytty opens already have it on PATH, so this only matters for calling mytty-ctl from outside Mytty: another terminal app or a script."
-        )
-        #expect(
             english[.orchestrationPointerTargetsHeading] == "Target files"
         )
         #expect(
@@ -406,19 +388,10 @@ struct LocalizationTests {
             english[.orchestrationExamplesHeading] == "How to ask for it"
         )
         #expect(
-            english[.orchestrationExampleGuidanceOnCLIInstalledLabel]
-                == "Guidance on, CLI installed"
-        )
-        #expect(
-            english[.orchestrationExampleGuidanceOnCLINotInstalledLabel]
-                == "Guidance on, CLI not installed"
+            english[.orchestrationExampleGuidanceOnLabel] == "Guidance on"
         )
         #expect(
             english[.orchestrationExampleGuidanceOffLabel] == "Guidance off"
-        )
-        #expect(
-            english[.orchestrationExampleCLINote]
-                == "Inside a Mytty pane, mytty-ctl is already on PATH either way, so these two read the same. Installing the CLI to PATH only matters outside Mytty."
         )
         #expect(
             english[.orchestrationExampleCurrentBadge]
@@ -481,20 +454,6 @@ struct LocalizationTests {
         #expect(japanese[.defaultTerminal] == "デフォルトターミナル")
         #expect(japanese[.makeDefaultTerminal] == "Mytty をデフォルトにする")
         #expect(japanese[.defaultTerminalActive] == "Mytty はデフォルトターミナルです。")
-        #expect(japanese[.commandLineTool] == "コマンドラインツール")
-        #expect(japanese[.installCommandLineTool] == "CLI をインストール")
-        #expect(japanese[.commandLineToolInstalled] == "%@ が PATH に追加されています。")
-        #expect(
-            japanese[.commandLineToolConflict]
-                == "~/.local/bin/%@ に別のものが存在します。削除してからもう一度お試しください。"
-        )
-        #expect(
-            japanese[.commandLineToolInstallFailed] == "%@ をインストールできませんでした。"
-        )
-        #expect(
-            japanese[.commandLineToolPathHint]
-                == "~/.local/bin がまだ PATH に含まれていません。シェルの設定ファイルに次の行を追加してください: %@"
-        )
         #expect(japanese[.openOnGitHub] == "GitHub で開く")
         #expect(japanese[.copyLink] == "リンクをコピー")
         #expect(japanese[.copy] == "コピー")
@@ -569,10 +528,6 @@ struct LocalizationTests {
         #expect(
             japanese[.orchestrationOverviewDescription].contains("mytty-ctl")
         )
-        #expect(
-            japanese[.orchestrationCommandLineToolDescriptionFormat]
-                == "mytty-ctl へのシンボリックリンクを ~/.local/bin/%@ に作成します。Mytty が開いたペインではすでに PATH が通っているため、これが必要なのは Mytty の外(別のターミナルアプリやスクリプト)から mytty-ctl を呼びたい場合だけです。"
-        )
         #expect(japanese[.orchestrationPointerTargetsHeading] == "対象ファイル")
         #expect(
             japanese[.orchestrationPointerGuideMarkdownFormat]
@@ -583,19 +538,8 @@ struct LocalizationTests {
                 == "書き込む内容を表示"
         )
         #expect(japanese[.orchestrationExamplesHeading] == "呼び出し方")
-        #expect(
-            japanese[.orchestrationExampleGuidanceOnCLIInstalledLabel]
-                == "案内あり・CLI インストール済み"
-        )
-        #expect(
-            japanese[.orchestrationExampleGuidanceOnCLINotInstalledLabel]
-                == "案内あり・CLI 未インストール"
-        )
+        #expect(japanese[.orchestrationExampleGuidanceOnLabel] == "案内あり")
         #expect(japanese[.orchestrationExampleGuidanceOffLabel] == "案内なし")
-        #expect(
-            japanese[.orchestrationExampleCLINote]
-                == "Mytty のペイン内ではどちらの場合も mytty-ctl の PATH が通っているため、実際には同じ書き方になります。差が出るのは Mytty の外から使う場合だけです。"
-        )
         #expect(
             japanese[.orchestrationExampleCurrentBadge] == "現在の設定"
         )

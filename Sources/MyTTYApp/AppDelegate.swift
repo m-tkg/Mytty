@@ -159,25 +159,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applicationURL: Bundle.main.bundleURL,
         registrar: WorkspaceDefaultTerminalRegistrar()
     )
-    private lazy var commandLineToolInstallModel = CommandLineToolInstallModel(
-        executableURL: AppDelegate.controlExecutableDestination(
-            applicationSupportDirectory: ApplicationPaths(
-                homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
-                temporaryDirectory: URL(
-                    fileURLWithPath: NSTemporaryDirectory(),
-                    isDirectory: true
-                ),
-                // Same canonical, dev-and-release-shared copy
-                // `installControlExecutable` writes to.
-                profile: .release
-            ).applicationSupportDirectory
-        ),
-        binDirectory: FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local", isDirectory: true)
-            .appendingPathComponent("bin", isDirectory: true),
-        linkName: ApplicationIdentity.pathProfile.commandLineToolName
-    )
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             clamshellSleepBlocker.onChange = { [weak self] in
@@ -636,7 +617,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 integrationsModel: agentIntegrationSettingsModel,
                 updateModel: applicationUpdateModel,
                 defaultTerminalModel: defaultTerminalModel,
-                commandLineToolInstallModel: commandLineToolInstallModel,
                 remoteAccessModel: remoteAccessCoordinator.settingsModel,
                 remoteMacsModel: RemoteMacsSettingsModel(
                     connections: remotePaneConnections
@@ -1038,9 +1018,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// a failure here shouldn't block launch, since AI pane control is an
     /// additive capability, not a requirement to use Mytty.
     /// Where the shared, canonical `mytty-ctl` copy lives underneath
-    /// Application Support — used both to install it there and (by
-    /// `commandLineToolInstallModel`) as the target of the `~/.local/bin`
-    /// symlink Settings > General can create.
+    /// Application Support — this is both where it gets installed and what
+    /// every pane's `MYTTY_CTL_BIN` points at.
     static func controlExecutableDestination(
         applicationSupportDirectory: URL
     ) -> URL {

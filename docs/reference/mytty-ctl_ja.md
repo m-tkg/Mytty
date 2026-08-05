@@ -20,17 +20,13 @@ dev ビルド(`Mytty Dev`)と release ビルドは、それぞれ別の `~/.conf
 
 ## Mytty の外から使う
 
-上の PATH 追加は、あくまで Mytty が開いたペインの中だけの話です。別のターミナルアプリやスクリプトなど、Mytty の外から `mytty-ctl` を呼びたい場合は、設定 > Orchestration の「CLI をインストール」ボタンで `~/.local/bin` にシンボリックリンクを作れます。管理者権限のプロンプトは出ません。すでに同じ名前で別のもの(Mytty 以外を指すリンクや実ファイル)があるときは、ボタンは失敗として扱われ、黙って上書きされることはありません。
-
-`~/.local/bin` がまだシェルの `PATH` に無い場合は、インストール後に次の行を追加するよう案内が表示されます。
+上の PATH 追加は、あくまで Mytty が開いたペインの中だけの話です。Mytty の外向けの CLI インストールは Mytty 自身では面倒を見ませんが、自分で用意することはできます。Mytty のペイン内で `echo $MYTTY_CTL_BIN` を実行すると同梱バイナリの場所がわかるので、それを自分の `PATH` 上にシンボリックリンクしてください。例:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+ln -s "$MYTTY_CTL_BIN" ~/.local/bin/mytty-ctl
 ```
 
-`.zshrc` など普段使っているシェルの設定ファイルに追記し、新しいシェルを開くか設定を読み直せば、`mytty-ctl` を名前で呼べるようになります。
-
-開発ビルド(Mytty Dev)は、リリース版のリンクを奪わないよう `~/.local/bin/mytty-ctl-dev` という別名でインストールします。
+ただしこれだけでは、普通のターミナルタブやスクリプトから `mytty-ctl` を呼べるようにはなりません。Mytty のペインの外には `MYTTY_CONTROL_SOCKET` が環境変数として存在しないため、`mytty-ctl` は接続先を持たないからです。こちらもペイン内で値を確認し(`echo $MYTTY_CONTROL_SOCKET`)、`mytty-ctl` を呼びたいシェルで export してください。
 
 ## Codex のサンドボックス内から呼んだ場合
 
