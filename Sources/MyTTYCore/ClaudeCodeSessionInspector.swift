@@ -24,15 +24,25 @@ public struct ClaudeCodeTranscriptSnapshot: Equatable, Sendable {
     /// integration isn't installed. `nil` when the tail carries no real
     /// user prompt at all.
     public let turn: AgentTurnObservation?
+    /// Claude Code's current `--permission-mode` value, derived from the
+    /// same tail (see `ClaudeCodeSessionInspector.permissionMode(from:)`).
+    /// This is the one field here that can change *without* a new prompt
+    /// or a new argv -- shift+tab switches it mid-session -- which is why
+    /// `agent spawn --access inherit` reads it from here rather than from
+    /// the lead's launch-time argv alone (see `AgentModeInheritance`).
+    /// `nil` when the tail carries no mode record, or an unrecognized one.
+    public let permissionMode: String?
 
     public init(
         status: AgentSessionStatus?,
         interruption: ClaudeCodeInterruption?,
-        turn: AgentTurnObservation? = nil
+        turn: AgentTurnObservation? = nil,
+        permissionMode: String? = nil
     ) {
         self.status = status
         self.interruption = interruption
         self.turn = turn
+        self.permissionMode = permissionMode
     }
 }
 
@@ -153,7 +163,8 @@ public enum ClaudeCodeSessionInspector {
                 )
             },
             interruption: interruption(from: data),
-            turn: turn(from: data)
+            turn: turn(from: data),
+            permissionMode: permissionMode(from: data)
         )
     }
 
@@ -265,6 +276,66 @@ public enum ClaudeCodeSessionInspector {
               )
         else { return nil }
         return promptID
+    }
+
+    /// The `--permission-mode` values Claude Code's CLI itself defines,
+    /// per `claude --help`'s `--permission-mode <mode>` choices (checked
+    /// against Claude Code on this machine: acceptEdits, auto,
+    /// bypassPermissions, manual, dontAsk, plan). A transcript value
+    /// outside this set is treated as unknown rather than surfaced, so a
+    /// future mode name this list hasn't caught up to yet can never be
+    /// spliced into a worker's launch command unchecked -- see
+    /// `AgentModeInheritance.inheritedModeArguments`.
+    private static let knownPermissionModes: Set<String> = [
+        "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk",
+        "plan",
+    ]
+
+    /// The transcript tail's current `--permission-mode`, the same value
+    /// Claude Code's own UI shows and shift+tab cycles through at runtime.
+    /// Two record shapes carry it, verified against real transcripts:
+    /// a standalone `{"type":"permission-mode","permissionMode":"plan",...}`
+    /// record written whenever the mode changes, and a `permissionMode`
+    /// field alongside every real `{"type":"user",...}` prompt record
+    /// (the mode in effect when that prompt was submitted). Whichever
+    /// carries the later valid value in file order wins, mirroring how
+    /// `status(from:)` keeps the latest valid `sessionId`. Sidechain
+    /// (sub-agent) records are excluded, same as every other tail parse
+    /// here -- a spawned sub-agent's mode says nothing about the main
+    /// session's.
+    static func permissionMode(from data: Data) -> String? {
+        var mode: String?
+
+        for line in data.split(separator: 0x0A) {
+            guard let object = try? JSONSerialization.jsonObject(
+                with: Data(line)
+            ) as? [String: Any],
+                  (object["isSidechain"] as? Bool) != true
+            else { continue }
+
+            switch object["type"] as? String {
+            case "permission-mode", "user":
+                mode = validatedPermissionMode(
+                    object["permissionMode"] as? String
+                ) ?? mode
+            default:
+                continue
+            }
+        }
+
+        return mode
+    }
+
+    /// `AgentSessionValidation.label` catches length/control-character
+    /// abuse the same way every other transcript field is validated; the
+    /// known-mode membership check on top of that is what keeps an
+    /// unrecognized (or malicious) string from ever reaching a launch
+    /// command.
+    private static func validatedPermissionMode(_ value: String?) -> String? {
+        guard let label = AgentSessionValidation.label(value),
+              knownPermissionModes.contains(label)
+        else { return nil }
+        return label
     }
 
     private static func isToolResultContent(_ content: Any?) -> Bool {

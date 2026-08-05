@@ -3410,6 +3410,20 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         agentStatusPolling.foregroundProvider(for: paneID)
     }
 
+    /// The current permission mode of a pane's Claude Code session, read
+    /// from its own transcript by the same 0.5s poll that resolves
+    /// `agentSessionStatus(forPane:)` -- covers a mode switched at runtime
+    /// with shift+tab, which never touches argv and is therefore invisible
+    /// to `AgentModeInheritance`'s argv scan alone. Nil for panes running
+    /// another provider, or whose transcript hasn't recorded a recognized
+    /// mode yet. Used by `AgentJobCoordinator` to resolve `agent spawn
+    /// --access inherit`.
+    func currentAgentPermissionMode(
+        forPane paneID: TerminalSurfaceID
+    ) -> String? {
+        agentStatusPolling.permissionMode(for: paneID)
+    }
+
     /// Called when a host's snapshot changed the agent status of a remote
     /// pane. The status bar shows it for the focused pane, and the sidebar
     /// folds its attention count and running-agent flag into the tab rows;

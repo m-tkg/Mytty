@@ -22,6 +22,14 @@ final class AgentStatusPollingCoordinator: NSObject {
     private(set) var providersBySurface: [TerminalSurfaceID: AgentProvider] = [:]
     private(set) var sessionIDsBySurface: [TerminalSurfaceID: String] = [:]
     private(set) var statusBySurface: [TerminalSurfaceID: AgentSessionStatus] = [:]
+    /// The latest known Claude Code `--permission-mode` per surface (see
+    /// `AgentProviderPollResult.permissionMode`), including a mode
+    /// switched at runtime with shift+tab. Only ever populated for
+    /// surfaces whose provider's runtime supplies one -- Claude Code
+    /// today. Rebuilt every tick alongside `statusBySurface`, but
+    /// unconditionally, so it stays current even on a tick where nothing
+    /// else changed enough to trigger a UI refresh.
+    private(set) var permissionModesBySurface: [TerminalSurfaceID: String] = [:]
     /// The foreground agent process's own working directory (e.g.
     /// `claude --worktree`, which chdirs the agent but not the shell that
     /// launched it), keyed by surface. Only populated for surfaces with a
@@ -146,6 +154,11 @@ final class AgentStatusPollingCoordinator: NSObject {
         return workingDirectoriesBySurface[surfaceID]
     }
 
+    func permissionMode(for surfaceID: TerminalSurfaceID?) -> String? {
+        guard let surfaceID else { return nil }
+        return permissionModesBySurface[surfaceID]
+    }
+
     private func poll() {
         let providersChanged = refreshProviders()
         let sessionIDsChanged = refreshSessionIDs()
@@ -231,6 +244,7 @@ final class AgentStatusPollingCoordinator: NSObject {
         }
 
         var statuses: [TerminalSurfaceID: AgentSessionStatus] = [:]
+        var permissionModes: [TerminalSurfaceID: String] = [:]
         for (surfaceID, surface) in currentSurfaces {
             guard let provider = providersBySurface[surfaceID],
                   let runtime = AgentProviderRuntimeRegistry.runtime(
@@ -247,6 +261,9 @@ final class AgentStatusPollingCoordinator: NSObject {
                 throttle: throttle
             )
             statuses[surfaceID] = result.status
+            if let permissionMode = result.permissionMode {
+                permissionModes[surfaceID] = permissionMode
+            }
             reportInterruptedRun(
                 surfaceID: surfaceID,
                 provider: provider,
@@ -258,6 +275,12 @@ final class AgentStatusPollingCoordinator: NSObject {
                 turn: result.turn
             )
         }
+        // Assigned unconditionally, ahead of the "did anything change"
+        // guard below -- a permission-mode change alone doesn't need to
+        // trigger a UI refresh, but a caller reading this dictionary right
+        // after a poll tick (e.g. `agent spawn`'s access resolution) must
+        // always see the latest read regardless of what else changed.
+        permissionModesBySurface = permissionModes
         let sessionIDs = statuses.reduce(
             into: [TerminalSurfaceID: String]()
         ) { result, entry in

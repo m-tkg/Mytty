@@ -147,7 +147,7 @@ protocol ControlServerAgentDelegate: AnyObject {
         direction: ControlSplitDirection,
         provider: AgentWorkerProvider,
         cwd: String?,
-        access: AgentAccessPolicy,
+        access: AgentAccessPolicy?,
         model: String?,
         task: String,
         label: String?,

@@ -198,4 +198,71 @@ struct AgentModeInheritanceTests {
             leadArguments: ["claude", "--permission-mode", atCap]
         ) == ["--permission-mode", atCap])
     }
+
+    // MARK: - Transcript-derived mode fallback
+
+    @Test("falls back to the transcript-derived mode when argv has nothing")
+    func transcriptModeUsedWhenArgvEmpty() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: .claude,
+            leadArguments: ["claude"],
+            transcriptPermissionMode: "auto"
+        )
+        #expect(arguments == ["--permission-mode", "auto"])
+    }
+
+    @Test("argv flags still take precedence over the transcript mode")
+    func argvWinsOverTranscriptMode() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: .claude,
+            leadArguments: [
+                "claude", "--permission-mode", "acceptEdits",
+            ],
+            transcriptPermissionMode: "plan"
+        )
+        #expect(arguments == ["--permission-mode", "acceptEdits"])
+    }
+
+    @Test("a nil transcript mode with empty argv yields no inherited flags")
+    func nilTranscriptModeYieldsNothing() {
+        #expect(AgentModeInheritance.inheritedModeArguments(
+            provider: .claude,
+            leadArguments: ["claude"],
+            transcriptPermissionMode: nil
+        ) == [])
+    }
+
+    @Test("codex and cursor have no transcript-derived mode, argv-empty yields nothing")
+    func nonClaudeProvidersIgnoreTranscriptMode() {
+        #expect(AgentModeInheritance.inheritedModeArguments(
+            provider: .codex,
+            leadArguments: ["codex"],
+            transcriptPermissionMode: "auto"
+        ) == [])
+        #expect(AgentModeInheritance.inheritedModeArguments(
+            provider: .cursor,
+            leadArguments: ["cursor-agent"],
+            transcriptPermissionMode: "auto"
+        ) == [])
+    }
+
+    @Test("the resolved launch command for an inherited transcript mode matches AgentLaunchPlan's shape")
+    func transcriptModeProducesExpectedLaunchCommand() {
+        let arguments = AgentModeInheritance.inheritedModeArguments(
+            provider: .claude,
+            leadArguments: ["claude"],
+            transcriptPermissionMode: "auto"
+        )
+        let input = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .inherit,
+            model: nil,
+            inheritedModeArguments: arguments,
+            task: "do the thing"
+        )
+        #expect(input.hasPrefix(
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command claude '--permission-mode' 'auto' -- "
+        ))
+    }
 }
