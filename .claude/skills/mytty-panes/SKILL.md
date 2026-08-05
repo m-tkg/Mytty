@@ -1,6 +1,6 @@
 ---
 name: mytty-panes
-description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude/Codex/Cursor, etc.) in other panes as a team. Use for requests like "split the pane and work in parallel" or "have another AI review this."
+description: Control multiple Mytty panes via mytty-ctl to run sub-agents (Claude/Codex/Cursor, etc.) in other panes as a team. Use whenever a request mentions Mytty at all -- "with mytty", "use mytty", 「myttyで」「myttyの機能で」「myttyのオーケストレーションで」 -- or asks to "split the pane and work in parallel" or "have another AI review this."
 ---
 
 # mytty-panes: running a sub-agent team across Mytty panes
