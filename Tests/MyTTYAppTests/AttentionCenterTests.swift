@@ -531,6 +531,62 @@ struct AttentionCenterTests {
         #expect(center.runs[waitingInputRun]?.state == .disconnected)
         #expect(center.runs[waitingApprovalRun]?.state == .disconnected)
     }
+
+    @Test("in-memory updates after append and acknowledge match a fresh disk reload")
+    @MainActor
+    func inMemoryUpdatesMatchDiskReload() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let requestRun = AgentRunID()
+        let completedRun = AgentRunID()
+
+        // Drive every in-memory update path: append(_:) for new events,
+        // then an acknowledge call, so `runs`/`items` are built up purely
+        // from in-memory replays rather than any disk reload.
+        try center.append(harness.event(
+            runID: requestRun,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 1
+        ))
+        try center.append(harness.event(
+            runID: requestRun,
+            surfaceID: surfaceID,
+            kind: .approvalRequested,
+            at: 2
+        ))
+        try center.append(harness.event(
+            runID: completedRun,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 3
+        ))
+        try center.append(harness.event(
+            runID: completedRun,
+            surfaceID: surfaceID,
+            kind: .succeeded,
+            at: 4
+        ))
+
+        let acknowledgedAt = Date(timeIntervalSince1970: 100)
+        let acknowledgedCount = try center.acknowledgeActionableItems(
+            for: surfaceID,
+            at: acknowledgedAt
+        )
+        // Both the approval request and the completion are actionable.
+        #expect(acknowledgedCount == 2)
+
+        // A second center over the same on-disk database, reloaded fresh
+        // from disk at the same `now`, must land on the exact same
+        // derived state as the in-memory-only updates above.
+        let reloaded = harness.center
+        try reloaded.reload(now: acknowledgedAt)
+
+        #expect(center.runs == reloaded.runs)
+        #expect(center.items == reloaded.items)
+    }
 }
 
 @MainActor
