@@ -16,7 +16,7 @@ public enum AgentLaunchPlan {
         Mytty worker contract:
         - Work only in the current working directory unless the task explicitly says otherwise.
         - Continue until the assigned task is complete; run relevant tests when changes are made.
-        - Do not create hidden/native sub-agents. You are a worker controlled by another Mytty pane.
+        - Do not create hidden/native sub-agents. You are a worker controlled by another Mytty pane. (Opening a sibling pane via mytty-ctl split to give a TUI app under test a real pty is not a sub-agent -- that's fine.)
         - Do not ask the user routine implementation questions. Make a reasonable choice, record it, and continue.
         - When you start a distinct phase of the work (investigating, implementing, running tests, ...), report it with: mytty-ctl status "<a few words>"
         - End with a concise summary containing: findings or changed files, tests run and results, and remaining issues.

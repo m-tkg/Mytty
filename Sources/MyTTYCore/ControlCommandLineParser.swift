@@ -98,22 +98,29 @@ public enum ControlCommandLineParser {
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>] [--worktree <branch>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
-        launches the worker in it. --access review is read-only
-        investigation; workspace-write lets the worker edit files; inherit
-        copies the mode of the agent running in the anchor pane (your own
-        process) into the worker's launch command -- use it when spawning
-        a worker of the same provider as yourself so it runs with your
-        permission/sandbox mode; it fails with inherit-unavailable when
-        the anchor pane's foreground process is a different provider. For
-        Claude Code, the mode inherited includes one you switched to at
-        runtime with shift+tab, not just how you were launched -- Mytty
-        reads it from your own transcript when your launch flags don't
-        already say. Omitting --access is not the same as
-        --access workspace-write: it behaves as inherit when the worker's
-        --provider matches the anchor pane's current agent, and as
-        workspace-write otherwise -- spawning a worker of your own
-        provider without --access picks up your current mode
-        automatically. --model
+        launches the worker in it. Recommended: omit --access when
+        spawning a worker of your own provider. An omitted --access
+        behaves as inherit whenever the worker's --provider matches the
+        anchor pane's current agent (workspace-write otherwise) --
+        it copies the mode of the agent running in the anchor pane (your
+        own process) into the worker's launch command, including a mode
+        you switched to at runtime with shift+tab, not just how you were
+        launched -- Mytty reads it from your own transcript when your
+        launch flags don't already say. That carries your current
+        permission/sandbox mode into the worker instead of narrowing it.
+        Explicit --access inherit does the same copy but fails with
+        inherit-unavailable when the anchor pane's foreground process is
+        a different provider, rather than silently falling back to
+        workspace-write. --access review is read-only investigation.
+        --access workspace-write lets the worker edit files, but for a
+        claude worker it always launches with
+        --permission-mode acceptEdits regardless of your own mode -- so a
+        lead running with a broader mode (auto, bypassPermissions, ...)
+        that passes --access workspace-write gets a worker that stops
+        and waits on every approval prompt instead of matching the
+        lead's own mode. Prefer omitting --access (or --access inherit)
+        over --access workspace-write whenever the worker is the same
+        provider as you. --model
         picks the provider's model, passed through to the provider CLI's
         model flag, e.g. --model sonnet for claude. --cwd
         defaults to the anchor pane's shell-reported working directory,
@@ -245,6 +252,22 @@ public enum ControlCommandLineParser {
            "$MYTTY_CTL_BIN" agent send "$job_impl" "Review found: <issue>. Please fix." --enter
            "$MYTTY_CTL_BIN" agent wait "$job_impl" --until completed
 
+      7. If a worker stalls waiting on an approval prompt instead of
+         reaching `completed` (common for a claude worker launched with
+         --access workspace-write, which still stops for Bash approval),
+         catch that instead of guessing from elapsed time -- this needs
+         that provider's hook integration, see HOOK INTEGRATIONS below:
+           "$MYTTY_CTL_BIN" agent wait "$job_impl" --until attention
+           result_impl=$("$MYTTY_CTL_BIN" agent result "$job_impl")
+           pane_impl=$(echo "$result_impl" | jq -r '.job.paneID.rawValue')
+         Read `$result_impl`'s `.content.text` to see which prompt is
+         showing, then answer it. Plain text sent with `agent send` does
+         not activate claude's approval dialog -- answer with a literal
+         keypress via `send-key` instead (a bare "1" or "2", matching the
+         option shown):
+           "$MYTTY_CTL_BIN" send-key "$pane_impl" "1"
+           "$MYTTY_CTL_BIN" agent wait "$job_impl" --until completed
+
       Close every job once its pane is no longer needed, e.g.
       "$MYTTY_CTL_BIN" agent close "$job_a".
 
@@ -276,6 +299,26 @@ public enum ControlCommandLineParser {
       4. close-pane, once done with the pane, or focus to hand control back
          to a human. `send` is still the right tool for a follow-up
          instruction to an already-running agent.
+
+      TESTING A TUI APP FROM INSIDE A PANE
+
+      An agent runs shell commands through its own tool with piped
+      stdin/stdout -- there's no tty, and the pane's own pty is occupied by
+      your TUI -- so a TUI app under development (anything that puts the
+      terminal in raw mode via termios) can't be run or driven directly
+      from inside your own session; it'll fail or misbehave the moment it
+      touches the terminal. Give it a real pty by opening a sibling pane
+      for it with these same low-level commands:
+        "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --command '<the app under test>'
+        "$MYTTY_CTL_BIN" send "$pane_id" "<input>" --enter   # or send-key for raw keys
+        "$MYTTY_CTL_BIN" read "$pane_id"                     # verify the rendered screen
+        "$MYTTY_CTL_BIN" close-pane "$pane_id"                # once done
+      For a quick smoke run instead of a real Mytty pane, `script -q
+      /dev/null <app>` also allocates a pseudo-tty. Opening this pane is
+      not spawning a sub-agent -- it's running the program under test, the
+      same as any other command you'd verify -- so it doesn't conflict
+      with the worker contract's rule against creating hidden/native
+      sub-agents.
 
       PROVIDER LAUNCH COMMANDS
 

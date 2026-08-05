@@ -35,7 +35,7 @@ job_b=$(mytty-ctl agent spawn --provider claude --worktree investigate-b \
   --label investigate-b | jq -r '.job.jobID.rawValue')
 ```
 
-Both workers are `claude`, the same provider as the lead calling this, so omitting `--access` inherits the lead's own permission mode instead of defaulting to a fixed flag set. `--worktree` gives each worker its own git worktree so the two don't fight over the same files.
+Both workers are `claude`, the same provider as the lead calling this, so omitting `--access` inherits the lead's own permission mode instead of defaulting to a fixed flag set -- this is the recommended default whenever the worker matches your own provider. Passing `--access workspace-write` explicitly here would be the wrong call: for a `claude` worker it always launches with `--permission-mode acceptEdits` regardless of the lead's own mode, so a lead running with broader permissions gets a worker that stops and waits on every approval prompt instead of matching it. `--worktree` gives each worker its own git worktree so the two don't fight over the same files.
 
 ```bash
 mytty-ctl agent wait "$job_a" --until completed
@@ -57,9 +57,35 @@ done
 
 See the [mytty-ctl reference](../reference/mytty-ctl.md) for the full command list, JSON shapes, and failure codes -- this page stays a quick tour, not the reference.
 
+If a worker instead stalls waiting on an approval prompt (common for a worker spawned with `--access workspace-write`, which for `claude` still stops for Bash approval even though it can edit files), catch that with `--until attention` rather than guessing from elapsed time, then answer the prompt directly:
+
+```bash
+mytty-ctl agent wait "$job_impl" --until attention
+result=$(mytty-ctl agent result "$job_impl")
+pane_impl=$(echo "$result" | jq -r '.job.paneID.rawValue')
+# read $result's .content.text to see which prompt is showing, then answer it
+mytty-ctl send-key "$pane_impl" "1"
+mytty-ctl agent wait "$job_impl" --until completed
+```
+
+Plain text sent with `agent send` does not activate `claude`'s approval dialog -- a bare keypress via `send-key` does. This needs the worker's provider hook integration installed; see [Hooks are optional](#hooks-are-optional) below.
+
 ## Hooks are optional
 
 A worker's run state (running, idle, succeeded, failed, disconnected) is observable even for a provider whose hook integration was never installed in Settings -- Mytty estimates it natively from the pane's foreground process. Installing the provider's hooks raises the fidelity of that state (real lifecycle events instead of an estimate) and is required for `wait --until attention`/`agent wait --until attention`: native estimation deliberately never reports an approval or input request, so an attention wait against a provider with no hooks installed fails fast instead of blocking.
+
+## Testing a TUI app from inside a pane
+
+A worker runs shell commands through its own tool with piped stdin/stdout, and its own pane's pty is occupied by its TUI, so a TUI app under development (anything that puts the terminal in raw mode) can't be run or driven directly from inside that same session. Open a sibling pane for it instead, which gives it a real pty:
+
+```bash
+pane=$(mytty-ctl split "$MYTTY_SURFACE_ID" right --command '<app under test>' | jq -r '.paneID')
+mytty-ctl send "$pane" "<input>" --enter   # or send-key for raw keys
+mytty-ctl read "$pane"                     # verify the rendered screen
+mytty-ctl close-pane "$pane"               # once done
+```
+
+`script -q /dev/null <app>` also allocates a pseudo-tty, for a quick smoke run that doesn't need a full pane. This is running the program under test, not creating a sub-agent, so it doesn't conflict with the worker contract's rule against hidden/native sub-agents.
 
 ## Settings screen
 
