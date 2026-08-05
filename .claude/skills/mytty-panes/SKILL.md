@@ -21,8 +21,10 @@ here, and don't guess at launch flags from memory.
 
 When the controller and the sub-agent are both working in this repo:
 
-- Give each sub-agent its own `git worktree` so builds don't collide; see
-  the Commands section of `CLAUDE.md` for `swift build` / `swift test`.
+- Give each sub-agent its own working directory so builds don't collide:
+  use `agent spawn --worktree <branch>` rather than hand-making a
+  `git worktree`. See the Commands section of `CLAUDE.md` for
+  `swift build` / `swift test`.
 - Point sub-agents at `docs/reference/mytty-ctl.md` and
   `docs/how-to/orchestrate-agents-with-mytty-ctl.md` if they need more detail
   than the guide covers.

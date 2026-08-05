@@ -47,4 +47,4 @@ Mytty は AI Agent を使うときに便利な機能を詰め込んだターミ�
 - [リリースする](how-to/release-a-version_ja.md)
 - [iOS リモートアプリをビルドする](how-to/build-ios-remote-app_ja.md)
 - [`cloudflare/push-relay/README.md`](../cloudflare/push-relay/README.md) はプッシュ通知中継の自己ホスト手順(英語)。
-- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md) には `mytty-ctl` を使ったタスクレシピがあります。
+- [`.claude/skills/mytty-panes/SKILL.md`](../.claude/skills/mytty-panes/SKILL.md) は `mytty-ctl guide` を実行してペインチームの手順書を読むよう指示する短いポインタです。

@@ -59,6 +59,7 @@ An idempotent retry returns `inserted: false`. Invalid JSON, authorization failu
 | `event.kind` | String | See event kinds below |
 | `event.occurredAt` | String | ISO 8601 timestamp |
 | `event.message` | String? | Optional human-readable detail, e.g. an approval prompt |
+| `event.hookName` | String? | The originating hook's name, or a `mytty.`-prefixed marker (e.g. `mytty.native.commandFinished`, `mytty.startupSweep`) when Mytty synthesized the event itself rather than receiving it from a provider's hooks -- see [Native run estimation](#native-run-estimation) |
 
 ## Event kinds
 

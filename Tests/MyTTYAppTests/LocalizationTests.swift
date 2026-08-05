@@ -381,7 +381,7 @@ struct LocalizationTests {
         )
         #expect(
             english[.teachPaneTeamPointersDescription]
-                == "For Claude Code and Codex, add a short reference to the bundled usage guide (mytty-ctl.md) when asked to run sub-agents across panes."
+                == "For Claude Code and Codex, add a short reference to the bundled usage guide (mytty-ctl.md) that agents consult whenever a request mentions Mytty at all, not only when asked to run sub-agents across panes."
         )
         #expect(english[.orchestration] == "Orchestration")
         #expect(
@@ -563,7 +563,7 @@ struct LocalizationTests {
         )
         #expect(
             japanese[.teachPaneTeamPointersDescription]
-                == "Claude Code と Codex に、複数ペインでサブエージェントを動かす際は同梱の使い方ガイド (mytty-ctl.md) への短い参照を追加します。"
+                == "Claude Code と Codex に、同梱の使い方ガイド (mytty-ctl.md) への短い参照を追加します。複数ペインでサブエージェントを動かす依頼に限らず、依頼に Mytty が出てきた時点で agent が参照します。"
         )
         #expect(japanese[.orchestration] == "オーケストレーション")
         #expect(

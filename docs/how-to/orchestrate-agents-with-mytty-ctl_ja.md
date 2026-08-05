@@ -8,21 +8,58 @@ mytty-ctl で使える全コマンドの一覧と JSON 出力の形式は [mytty
 
 ## 使い方
 
-Mytty オーケストレーションの使い方は2つあります。
+Agent にガイドを読ませる方法は2つあります。
 
-### プロンプトに、CLI の実行を記述する
+### 依頼文に Mytty と書くだけ
 
-下記のように、プロンプトで先にコマンドを実行させてから具体的なタスクの指示を出すパターンです。
+「Agent に Mytty オーケストレーションの使い方を教える」(設定 > オーケストレーション)がオンなら、依頼のどこかに Mytty と書くだけで十分です。この設定が書き込む参照(Claude Code なら `~/.claude/skills/mytty-panes/SKILL.md`、Codex なら `~/.codex/AGENTS.md` 内のブロック)がそれだけで発火し、agent を `mytty-ctl guide` へ導きます。
 
-> まず `mytty-ctl guide` を実行してから、ペインを分割してこの diff を Claude Code に並行でレビューさせて。
+> Mytty を使って、ペインを分割してこの diff を Claude Code に並行でレビューさせて。
 
-この場合、CLI のインストールさえできていれば使用中の CLAUDE.md や AGENTS.md を変更する必要はありません。
+### Mytty と書くことすら省く: あらかじめ CLAUDE.md や AGENTS.md に使い方を書いておく
 
-### あらかじめ CLAUDE.md や AGENTS.md に使い方を書いておく
-
-CLAUDE.md や AGENTS.md に使い方を書いておくことで、「まず `mytty-ctl guide` を実行してから」というのを毎回書かなくてもよくなり、下記のプロンプトで実行できるようになります。
+このリポジトリ自身の CLAUDE.md や AGENTS.md に使い方を書いておけば、依頼文に「Mytty」と書く必要すらなくなります。下記のプロンプトだけで実行できます。
 
 > ペインを分割して、この diff を Claude Code に並行でレビューさせて。
+
+## 段階的な例: 2つの worker を動かして結果を集める
+
+読み取り専用の調査 worker を2つ並行で起動し、両方を待って結果を集める例です。`agent` コマンドを直接使います。
+
+```bash
+job_a=$(mytty-ctl agent spawn --provider claude --worktree investigate-a \
+  --task "ログイン処理が高負荷時にタイムアウトする原因を調査して。" \
+  --label investigate-a | jq -r '.job.jobID.rawValue')
+job_b=$(mytty-ctl agent spawn --provider claude --worktree investigate-b \
+  --task "タイムアウトがクライアント側とサーバー側のどちらで起きているか調査して。" \
+  --label investigate-b | jq -r '.job.jobID.rawValue')
+```
+
+どちらの worker も `claude` で、これを呼び出している lead と同じ provider です。そのため `--access` を省略すると、固定のフラグ集合ではなく lead 自身の permission モードを引き継ぎます。`--worktree` により、それぞれの worker は自分専用の git worktree を持つので、2つが同じファイルを取り合うことがありません。
+
+```bash
+mytty-ctl agent wait "$job_a" --until completed
+mytty-ctl agent wait "$job_b" --until completed
+findings_a=$(mytty-ctl agent result "$job_a" | jq -r '.content.text')
+findings_b=$(mytty-ctl agent result "$job_b" | jq -r '.content.text')
+```
+
+worker が2つ程度なら、逐次の `wait` 2回で十分です。もっと多くの worker を同時に見張る場合は、ペインごとに `wait`/`agent wait` をブロックさせるのではなく、`events` をループでポーリングしてください。1回の long-poll 呼び出しで、どのペインでもよいので次に状態が変わった worker を拾えます。
+
+```bash
+cursor=$(mytty-ctl events | jq -r '.latestSequence')
+while true; do
+  response=$(mytty-ctl events --after "$cursor" --timeout 60)
+  cursor=$(echo "$response" | jq -r '.latestSequence')
+  echo "$response" | jq -c '.records[]'   # どの job が変化したか paneID/kind から判断
+done
+```
+
+コマンドの全一覧・JSON の形・失敗コードは [mytty-ctl リファレンス](../reference/mytty-ctl_ja.md) を参照してください。このページはあくまで手早い案内であり、リファレンスの代わりではありません。
+
+## hook は必須ではない
+
+worker の実行状態(running、idle、succeeded、failed、disconnected)は、設定で hook 連携を一度もインストールしていない provider でも観測できます。Mytty がペインのフォアグラウンドプロセスから実行状態をネイティブに推定するためです。provider の hook をインストールすると、この状態の精度が上がります(推定ではなく実際のライフサイクルイベントになります)。また `wait --until attention`/`agent wait --until attention` には hook が必須です。ネイティブ推定は承認・入力の要求をあえて一切報告しないため、hook 未導入の provider に対する attention wait はブロックせず即座に失敗します。
 
 ## 設定画面
 

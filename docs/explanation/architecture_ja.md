@@ -50,7 +50,7 @@ SwiftPM パッケージ(`Package.swift`)はこのアーキテクチャを慣習�
 
 ## エージェントイベント: 画面をスクレイピングしない理由
 
-エージェント状態は、明示的なフックか libghostty 自体の端末プロトコルサポートが配信する、バージョン管理された冪等なイベントから導出されます(ワイヤーフォーマットは `docs/reference/agent-event-protocol.md` を参照)。人間可読な端末出力を解析して状態を推測することは一切しません。これは「Waiting for approval」のような文字列をエージェントの CLI 出力から正規表現で拾うという、一見手軽な近道を最初から選択肢から外すということでもあります。そうした文字列はプロバイダーのバージョンやロケールによって予告なく変わりますし、読み取りを誤れば Attention Inbox を無駄なイベントで埋めるか、逆に本物の承認要求を静かに取りこぼすことになります。安定したスキーマバージョンを持てるのはイベントだけです。どの連携もイベントを報告していない場合は、推測せずに `unknown` のままにします。
+エージェント状態は、明示的なフックか libghostty 自体の端末プロトコルサポートが配信する、バージョン管理された冪等なイベントから導出されます(ワイヤーフォーマットは `docs/reference/agent-event-protocol.md` を参照)。人間可読な端末出力を解析して状態を推測することは一切しません。これは「Waiting for approval」のような文字列をエージェントの CLI 出力から正規表現で拾うという、一見手軽な近道を最初から選択肢から外すということでもあります。そうした文字列はプロバイダーのバージョンやロケールによって予告なく変わりますし、読み取りを誤れば Attention Inbox を無駄なイベントで埋めるか、逆に本物の承認要求を静かに取りこぼすことになります。安定したスキーマバージョンを持てるのはイベントだけです。provider の hook 連携が未インストールでも、実行状態は `unknown` のまま放置されるわけではありません。Mytty はペインのポーリング済みフォアグラウンドプロセス、OSC 133 のコマンド終了通知、そして(Claude Code、Codex、Cursor については)その provider 自身の transcript や store から、実行のライフサイクルをネイティブに推定します。例外は attention 状態(`waiting-input`/`waiting-approval`)で、誤読すると Attention Inbox に偽の要対応項目が出かねないため、ネイティブ推定はこれをあえて一切合成しません。provider 本来の hook が入るまで、これらの状態だけは報告されないままになります。
 
 ```text
 unknown -> running
@@ -74,6 +74,8 @@ Settings は各対応プロバイダー向けに、ワンクリックで元に�
 フックはユーザー専用の Unix ソケット経由でイベントを送り、各ペインのフックはそのペイン一つだけに閉じたケイパビリティを受け取ります。入力の注入と画面キャプチャは意図的に別のケイパビリティとして分けてあり、イベント用フックには付与されません。そのため不正なフックスクリプトや誤動作するフックスクリプトも、状態を報告することはできても端末を操作することはできません。
 
 フックだけではステータスバーが見せたいすべてを網羅できないため、`TerminalWindowController` の `AgentStatusPollingCoordinator` が 0.5 秒ごとに各ペインのフォアグラウンドプロセスをポーリングして補っています。実行ファイルと引数からプロバイダーを検出し(`TerminalAgentProcessDetector`)、そのプロバイダーの `AgentProviderRuntime`(プロバイダーごとに一つ実装され、`AgentProviderRuntimeRegistry` に登録されている)を解決し、そのプロバイダーの `*SessionInspector` を通じて使用中のモデルと残りコンテキストを読み取ります。Codex のトランスクリプトのファイルディスクリプタ、Claude Code のプロジェクトトランスクリプト、OpenCode と Cursor の SQLite データベース、Antigravity の設定ファイルと、プロバイダーごとに読み取り方は異なります。これがメインスレッドで動くため、毎ティック解析し直すのではなく、スロットリングとフィンガープリントキャッシュ(`AgentSessionThrottleCache`)を挟んでいます。`AgentUsagePollingCoordinator` も同じ構造で、`NativeAgentUsageLoader` と各プロバイダーの `*UsageProbe` に対応する `AgentProviderUsageSource` レジストリを通じてクォータやコストのメーターを読み込みます。
+
+同じポーリングは `NativeAgentRunEstimator` にも使われます。検出したフォアグラウンドプロセスと OSC 133 のコマンド終了シグナルから、hook 連携が未インストールの provider について実行のライフサイクルを導出し、Claude Code、Codex、Cursor についてはさらに、上記の session inspector が既に読んでいるのと同じ transcript / `store.db` を読んで、プロンプトターンごとの run に分割します。これにより、hook を一度もインストールしていない状態でも実行状態を観測できます。仕組みの詳細は[Agent event protocol](../reference/agent-event-protocol_ja.md)の「ネイティブ推定による run 検出」を参照してください。
 
 これらのプローブが共通で使う読み取り専用 SQLite ヘルパーが `MyTTYCore` の `AgentSessionDatabase` で、WAL データベースのサイドカーファイルがチェックポイントで消えている場合は `immutable=1` 接続にフォールバックします。プロバイダーの SQLite 状態を読む必要があるコードはこのヘルパーを再利用します。WAL のフォールバックはまさに一度ハマって二度目にまた同じ場所でデバッグしがちな類の落とし穴だからです。
 

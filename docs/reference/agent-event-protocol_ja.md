@@ -59,6 +59,7 @@ MYTTY_EVENT_CAPABILITY
 | `event.kind` | String | 下記の event kind 一覧を参照 |
 | `event.occurredAt` | String | ISO 8601 タイムスタンプ |
 | `event.message` | String? | 承認プロンプトの文言など、人間可読の補足情報(任意) |
+| `event.hookName` | String? | 発信元 hook の名前。Mytty が provider の hook から受け取ったのではなく自ら合成した event の場合は `mytty.` で始まるマーカー(例: `mytty.native.commandFinished`、`mytty.startupSweep`)になる ── 「ネイティブ推定による run 検出」を参照 |
 
 ## Event kind 一覧
 

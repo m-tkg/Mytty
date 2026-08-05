@@ -86,7 +86,7 @@ status bar のモデル名と(取得できる場合の)残りコンテキスト�
 | Codex | `CodexSessionInspector` | フォアグラウンド PID に紐づく transcript の `turn_context.model` と最新の `token_count.info` | transcript が報告する値 |
 | Claude Code | `ClaudeCodeSessionInspector` | `~/.claude/projects/<session-id>.jsonl`(複数の project ディレクトリを横断検索)、hook session ID が無い場合は `~/.claude/projects/<slug>/` 配下で最も新しく更新された transcript。最後の `assistant` 行の `message.model`、トークン数は `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` の合計 | `[1m]` モデルは 1,000,000、それ以外は 200,000 |
 | OpenCode | `OpenCodeSessionInspector` | `opencode.db` の `message` テーブル、hook session ID に対応する最新の assistant 行の `modelID` | ローカルでは取得不可 |
-| Cursor | `CursorSessionInspector` | `~/.cursor/chats/<workspace-hash>/<session-id>/` 配下の chat ディレクトリ(hook session ID、または `cwd` がペインと一致する最新の `meta.json`)。`store.db` の `blobs` テーブルを新しい順に、`providerOptions.cursor.modelName` をテキストスキャン | ローカルでは取得不可 |
+| Cursor | `CursorSessionInspector` | `~/.cursor/chats/<workspace-hash>/<session-id>/` 配下の chat ディレクトリ(hook session ID、または `cwd` がペインと一致する最新の `meta.json`)。`store.db` の `blobs` テーブルを新しい順に、`providerOptions.cursor.modelName` をテキストスキャン | 最新の "root" blob の protobuf レコード: トップレベルのフィールド 5 に使用済み/合計トークン数が入っている。そのブロブを一切書き込まない古い Cursor CLI では `nil` |
 | Antigravity | `AntigravitySessionInspector` | `~/.gemini/antigravity-cli/settings.json` の global な `model` 設定。セッションに紐づかない値なので、無関係なペインに誤帰属させないよう hook session ID が無いと何も表示しない | ローカルでは取得不可(会話 DB は protobuf エンコードで安定したスキーマが無い) |
 
 残りコンテキストが一定の割合を下回ると、コンテキストメーターは赤くなります。通知を出さずに、残量が尽きかけているペインを見分けられます。**設定 > Agents > コンテキスト残量が少ないときに警告** で、この警告を切ったり割合を変えたり(既定は 30%)できます。判定には、メーターがどちらを表示していても、丸めた後の残量の割合を使います。
