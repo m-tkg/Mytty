@@ -181,8 +181,11 @@ enum TabNameSuggester {
 
 /// How the rename alert obtains a suggestion: the buffer is captured
 /// synchronously on the main thread at click time, and the model call runs
-/// detached. Both matter because the alert runs modally — main-actor tasks
-/// are not processed while `NSAlert.runModal` is on screen.
+/// in a plain `Task`. The rename alert is presented as a sheet (see
+/// `TerminalWindowController.rename(tab:)`), not `NSAlert.runModal()`, so
+/// main-actor tasks are processed normally while it's on screen -- unlike
+/// before, this no longer needs a `RunLoop.main.perform(inModes:)` detour
+/// to deliver the result.
 struct TabNameSuggestionRequest {
     let captureBuffer: () -> String?
     let suggest: @Sendable (String) async -> String?
@@ -238,20 +241,14 @@ final class TabNameSuggestAccessoryView: NSView {
         else { return }
         button.isEnabled = false
         let suggest = request.suggest
-        suggestionTask = Task.detached { [weak self] in
+        suggestionTask = Task { @MainActor [weak self] in
             let name = await suggest(buffer)
-            // Deliver on the run loop in modal-panel mode: the alert runs
-            // modally, where main-actor task jobs are not processed.
-            RunLoop.main.perform(
-                inModes: [.modalPanel, .common, .default]
-            ) { [weak self] in
-                guard let self else { return }
-                if let name {
-                    textField.stringValue = name
-                }
-                button.isEnabled = true
-                suggestionTask = nil
+            guard let self else { return }
+            if let name {
+                self.textField.stringValue = name
             }
+            self.button.isEnabled = true
+            self.suggestionTask = nil
         }
     }
 }

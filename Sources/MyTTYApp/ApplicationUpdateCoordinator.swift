@@ -21,7 +21,7 @@ final class ApplicationUpdateCoordinator {
         checker: GitHubReleaseClient(session: updateSession),
         installer: ApplicationUpdateInstaller(session: updateSession),
         confirmsInstallation: { [weak self] in
-            self?.confirmUpdateInstallation() ?? false
+            await self?.confirmUpdateInstallation() ?? false
         },
         onInstalled: { [weak self] in
             self?.restartAfterUpdate()
@@ -47,14 +47,18 @@ final class ApplicationUpdateCoordinator {
         }
     }
 
-    private func confirmUpdateInstallation() -> Bool {
+    private func confirmUpdateInstallation() async -> Bool {
         let localizer = localizerProvider()
         let alert = ApplicationAlert.make(style: .warning)
         alert.messageText = localizer[.installUpdateQuestion]
         alert.informativeText = localizer[.restartForUpdateWarning]
         alert.addButton(withTitle: localizer[.update])
         alert.addButton(withTitle: localizer[.cancel])
-        return alert.runModal() == .alertFirstButtonReturn
+        let response = await ApplicationAlert.present(
+            alert,
+            on: NSApp.keyWindow ?? NSApp.mainWindow
+        )
+        return response == .alertFirstButtonReturn
     }
 
     private func restartAfterUpdate() {

@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import GhosttyAdapter
@@ -36,19 +37,22 @@ final class ScheduledInputCoordinator {
     private let surface: (TerminalSurfaceID) -> GhosttySurfaceView?
     private let presentError: (Error) -> Void
     private let onSchedulesChanged: ([PaneInputSchedule]) -> Void
+    private let window: () -> NSWindow?
 
     init(
         scheduler: PaneInputScheduler,
         localizer: MyTTYLocalizer,
         surface: @escaping (TerminalSurfaceID) -> GhosttySurfaceView?,
         presentError: @escaping (Error) -> Void,
-        onSchedulesChanged: @escaping ([PaneInputSchedule]) -> Void
+        onSchedulesChanged: @escaping ([PaneInputSchedule]) -> Void,
+        window: @escaping () -> NSWindow?
     ) {
         self.scheduler = scheduler
         self.localizer = localizer
         self.surface = surface
         self.presentError = presentError
         self.onSchedulesChanged = onSchedulesChanged
+        self.window = window
     }
 
     func startObserving() {
@@ -76,14 +80,19 @@ final class ScheduledInputCoordinator {
     }
 
     private func presentEditor(draft: PaneInputScheduleDraft) {
-        guard let schedule = PaneInputScheduleDialog.run(
-            draft: draft,
-            localizer: localizer
-        ) else { return }
-        do {
-            try scheduler.save(schedule)
-        } catch {
-            presentError(error)
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let schedule = await PaneInputScheduleDialog.run(
+                      draft: draft,
+                      localizer: self.localizer,
+                      on: self.window()
+                  )
+            else { return }
+            do {
+                try self.scheduler.save(schedule)
+            } catch {
+                self.presentError(error)
+            }
         }
     }
 

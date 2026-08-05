@@ -100,19 +100,21 @@ protocol ControlServerDelegate: AnyObject {
     ) -> [ControlIntegrationInfo]
 
     /// Install `provider`'s hook integration after a human approves the
-    /// in-app confirmation dialog. Blocks the request until the dialog is
-    /// answered; a decline fails with `integration-declined`.
+    /// in-app confirmation dialog. `async` because that dialog is a sheet
+    /// awaited without blocking the main actor (unlike every other method
+    /// on this protocol, which stay synchronous) -- a decline fails with
+    /// `integration-declined`.
     func controlServer(
         _ server: ControlServer,
         enableIntegrationFor provider: AgentProvider
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure>
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure>
 
     /// Repair `provider`'s integration (or every integration needing
     /// repair when nil), behind the same human confirmation as enabling.
     func controlServer(
         _ server: ControlServer,
         repairIntegrationsFor provider: AgentProvider?
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure>
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure>
 }
 
 /// A `mytty-ctl agent` request that couldn't be completed, carrying the
@@ -381,12 +383,18 @@ final class ControlServer {
 
         case let .integrationEnable(provider):
             return Self.encodeAgentResult(
-                delegate.controlServer(self, enableIntegrationFor: provider)
+                await delegate.controlServer(
+                    self,
+                    enableIntegrationFor: provider
+                )
             ) { .integrationStatuses($0) }
 
         case let .integrationRepair(provider):
             return Self.encodeAgentResult(
-                delegate.controlServer(self, repairIntegrationsFor: provider)
+                await delegate.controlServer(
+                    self,
+                    repairIntegrationsFor: provider
+                )
             ) { .integrationStatuses($0) }
 
         case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,

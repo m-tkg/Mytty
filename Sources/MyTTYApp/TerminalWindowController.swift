@@ -5,6 +5,20 @@ import MyTTYCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Errors from `TerminalWindowController.surfaceFactory`'s own plumbing,
+/// as opposed to whatever `GhosttySurfaceView.init` itself throws.
+enum TerminalSurfaceFactoryError: Error {
+    /// The controller was deallocated between scheduling pane creation
+    /// and this closure running -- should not happen in practice since
+    /// pane creation is synchronous, but the weak capture needs an error
+    /// to throw rather than force-unwrapping.
+    case controllerDeallocated
+    /// The default placeholder was invoked before `init` replaced it;
+    /// always a bug (a call site reaching `makeSurface` too early), never
+    /// expected in a running app.
+    case unconfigured
+}
+
 @MainActor
 enum TerminalWindowGeometry {
     static let styleMask: NSWindow.StyleMask = [
@@ -168,7 +182,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         presentError: { [weak self] error in self?.presentActionError(error) },
         onSchedulesChanged: { [weak self] schedules in
             self?.updateScheduledInputStatus(schedules)
-        }
+        },
+        window: { [weak self] in self?.window }
     )
     private var renderedTabID: TabID?
     private var capturedTerminalHistories: [TerminalSurfaceID: String] = [:]
@@ -272,7 +287,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         },
         hideCountdown: { [weak self] surfaceID in
             self?.paneLayout.host(for: surfaceID)?.hideCountdown()
-        }
+        },
+        window: { [weak self] in self?.window }
     )
     private lazy var remotePane = RemotePaneBridge(
         surface: { [weak self] paneID in self?.surfaces[paneID] },
@@ -455,6 +471,28 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
 
+        surfaceFactory = { [weak self] state, initialSize, initialInput in
+            guard let self else {
+                throw TerminalSurfaceFactoryError.controllerDeallocated
+            }
+            return try GhosttySurfaceView(
+                runtime: self.runtime,
+                workingDirectory: state.workingDirectory,
+                initialInput: TerminalSurfaceLaunchInput.resolve(
+                    spawnInitialInput: initialInput,
+                    agentResume: state.agentResume
+                ),
+                restoredTerminalHistory: state.terminalHistory,
+                environmentVariables: try self.agentEventServer.environment(
+                    for: state.id
+                ),
+                initialSize: initialSize,
+                searchLabels: self.makeTerminalSearchLabels(),
+                contextMenuLabels: self.makeTerminalContextMenuLabels(),
+                clipboardConfirmationLabels: self.makeClipboardConfirmationLabels()
+            )
+        }
+
         configureWindow(window)
         TerminalWindowGeometry.apply(windowFrame, to: window)
         moveOnscreenIfNeeded(window)
@@ -623,7 +661,18 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         } catch {
             agentEventServer.revoke(surface: state.id)
             autocomplete.removeSession(for: state.id)
-            presentActionError(error)
+            // Orchestrated failures (mytty-ctl new-tab) never show a
+            // dialog: no window pops up for a background action the
+            // human didn't visibly initiate, and `ControlServer` already
+            // answers the client with `new-tab-failed`. Interactive
+            // failures (Cmd+T) still get the usual non-blocking alert.
+            if orchestrated {
+                dialogLog.error(
+                    "orchestrated new tab failed: \(error, privacy: .public)"
+                )
+            } else {
+                presentActionError(error)
+            }
             return nil
         }
     }
@@ -635,8 +684,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.html]
         panel.directoryURL = currentWorkingDirectory
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        openBrowserTab(url)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let response = await ApplicationAlert.present(panel, on: self.window)
+            guard response == .OK, let url = panel.url else { return }
+            self.openBrowserTab(url)
+        }
     }
 
     func openURLPrompt() {
@@ -644,11 +697,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         guard let textField = Self.openURLTextField(in: alert) else {
             return
         }
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let url = BrowserURLInput.parse(textField.stringValue) else {
-            return
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let response = await ApplicationAlert.present(alert, on: self.window)
+            guard response == .alertFirstButtonReturn else { return }
+            guard let url = BrowserURLInput.parse(textField.stringValue) else {
+                return
+            }
+            self.openBrowserTab(url)
         }
-        openBrowserTab(url)
     }
 
     private func openBrowserTab(_ url: URL) {
@@ -922,7 +979,19 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             refreshPresentation(focusTerminal: false)
             return state.id
         } catch {
-            presentActionError(error)
+            // Never a dialog here: every caller of `splitPaneInBackground`
+            // is orchestrated (`mytty-ctl split` / `agent spawn`), so a
+            // failure alert would pop up for a pane the human never
+            // asked to see. `ControlServer` already answers the client
+            // with `split-failed` (or `spawn-failed` via
+            // `AgentJobCoordinator`) -- see the incident this fixed: an
+            // agent-spawn error here used to call `presentActionError`,
+            // whose `runModal()` blocked the main actor `ControlServer`
+            // runs requests on, stalling every `mytty-ctl` command for
+            // ~1.5 hours until someone clicked OK.
+            dialogLog.error(
+                "orchestrated split failed: \(error, privacy: .public)"
+            )
             return nil
         }
     }
@@ -1478,29 +1547,32 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = session.tabs.first(where: { $0.id == id }) else {
             return
         }
+        guard requiresConfirmation else {
+            finishClosing(tab: tab)
+            return
+        }
+        // Both branches below close the same tab, so the confirmation
+        // (now a non-blocking sheet -- see `confirmClose`) runs once
+        // ahead of deciding which one applies, instead of duplicated in
+        // each as it was when `confirmCloseIfNeeded` ran synchronously.
+        confirmClose(target: .tab, surfaceIDs: tab.surfaceIDs) { [weak self] confirmed in
+            guard confirmed else { return }
+            self?.finishClosing(tab: tab)
+        }
+    }
 
+    private func finishClosing(tab: TabSession) {
         if session.tabs.count == 1 {
-            guard !requiresConfirmation || confirmCloseIfNeeded(
-                target: .tab,
-                surfaceIDs: tab.surfaceIDs
-            ) else { return }
             bypassNextWindowConfirmation = true
             window?.performClose(nil)
             return
         }
-
-        guard !requiresConfirmation || confirmCloseIfNeeded(
-            target: .tab,
-            surfaceIDs: tab.surfaceIDs
-        ) else {
-            return
-        }
-        recording.stopIfRecording(tabID: id)
+        recording.stopIfRecording(tabID: tab.id)
         recordClosedTab(tab)
 
         do {
-            try session.close(tab: id)
-            paneLayout.removeZoom(tabID: id)
+            try session.close(tab: tab.id)
+            paneLayout.removeZoom(tabID: tab.id)
             scheduledInput.removeScheduledInputs(for: tab.surfaceIDs)
             for surfaceID in tab.surfaceIDs {
                 agentEventServer.revoke(surface: surfaceID)
@@ -1553,15 +1625,33 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         updateSessionFrame()
     }
 
+    /// AppKit calls this synchronously and needs an immediate answer, so a
+    /// confirmation dialog can't simply be awaited here the way the other
+    /// close paths await `confirmClose`. Instead this always answers
+    /// `false` when a dialog is needed, shows it as a sheet, and -- if
+    /// confirmed -- closes the window itself afterward via
+    /// `bypassNextWindowConfirmation`, the same re-entry flag `close(tab:)`
+    /// already uses when closing a window's last tab.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if bypassNextWindowConfirmation {
             bypassNextWindowConfirmation = false
             return true
         }
-        return confirmCloseIfNeeded(
+        guard closeConfirmationAlert(
             target: .window,
             surfaceIDs: Array(surfaces.keys)
-        )
+        ) != nil else {
+            return true
+        }
+        confirmClose(
+            target: .window,
+            surfaceIDs: Array(surfaces.keys)
+        ) { [weak self] confirmed in
+            guard confirmed, let self else { return }
+            self.bypassNextWindowConfirmation = true
+            sender.close()
+        }
+        return false
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -2174,29 +2264,34 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         initialSize: NSSize? = nil,
         initialInput: String? = nil
     ) throws -> GhosttySurfaceView {
-        let environment = try agentEventServer.environment(for: state.id)
         let surface: GhosttySurfaceView
         do {
-            surface = try GhosttySurfaceView(
-                runtime: runtime,
-                workingDirectory: state.workingDirectory,
-                initialInput: TerminalSurfaceLaunchInput.resolve(
-                    spawnInitialInput: initialInput,
-                    agentResume: state.agentResume
-                ),
-                restoredTerminalHistory: state.terminalHistory,
-                environmentVariables: environment,
-                initialSize: initialSize,
-                searchLabels: makeTerminalSearchLabels(),
-                contextMenuLabels: makeTerminalContextMenuLabels(),
-                clipboardConfirmationLabels: makeClipboardConfirmationLabels()
-            )
+            surface = try surfaceFactory(state, initialSize, initialInput)
         } catch {
             agentEventServer.revoke(surface: state.id)
             throw error
         }
         bind(surface: surface, to: state.id)
         return surface
+    }
+
+    /// Builds the real `GhosttySurfaceView` for a new pane. A stored,
+    /// overridable closure rather than a hardcoded call so tests can
+    /// inject a failing factory and exercise the orchestrated-failure
+    /// paths (`splitPaneInBackground`, `newTab`) without needing a
+    /// genuine GhosttyKit failure -- see `TerminalWindowControllerTests`,
+    /// which covers the incident this seam was added to catch: an
+    /// agent-spawn surface-creation failure whose error dialog blocked
+    /// the main actor `ControlServer` runs `mytty-ctl` requests on.
+    /// Assigned for real in `init` before any pane can be created; the
+    /// placeholder here only guards against a future call site sneaking
+    /// in ahead of that assignment.
+    var surfaceFactory: (
+        _ state: TerminalSurfaceState,
+        _ initialSize: NSSize?,
+        _ initialInput: String?
+    ) throws -> GhosttySurfaceView = { _, _, _ in
+        throw TerminalSurfaceFactoryError.unconfigured
     }
 
     private func bind(
@@ -2510,10 +2605,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 handleExitedSurfaceClose(
                     surfaceID,
                     requiresConfirmation: requiresConfirmation,
-                    confirmation: { [self] in
-                        confirmCloseIfNeeded(
+                    confirmation: { [self] completion in
+                        confirmClose(
                             target: .pane,
-                            surfaceIDs: [surfaceID]
+                            surfaceIDs: [surfaceID],
+                            completion: completion
                         )
                     },
                     close: { [self] in
@@ -2524,10 +2620,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 handleExitedSurfaceClose(
                     surfaceID,
                     requiresConfirmation: requiresConfirmation,
-                    confirmation: { [self] in
-                        confirmCloseIfNeeded(
+                    confirmation: { [self] completion in
+                        confirmClose(
                             target: .tab,
-                            surfaceIDs: tab.surfaceIDs
+                            surfaceIDs: tab.surfaceIDs,
+                            completion: completion
                         )
                     },
                     close: { [self] in
@@ -2539,9 +2636,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     surfaceID,
                     requiresConfirmation:
                         applicationPreferences.confirmClosingLastPane,
-                    confirmation: { [self] in
-                        confirmClosingLastPaneIfNeeded(
-                            surfaceIDs: tab.surfaceIDs
+                    confirmation: { [self] completion in
+                        confirmClosingLastPane(
+                            surfaceIDs: tab.surfaceIDs,
+                            completion: completion
                         )
                     },
                     close: { [self] in
@@ -2901,14 +2999,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         guard let textField = Self.renameTabTextField(in: alert) else {
             return
         }
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        do {
-            try session.rename(tab: id, title: textField.stringValue)
-            sessionDidChange()
-            refreshPresentation(focusTerminal: true)
-        } catch {
-            presentActionError(error)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let response = await ApplicationAlert.present(alert, on: self.window)
+            guard response == .alertFirstButtonReturn else { return }
+            do {
+                try self.session.rename(tab: id, title: textField.stringValue)
+                self.sessionDidChange()
+                self.refreshPresentation(focusTerminal: true)
+            } catch {
+                self.presentActionError(error)
+            }
         }
     }
 
@@ -3544,10 +3645,20 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ paneID: TerminalSurfaceID,
         requiresConfirmation: Bool = true
     ) {
-        guard !requiresConfirmation || confirmCloseIfNeeded(
+        guard requiresConfirmation else {
+            finishClosingPane(paneID)
+            return
+        }
+        confirmClose(
             target: .pane,
             surfaceIDs: surfaces[paneID] == nil ? [] : [paneID]
-        ) else { return }
+        ) { [weak self] confirmed in
+            guard confirmed else { return }
+            self?.finishClosingPane(paneID)
+        }
+    }
+
+    private func finishClosingPane(_ paneID: TerminalSurfaceID) {
         recording.stopIfRecording(surfaceID: paneID)
         recordClosedPane(paneID)
         do {
@@ -3571,10 +3682,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func closeLastPane(in tab: TabSession) {
-        guard confirmClosingLastPaneIfNeeded(
-            surfaceIDs: tab.surfaceIDs
-        ) else { return }
-        close(tab: tab.id, requiresConfirmation: false)
+        confirmClosingLastPane(surfaceIDs: tab.surfaceIDs) { [weak self] confirmed in
+            guard confirmed else { return }
+            self?.close(tab: tab.id, requiresConfirmation: false)
+        }
     }
 
     private func recordClosedPane(_ paneID: TerminalSurfaceID) {
@@ -3746,18 +3857,24 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private func handleExitedSurfaceClose(
         _ surfaceID: TerminalSurfaceID,
         requiresConfirmation: Bool,
-        confirmation: () -> Bool,
-        close: () -> Void
+        confirmation: (_ completion: @escaping (Bool) -> Void) -> Void,
+        close: @escaping () -> Void
     ) {
-        let confirmed = !requiresConfirmation || confirmation()
-        switch TerminalExitedSurfaceCloseResolution.make(
-            requiresConfirmation: requiresConfirmation,
-            confirmed: confirmed
-        ) {
-        case .close:
+        guard requiresConfirmation else {
             close()
-        case .restartSurface:
-            restartExitedSurface(surfaceID)
+            return
+        }
+        confirmation { [weak self] confirmed in
+            guard let self else { return }
+            switch TerminalExitedSurfaceCloseResolution.make(
+                requiresConfirmation: requiresConfirmation,
+                confirmed: confirmed
+            ) {
+            case .close:
+                close()
+            case .restartSurface:
+                self.restartExitedSurface(surfaceID)
+            }
         }
     }
 
@@ -3796,24 +3913,53 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         session.tabs.first { $0.surfaceIDs.contains(surfaceID) }?.id
     }
 
-    private func confirmCloseIfNeeded(
+    /// nil when closing `target` needs no confirmation at all (either the
+    /// preference disables it, or nothing running needs the warning) --
+    /// `nil` lets callers that only need to know *whether* a dialog would
+    /// appear (`windowShouldClose`) skip presenting anything.
+    private func closeConfirmationAlert(
         target: TerminalCloseTarget,
         surfaceIDs: [TerminalSurfaceID]
-    ) -> Bool {
+    ) -> NSAlert? {
         let hasRunningProcess = surfaceIDs.contains {
             surfaces[$0]?.needsConfirmQuit == true
         }
         let confirmation = applicationPreferences.confirmation(for: target)
         guard confirmation.requiresConfirmation(
             hasRunningProcess: hasRunningProcess
-        ) else { return true }
+        ) else { return nil }
 
-        let alert = Self.makeCloseConfirmationAlert(
+        return Self.makeCloseConfirmationAlert(
             target: target,
             hasRunningProcess: hasRunningProcess,
             localizer: localizer
         )
-        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Presents the close confirmation as a sheet -- never `runModal()`,
+    /// which would block the main actor `ControlServer` answers
+    /// `mytty-ctl` requests on -- and reports the answer via `completion`.
+    /// Answers `true` synchronously, without presenting anything, when no
+    /// confirmation is needed.
+    private func confirmClose(
+        target: TerminalCloseTarget,
+        surfaceIDs: [TerminalSurfaceID],
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let alert = closeConfirmationAlert(
+            target: target,
+            surfaceIDs: surfaceIDs
+        ) else {
+            completion(true)
+            return
+        }
+        Task { @MainActor [weak self] in
+            let response = await ApplicationAlert.present(
+                alert,
+                on: self?.window
+            )
+            completion(response == .alertFirstButtonReturn)
+        }
     }
 
     static func makeCloseConfirmationAlert(
@@ -3838,11 +3984,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return alert
     }
 
-    private func confirmClosingLastPaneIfNeeded(
-        surfaceIDs: [TerminalSurfaceID]
-    ) -> Bool {
+    private func confirmClosingLastPane(
+        surfaceIDs: [TerminalSurfaceID],
+        completion: @escaping (Bool) -> Void
+    ) {
         guard applicationPreferences.confirmClosingLastPane else {
-            return true
+            completion(true)
+            return
         }
         let hasRunningProcess = surfaceIDs.contains {
             surfaces[$0]?.needsConfirmQuit == true
@@ -3851,7 +3999,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             hasRunningProcess: hasRunningProcess,
             localizer: localizer
         )
-        return alert.runModal() == .alertFirstButtonReturn
+        Task { @MainActor [weak self] in
+            let response = await ApplicationAlert.present(
+                alert,
+                on: self?.window
+            )
+            completion(response == .alertFirstButtonReturn)
+        }
     }
 
     static func makeLastPaneCloseConfirmationAlert(
@@ -3870,11 +4024,19 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return alert
     }
 
+    /// Logs unconditionally, then shows a non-blocking sheet
+    /// fire-and-forget: this must never be a `runModal()` alert, since
+    /// most of this function's callers run inside a `mytty-ctl` request
+    /// still being handled on the main actor `ControlServer` also uses --
+    /// see `dialogLog`'s declaration for the incident that motivated this.
     private func presentActionError(_ error: Error) {
+        dialogLog.error("action failed: \(error, privacy: .public)")
         let alert = ApplicationAlert.make(style: .critical)
         alert.messageText = localizer[.couldNotCompleteAction]
         alert.informativeText = String(describing: error)
-        alert.runModal()
+        Task { @MainActor [weak self] in
+            _ = await ApplicationAlert.present(alert, on: self?.window)
+        }
     }
 }
 

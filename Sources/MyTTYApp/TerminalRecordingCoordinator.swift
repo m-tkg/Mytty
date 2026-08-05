@@ -38,6 +38,7 @@ final class TerminalRecordingCoordinator {
     private let showCountdown: (TerminalSurfaceID, Int) -> Void
     private let hideCountdown: (TerminalSurfaceID) -> Void
     private let countdownStepDuration: Duration
+    private let window: () -> NSWindow?
 
     init(
         showPressedKeyToast: @escaping () -> Bool,
@@ -48,6 +49,7 @@ final class TerminalRecordingCoordinator {
         countdownEnabled: @escaping () -> Bool,
         showCountdown: @escaping (TerminalSurfaceID, Int) -> Void,
         hideCountdown: @escaping (TerminalSurfaceID) -> Void,
+        window: @escaping () -> NSWindow? = { nil },
         countdownStepDuration: Duration = .seconds(1)
     ) {
         self.showPressedKeyToast = showPressedKeyToast
@@ -58,6 +60,7 @@ final class TerminalRecordingCoordinator {
         self.countdownEnabled = countdownEnabled
         self.showCountdown = showCountdown
         self.hideCountdown = hideCountdown
+        self.window = window
         self.countdownStepDuration = countdownStepDuration
     }
 
@@ -175,26 +178,27 @@ final class TerminalRecordingCoordinator {
         self.recorder = nil
         recorder.stopCapturing()
         onRecordingStateChanged()
-        guard let outputURL = recordingOutputURL() else {
-            recorder.cancel()
-            return
-        }
-        recorder.finish(to: outputURL, fadeOut: fadeOut()) { [weak self] result in
-            if case let .failure(error) = result {
-                self?.presentError(error)
-            }
-        }
-    }
-
-    private func recordingOutputURL() -> URL? {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.gif]
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = recordingFilename()
         panel.title = outputPanelTitle()
-        guard panel.runModal() == .OK else { return nil }
-        return panel.url
+        Task { @MainActor [weak self] in
+            let response = await ApplicationAlert.present(
+                panel,
+                on: self?.window()
+            )
+            guard response == .OK, let outputURL = panel.url else {
+                recorder.cancel()
+                return
+            }
+            recorder.finish(to: outputURL, fadeOut: self?.fadeOut()) { result in
+                if case let .failure(error) = result {
+                    self?.presentError(error)
+                }
+            }
+        }
     }
 
     private func recordingFailed(_ error: TerminalRecordingError) {

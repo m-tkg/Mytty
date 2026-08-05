@@ -66,8 +66,9 @@ enum ScheduledInputMenuHierarchy {
 enum PaneInputScheduleDialog {
     static func run(
         draft: PaneInputScheduleDraft,
-        localizer: MyTTYLocalizer
-    ) -> PaneInputSchedule? {
+        localizer: MyTTYLocalizer,
+        on window: NSWindow?
+    ) async -> PaneInputSchedule? {
         let editor = PaneInputScheduleEditorView(
             draft: draft,
             localizer: localizer
@@ -77,7 +78,8 @@ enum PaneInputScheduleDialog {
         alert.accessoryView = editor
         alert.addButton(withTitle: localizer[.save])
         alert.addButton(withTitle: localizer[.cancel])
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let response = await ApplicationAlert.present(alert, on: window)
+        guard response == .alertFirstButtonReturn else { return nil }
         return editor.schedule
     }
 }

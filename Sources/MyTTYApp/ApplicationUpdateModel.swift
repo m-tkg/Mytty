@@ -53,7 +53,7 @@ final class ApplicationUpdateModel: ObservableObject {
 
     private let checker: any ApplicationUpdateChecking
     private let installer: any ApplicationUpdateInstalling
-    private let confirmsInstallation: @MainActor () -> Bool
+    private let confirmsInstallation: @MainActor () async -> Bool
     private let onInstalled: @MainActor () -> Void
     private var availableRelease: ApplicationUpdateRelease?
 
@@ -61,7 +61,7 @@ final class ApplicationUpdateModel: ObservableObject {
         currentVersion: ApplicationVersion,
         checker: any ApplicationUpdateChecking,
         installer: any ApplicationUpdateInstalling,
-        confirmsInstallation: @escaping @MainActor () -> Bool,
+        confirmsInstallation: @escaping @MainActor () async -> Bool,
         onInstalled: @escaping @MainActor () -> Void
     ) {
         self.currentVersion = currentVersion
@@ -93,7 +93,7 @@ final class ApplicationUpdateModel: ObservableObject {
     func installAvailableUpdate() async {
         guard let release = availableRelease,
               canUpdate,
-              confirmsInstallation()
+              await confirmsInstallation()
         else { return }
         phase = .installing(release)
         do {
