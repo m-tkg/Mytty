@@ -395,6 +395,328 @@ struct CursorSessionInspectorTests {
         )
     }
 
+    // MARK: - Turn detection
+
+    @Test("a real prompt followed by a tool-call/tool-result pair is active")
+    func turnActiveAfterToolCall() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "turn-active") { database in
+            try insertBlob(into: database, id: "b1", json: """
+            {"role":"system","content":[]}
+            """)
+            try insertBlob(into: database, id: "b2", json: """
+            {"role":"user","content":[{"type":"environment","value":"cwd"}]}
+            """)
+            try insertBlob(into: database, id: "b3", json: """
+            {"role":"user","content":[{"type":"text","text":"do the thing"}]}
+            """)
+            try insertBlob(into: database, id: "b4", json: """
+            {"role":"assistant","content":[{"type":"tool-call","toolName":"bash"}]}
+            """)
+            try insertBlob(into: database, id: "b5", json: """
+            {"role":"tool","content":[{"type":"tool-result","toolName":"bash"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "turn-active",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "turn-active#3")
+        #expect(snapshot.turn?.phase == .active)
+    }
+
+    @Test("an assistant text reply with no tool-call completes the turn")
+    func turnCompletedAfterAssistantText() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "turn-completed") { database in
+            try insertBlob(into: database, id: "b1", json: """
+            {"role":"system","content":[]}
+            """)
+            try insertBlob(into: database, id: "b2", json: """
+            {"role":"user","content":[{"type":"text","text":"do the thing"}]}
+            """)
+            try insertBlob(into: database, id: "b3", json: """
+            {"role":"assistant","content":[{"type":"tool-call","toolName":"bash"}]}
+            """)
+            try insertBlob(into: database, id: "b4", json: """
+            {"role":"tool","content":[{"type":"tool-result","toolName":"bash"}]}
+            """)
+            try insertBlob(into: database, id: "b5", json: """
+            {"role":"assistant","content":[{"type":"text","text":"done"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "turn-completed",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "turn-completed#2")
+        #expect(snapshot.turn?.phase == .completed)
+    }
+
+    @Test("a context-only user blob with no text element yields no turn")
+    func contextOnlyBlobYieldsNilTurn() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "context-only") { database in
+            try insertBlob(into: database, id: "b1", json: """
+            {"role":"system","content":[]}
+            """)
+            try insertBlob(into: database, id: "b2", json: """
+            {"role":"user","content":[{"type":"environment","value":"cwd"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "context-only",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn == nil)
+    }
+
+    @Test("the newer of two prompts wins, with a distinct key from the older one's")
+    func newerPromptWinsWithDistinctKey() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "two-prompts") { database in
+            try insertBlob(into: database, id: "b1", json: """
+            {"role":"system","content":[]}
+            """)
+            try insertBlob(into: database, id: "b2", json: """
+            {"role":"user","content":[{"type":"text","text":"first"}]}
+            """)
+            try insertBlob(into: database, id: "b3", json: """
+            {"role":"assistant","content":[{"type":"text","text":"done with first"}]}
+            """)
+            try insertBlob(into: database, id: "b4", json: """
+            {"role":"user","content":[{"type":"text","text":"second"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "two-prompts",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "two-prompts#4")
+        #expect(snapshot.turn?.key != "two-prompts#2")
+        #expect(snapshot.turn?.phase == .active)
+    }
+
+    @Test("identical prompt text at different rowids yields distinct turn keys")
+    func identicalPromptTextYieldsDistinctKeys() {
+        let promptData = Data("""
+        {"role":"user","content":[{"type":"text","text":"same text"}]}
+        """.utf8)
+
+        let older = CursorSessionInspector.turn(
+            blobs: [(rowid: 2, data: promptData)],
+            conversationID: "conv"
+        )
+        let newer = CursorSessionInspector.turn(
+            blobs: [(rowid: 7, data: promptData)],
+            conversationID: "conv"
+        )
+        #expect(older?.key == "conv#2")
+        #expect(newer?.key == "conv#7")
+        #expect(older?.key != newer?.key)
+    }
+
+    @Test("a message blob with a binary prefix before the JSON still parses for turn detection")
+    func binaryPrefixedMessageBlobParses() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "prefixed") { database in
+            var promptBytes = Data([0x00, 0x01, 0xFF, 0x02])
+            promptBytes.append(Data("""
+            {"role":"user","content":[{"type":"text","text":"do the thing"}]}
+            """.utf8))
+            try insertBlobData(into: database, id: "b1", data: promptBytes)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "prefixed",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "prefixed#1")
+        #expect(snapshot.turn?.phase == .active)
+    }
+
+    @Test("malformed or non-JSON blobs are skipped rather than failing the read")
+    func malformedBlobsAreSkipped() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "malformed") { database in
+            try insertBlob(into: database, id: "garbage1", json: "not json at all")
+            try insertBlobData(
+                into: database,
+                id: "garbage2",
+                data: Data([0x00, 0x01, 0x02, 0x03])
+            )
+            try insertBlob(into: database, id: "prompt", json: """
+            {"role":"user","content":[{"type":"text","text":"do the thing"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "malformed",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "malformed#3")
+        #expect(snapshot.turn?.phase == .active)
+    }
+
+    @Test("more blobs than the scan cap still reports the newest turn")
+    func scanBoundStillReportsNewestTurn() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fillerCount = CursorSessionInspector.maximumScannedBlobs + 50
+        try makeConversation(cursorHome: cursorHome, sessionID: "bounded") { database in
+            for index in 0..<fillerCount {
+                try insertBlob(into: database, id: "filler-\(index)", json: """
+                {"role":"system","content":[]}
+                """)
+            }
+            try insertBlob(into: database, id: "prompt", json: """
+            {"role":"user","content":[{"type":"text","text":"do the thing"}]}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "bounded",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.turn?.key == "bounded#\(fillerCount + 1)")
+        #expect(snapshot.turn?.phase == .active)
+    }
+
+    // MARK: - Mode
+
+    @Test("meta.mode = plan yields mode plan")
+    func metaModePlan() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-plan") { database in
+            try insertMetaRow(into: database, json: """
+            {"agentId":"a","mode":"plan","isRunEverything":false}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "mode-plan",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.mode == "plan")
+    }
+
+    @Test("a hex-transcribed meta row yields its mode")
+    func metaModeHexEncoded() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // How real Cursor databases store the row: the JSON's bytes
+        // written out as hex text rather than as the JSON itself.
+        let json = #"{"agentId":"a","mode":"ask","isRunEverything":false}"#
+        let hex = Data(json.utf8).map { String(format: "%02x", $0) }.joined()
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-hex") { database in
+            try insertMetaRow(into: database, json: hex)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "mode-hex",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.mode == "ask")
+    }
+
+    @Test("an unrecognized meta.mode value yields nil")
+    func metaModeUnknownValueYieldsNil() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-unknown") { database in
+            try insertMetaRow(into: database, json: """
+            {"agentId":"a","mode":"yolo"}
+            """)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "mode-unknown",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.mode == nil)
+    }
+
+    @Test("a missing or garbage meta row yields nil mode")
+    func metaModeMissingOrGarbageYieldsNil() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-missing") { _ in
+            // No meta row inserted at all.
+        }
+        #expect(
+            CursorSessionInspector.snapshot(
+                sessionID: "mode-missing",
+                workingDirectory: nil,
+                cursorHome: cursorHome
+            ).mode == nil
+        )
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-garbage") { database in
+            try insertMetaRow(into: database, json: "not json at all")
+        }
+        #expect(
+            CursorSessionInspector.snapshot(
+                sessionID: "mode-garbage",
+                workingDirectory: nil,
+                cursorHome: cursorHome
+            ).mode == nil
+        )
+    }
+
+    @Test("a binary-prefixed meta value still parses")
+    func binaryPrefixedMetaValueParses() throws {
+        let (cursorHome, root) = try makeCursorHome()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try makeConversation(cursorHome: cursorHome, sessionID: "mode-prefixed") { database in
+            var metaBytes = Data([0x00, 0x01, 0xFF, 0x02])
+            metaBytes.append(Data("""
+            {"agentId":"a","mode":"ask"}
+            """.utf8))
+            try insertMetaData(into: database, data: metaBytes)
+        }
+
+        let snapshot = CursorSessionInspector.snapshot(
+            sessionID: "mode-prefixed",
+            workingDirectory: nil,
+            cursorHome: cursorHome
+        )
+        #expect(snapshot.mode == "ask")
+    }
+
     private func encodeVarint(_ value: UInt64) -> [UInt8] {
         var value = value
         var bytes: [UInt8] = []
@@ -514,6 +836,17 @@ struct CursorSessionInspectorTests {
         id: String,
         json: String
     ) throws {
+        try insertBlobData(into: database, id: id, data: Data(json.utf8))
+    }
+
+    /// Like `insertBlob(into:id:json:)`, but takes raw bytes -- used by the
+    /// binary-prefix tests, which need to prepend non-UTF8 bytes ahead of
+    /// the JSON payload the way a real Cursor blob sometimes does.
+    private func insertBlobData(
+        into database: OpaquePointer,
+        id: String,
+        data: Data
+    ) throws {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(
             database,
@@ -528,12 +861,84 @@ struct CursorSessionInspectorTests {
         defer { sqlite3_finalize(statement) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(statement, 1, id, -1, transient)
-        let data = Array(json.utf8)
-        sqlite3_bind_blob(statement, 2, data, Int32(data.count), transient)
+        let bytes = Array(data)
+        sqlite3_bind_blob(statement, 2, bytes, Int32(bytes.count), transient)
         guard sqlite3_step(statement) == SQLITE_DONE else {
             struct StepFailure: Error {}
             throw StepFailure()
         }
+    }
+
+    /// Inserts the conversation's single `meta` row (real `store.db`
+    /// databases carry exactly one) with the given JSON text as its value.
+    private func insertMetaRow(
+        into database: OpaquePointer,
+        json: String
+    ) throws {
+        try insertMetaData(into: database, data: Data(json.utf8))
+    }
+
+    /// Like `insertMetaRow(into:json:)`, but takes raw bytes -- used by the
+    /// binary-prefix test. `meta.value` is declared `TEXT`, but SQLite's
+    /// dynamic typing stores whatever bytes are bound regardless of the
+    /// column's declared affinity, same as a real Cursor database might.
+    private func insertMetaData(
+        into database: OpaquePointer,
+        data: Data
+    ) throws {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT INTO meta (key, value) VALUES (?, ?);",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            struct PrepareFailure: Error {}
+            throw PrepareFailure()
+        }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, "conversation", -1, transient)
+        let bytes = Array(data)
+        sqlite3_bind_blob(statement, 2, bytes, Int32(bytes.count), transient)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            struct StepFailure: Error {}
+            throw StepFailure()
+        }
+    }
+
+    /// A fresh temporary `.cursor` home for a test, alongside its root
+    /// directory (the caller is responsible for removing `root` when done,
+    /// same as every other test in this file).
+    private func makeCursorHome() throws -> (cursorHome: URL, root: URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        return (root.appendingPathComponent(".cursor", isDirectory: true), root)
+    }
+
+    /// Creates a conversation directory (with a fixed, arbitrary
+    /// workspace-hash component -- turn/mode tests never exercise the
+    /// working-directory fallback, only lookup by session ID) and its
+    /// `store.db`, populated by `populate`.
+    private func makeConversation(
+        cursorHome: URL,
+        sessionID: String,
+        populate: (OpaquePointer) throws -> Void
+    ) throws {
+        let conversationDirectory = cursorHome
+            .appendingPathComponent(
+                "chats/workspace-hash/\(sessionID)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: conversationDirectory,
+            withIntermediateDirectories: true
+        )
+        try makeStoreDatabase(
+            at: conversationDirectory.appendingPathComponent("store.db"),
+            populate: populate
+        )
     }
 
     private func exec(_ database: OpaquePointer, _ sql: String) throws {

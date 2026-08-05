@@ -95,6 +95,8 @@ The context meter and the usage-limit meters next to it graph what is left by de
 
 `<slug>` for Claude Code replaces every non-alphanumeric character in the working directory path with `-`. To keep the 0.5-second foreground poll cheap, Claude Code transcript reads are skipped unless the tracked `(mtime, size)` fingerprint changed; the OpenCode, Cursor, and Antigravity lookups share a per-pane cache throttled to once every 5 seconds, invalidated immediately if the hook session ID changes.
 
+The same `store.db` read that yields Cursor's model name and context usage also derives the current prompt turn and the conversation's `mode` (`plan`/`ask`, from `meta`), the same way `ClaudeCodeSessionInspector`/`CodexSessionInspector` derive a turn from their own transcripts (see [Native run estimation](agent-event-protocol.md#native-run-estimation)) and Claude Code's `--permission-mode` from its transcript. A Cursor lead's current mode is what `agent spawn --access inherit` inherits onto a Cursor worker (see [mytty-ctl](mytty-ctl.md)).
+
 Cursor's status-bar dollar cost comes from `GET https://cursor.com/api/usage-summary`'s `individualUsage.onDemand`, but that field only carries a cost for accounts with usage-based pricing enabled — on plan/free accounts it is disabled and Mytty falls back to `POST https://cursor.com/api/dashboard/get-aggregated-usage-events` (same cookie, plus an `Origin: https://cursor.com` header and the usage-summary response's billing-cycle dates as the request window), reading `totalCostCents` as the session cost.
 
 ## Session restoration (resume commands)

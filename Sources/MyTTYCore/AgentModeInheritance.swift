@@ -12,15 +12,15 @@ import Foundation
 /// Argv alone is a snapshot of how the lead was *launched* — a mode
 /// switched interactively at runtime (e.g. Claude Code's shift+tab
 /// permission-mode cycling) never touches argv and is therefore invisible
-/// to argv scanning alone. For providers whose own structured log records
-/// the current mode (currently just Claude Code — see
-/// `ClaudeCodeSessionInspector.permissionMode(from:)`), `inheritedModeArguments`
-/// below falls back to that transcript-derived value when argv has
-/// nothing, rather than scraping the provider's own UI state, which the
-/// rest of Mytty's agent integration deliberately never does (see "Agent
-/// integration model" in `CLAUDE.md`). Argv still wins when it has
-/// something to say: an explicitly launched mode is the strongest signal
-/// available.
+/// to argv scanning alone. For providers whose own local data records the
+/// current mode (Claude Code's transcript — see
+/// `ClaudeCodeSessionInspector.permissionMode(from:)` — and Cursor's
+/// `store.db` — see `CursorSessionInspector.snapshot`), `inheritedModeArguments`
+/// below falls back to that value when argv has nothing, rather than
+/// scraping the provider's own UI state, which the rest of Mytty's agent
+/// integration deliberately never does (see "Agent integration model" in
+/// `CLAUDE.md`). Argv still wins when it has something to say: an
+/// explicitly launched mode is the strongest signal available.
 public enum AgentModeInheritance {
     private struct FlagSpec {
         let names: [String]
@@ -58,15 +58,29 @@ public enum AgentModeInheritance {
     }
 
     /// The `--permission-mode`-shaped flag each provider's own transcript
-    /// can supply a value for, keyed by provider. Only Claude Code has a
-    /// transcript reader today (`ClaudeCodeSessionInspector`), so this map
-    /// has exactly one entry; adding another provider's transcript-derived
-    /// mode later is a matter of supplying its mode reader upstream (the
+    /// (or, for Cursor, `store.db`) can supply a value for, keyed by
+    /// provider. Codex has no such reader — its sandbox/approval mode
+    /// isn't recorded anywhere `CodexSessionInspector` reads — so adding
+    /// one later is a matter of supplying its mode reader upstream (the
     /// caller passing `transcriptPermissionMode:`) and adding its flag
     /// name here — the resolution order below (argv, then transcript,
     /// then the caller's fallback) does not change.
+    ///
+    /// Cursor's inherited mode is asymmetric with Claude's in one respect
+    /// worth calling out: `plan` and `ask` (`CursorSessionInspector
+    /// .knownModes`) are Cursor's *only* two documented modes, and both are
+    /// read-only — there is no Cursor mode that lets a worker edit. So
+    /// `--access inherit` on a Cursor lead currently running either mode
+    /// always yields a worker that cannot edit, exactly like inheriting
+    /// Claude's `plan` mode does. That is not a bug to fix here — a worker
+    /// that can't edit is the correct result of "run with the lead's
+    /// current mode" when the lead's current mode is read-only; the
+    /// asymmetry is simply that Claude Code also has write-capable modes
+    /// (`acceptEdits`, `bypassPermissions`, ...) an inherited mode could
+    /// land on, and Cursor today does not.
     private static let transcriptModeFlagName: [AgentWorkerProvider: String] = [
         .claude: "--permission-mode",
+        .cursor: "--mode",
     ]
 
     /// Resolves the mode flags to splice onto a worker of `provider`:

@@ -467,4 +467,122 @@ struct AgentSessionThrottleCacheTests {
         // 5s window and the session ID didn't change.
         #expect(timedFetchCountForDropped == 1)
     }
+
+    @Test("reuses the timed Cursor snapshot within the lifetime window")
+    @MainActor
+    func timedCursorSnapshotReusesWithinWindow() {
+        let (cache, clock) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let surfaceID = TerminalSurfaceID()
+        var fetchCount = 0
+
+        func fetch() -> CursorConversationSnapshot {
+            fetchCount += 1
+            return CursorConversationSnapshot(
+                status: nil,
+                turn: AgentTurnObservation(key: "conv#1", phase: .active),
+                mode: "plan"
+            )
+        }
+
+        let first = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-1",
+            fetch: fetch
+        )
+        clock.value.addTimeInterval(4.9)
+        let second = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-1",
+            fetch: fetch
+        )
+
+        #expect(first == second)
+        #expect(fetchCount == 1)
+    }
+
+    @Test("refetches the Cursor snapshot once the lifetime window elapses")
+    @MainActor
+    func timedCursorSnapshotExpiresAfterLifetime() {
+        let (cache, clock) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let surfaceID = TerminalSurfaceID()
+        var fetchCount = 0
+
+        func fetch() -> CursorConversationSnapshot {
+            fetchCount += 1
+            return CursorConversationSnapshot(
+                status: nil,
+                turn: AgentTurnObservation(key: "conv#\(fetchCount)", phase: .active),
+                mode: nil
+            )
+        }
+
+        let first = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-1",
+            fetch: fetch
+        )
+        clock.value.addTimeInterval(5)
+        let second = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-1",
+            fetch: fetch
+        )
+
+        #expect(fetchCount == 2)
+        #expect(first.turn?.key == "conv#1")
+        #expect(second.turn?.key == "conv#2")
+    }
+
+    @Test("refetches the Cursor snapshot immediately when the hook-reported session ID changes")
+    @MainActor
+    func timedCursorSnapshotInvalidatesOnSessionIDChange() {
+        let (cache, _) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let surfaceID = TerminalSurfaceID()
+        var fetchCount = 0
+
+        func fetch() -> CursorConversationSnapshot {
+            fetchCount += 1
+            return CursorConversationSnapshot(status: nil, turn: nil, mode: nil)
+        }
+
+        _ = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-1",
+            fetch: fetch
+        )
+        _ = cache.timedCursorSnapshot(
+            surfaceID: surfaceID,
+            sessionID: "session-2",
+            fetch: fetch
+        )
+
+        #expect(fetchCount == 2)
+    }
+
+    @Test("purging drops the Cursor snapshot cache for surfaces that are no longer active")
+    @MainActor
+    func purgeDropsInactiveCursorSnapshotCache() {
+        let (cache, _) = makeCache(startingAt: Date(timeIntervalSince1970: 1_000))
+        let keptSurface = TerminalSurfaceID()
+        let droppedSurface = TerminalSurfaceID()
+
+        _ = cache.timedCursorSnapshot(
+            surfaceID: droppedSurface,
+            sessionID: "s",
+            fetch: { CursorConversationSnapshot(status: nil, turn: nil, mode: nil) }
+        )
+
+        cache.purge(activeSurfaceIDs: [keptSurface])
+
+        var fetchCount = 0
+        _ = cache.timedCursorSnapshot(
+            surfaceID: droppedSurface,
+            sessionID: "s",
+            fetch: {
+                fetchCount += 1
+                return CursorConversationSnapshot(status: nil, turn: nil, mode: nil)
+            }
+        )
+        #expect(fetchCount == 1)
+    }
 }
