@@ -359,6 +359,106 @@ struct ControlServerTests {
         #expect(response == .waitResult(state: "succeeded", timedOut: false))
     }
 
+    @Test("events with --after 0 establishes a cursor without replaying history")
+    func eventsEstablishesCursor() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = [
+            Self.makeEventRecord(sequence: 1),
+            Self.makeEventRecord(sequence: 2),
+        ]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .events(afterSequence: 0, timeoutSeconds: 30),
+            to: socketURL,
+            timeoutSeconds: 30
+        )
+        #expect(
+            response == .events(records: [], latestSequence: 2, timedOut: false)
+        )
+        // A fresh cursor must never block or replay -- it answers instantly.
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("events returns records already newer than the cursor immediately")
+    func eventsReturnsImmediatelyWhenRecordsExist() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = [
+            Self.makeEventRecord(sequence: 1),
+            Self.makeEventRecord(sequence: 2),
+            Self.makeEventRecord(sequence: 3),
+        ]
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let start = Date()
+        let response = try await perform(
+            .events(afterSequence: 1, timeoutSeconds: 30),
+            to: socketURL,
+            timeoutSeconds: 30
+        )
+        #expect(response == .events(
+            records: [
+                Self.makeEventRecord(sequence: 2),
+                Self.makeEventRecord(sequence: 3),
+            ],
+            latestSequence: 3,
+            timedOut: false
+        ))
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
+
+    @Test("events blocks until a record arrives after the cursor, then delivers it")
+    func eventsBlocksThenDelivers() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = []
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        // Mutate the delegate's ledger view from a detached task shortly
+        // after the poll loop starts -- the same "flip the observed state
+        // partway through" shape `waitTimesOut`'s siblings would use if
+        // they needed it; here the mutation has to happen off-thread since
+        // `perform` blocks this test's task until the server replies.
+        let cursor: UInt64 = 5
+        Task.detached {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await MainActor.run {
+                delegate.eventRecords = [Self.makeEventRecord(sequence: cursor + 1)]
+            }
+        }
+
+        let response = try await perform(
+            .events(afterSequence: cursor, timeoutSeconds: 10),
+            to: socketURL,
+            timeoutSeconds: 10
+        )
+        #expect(response == .events(
+            records: [Self.makeEventRecord(sequence: cursor + 1)],
+            latestSequence: cursor + 1,
+            timedOut: false
+        ))
+    }
+
+    @Test("events times out with an empty list and timedOut true")
+    func eventsTimesOut() async throws {
+        let delegate = StubControlDelegate()
+        delegate.eventRecords = []
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let response = try await perform(
+            .events(afterSequence: 1, timeoutSeconds: 1),
+            to: socketURL,
+            timeoutSeconds: 1
+        )
+        #expect(
+            response == .events(records: [], latestSequence: 0, timedOut: true)
+        )
+    }
+
     @Test("integration list, enable, and repair route to the delegate")
     func integrationCommands() async throws {
         let delegate = StubControlDelegate()
@@ -816,6 +916,22 @@ struct ControlServerTests {
 
     // MARK: - Helpers
 
+    private static func makeEventRecord(
+        sequence: UInt64,
+        paneID: String = "pane-1"
+    ) -> ControlAgentEventRecord {
+        ControlAgentEventRecord(
+            sequence: sequence,
+            paneID: paneID,
+            provider: "codex",
+            runID: "run-1",
+            kind: "idle",
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+            toolName: nil,
+            synthesized: false
+        )
+    }
+
     private static func makeJob(
         jobID: AgentJobID = AgentJobID(),
         paneID: TerminalSurfaceID = TerminalSurfaceID(),
@@ -1026,6 +1142,18 @@ private final class StubControlDelegate: ControlServerDelegate {
         lastStatusNote = .some(note)
         lastStatusNotePaneID = paneID
         return setStatusNoteResult
+    }
+
+    var eventRecords: [ControlAgentEventRecord] = []
+
+    func controlServer(
+        _ server: ControlServer,
+        eventsAfterSequence sequence: UInt64
+    ) -> (records: [ControlAgentEventRecord], latestSequence: UInt64) {
+        (
+            records: eventRecords.filter { $0.sequence > sequence },
+            latestSequence: eventRecords.map(\.sequence).max() ?? 0
+        )
     }
 
     func controlServer(

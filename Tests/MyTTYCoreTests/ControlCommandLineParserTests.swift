@@ -177,6 +177,72 @@ struct ControlCommandLineParserTests {
         }
     }
 
+    @Test("events defaults --after to 0 and --timeout to 30")
+    func parsesEventsDefaults() throws {
+        #expect(
+            try ControlCommandLineParser.parse(["events"])
+                == .events(afterSequence: 0, timeoutSeconds: 30)
+        )
+    }
+
+    @Test("events parses --after and --timeout")
+    func parsesEventsWithOptions() throws {
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["events", "--after", "42", "--timeout", "10"]
+            ) == .events(afterSequence: 42, timeoutSeconds: 10)
+        )
+    }
+
+    @Test("events clamps --timeout to 600")
+    func eventsClampsTimeout() throws {
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["events", "--timeout", "999999"]
+            ) == .events(afterSequence: 0, timeoutSeconds: 600)
+        )
+    }
+
+    @Test("events rejects a non-numeric or negative --after")
+    func eventsRejectsInvalidAfter() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["events", "--after", "not-a-number"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["events", "--after", "-1"])
+        }
+    }
+
+    @Test("events rejects a non-numeric or negative --timeout")
+    func eventsRejectsInvalidTimeout() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["events", "--timeout", "not-a-number"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["events", "--timeout", "-1"])
+        }
+    }
+
+    @Test("events rejects stray positional arguments")
+    func eventsRejectsExtraArguments() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["events", "extra"])
+        }
+    }
+
+    @Test("waitTimeoutSeconds surfaces the events timeout too")
+    func waitTimeoutSecondsCoversEvents() {
+        #expect(
+            ControlCommandLineParser.waitTimeoutSeconds(
+                for: .events(afterSequence: 5, timeoutSeconds: 45)
+            ) == 45
+        )
+    }
+
     @Test("read, close-pane, and focus each require exactly one pane id")
     func parsesSingleArgumentCommands() throws {
         #expect(

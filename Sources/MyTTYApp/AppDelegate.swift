@@ -45,6 +45,11 @@ enum FloatingPaneCommandAvailability {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var runtime: GhosttyRuntime?
     private var attentionCenter: AttentionCenter?
+    /// Backs `mytty-ctl events`'s long-poll fan-in -- see
+    /// `receiveAgentEvent` (which feeds it) and `ControlCoordinator` (which
+    /// reads it to answer `ControlServer`). Created eagerly, unlike
+    /// `attentionCenter`, since it needs no on-disk state to start from.
+    private let controlEventLedger = ControlEventLedger()
     private var agentEventServer: AgentEventServer?
     private var controlCoordinator: ControlCoordinator?
     private var remoteAccessCoordinator: RemoteAccessCoordinator?
@@ -881,6 +886,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             socketURL: paths.aiControlSocket,
             windowSessionCoordinator: windowSessionCoordinator,
             attentionCenter: attentionCenter,
+            controlEventLedger: controlEventLedger,
             localizerProvider: { [weak self] in
                 self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
             },
@@ -1405,6 +1411,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let inserted = try attentionCenter.append(event)
         if inserted {
             updateAgentSleepPrevention()
+            // Only genuinely new events, matching AttentionCenter.append's
+            // own dedup -- a duplicate hook delivery must not mint a new
+            // `events` cursor entry for something a listener already saw.
+            controlEventLedger.append(event)
         }
         guard inserted,
               let item = attentionCenter.items.first(where: {

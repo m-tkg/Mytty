@@ -54,6 +54,8 @@ struct ControlProtocolTests {
             .focus(paneID: "pane-1"),
             .setPaneStatus(paneID: "pane-1", status: "running tests"),
             .setPaneStatus(paneID: "pane-1", status: nil),
+            .events(afterSequence: 0, timeoutSeconds: 30),
+            .events(afterSequence: 42, timeoutSeconds: 600),
             .spawnAgent(
                 anchorPaneID: "pane-1",
                 direction: .right,
@@ -143,6 +145,24 @@ struct ControlProtocolTests {
             ),
             .waitResult(state: "idle", timedOut: false),
             .waitResult(state: nil, timedOut: true),
+            .events(records: [], latestSequence: 0, timedOut: false),
+            .events(
+                records: [
+                    ControlAgentEventRecord(
+                        sequence: 1,
+                        paneID: "pane-1",
+                        provider: "codex",
+                        runID: "run-1",
+                        kind: "idle",
+                        occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
+                        toolName: "Bash",
+                        synthesized: true
+                    ),
+                ],
+                latestSequence: 1,
+                timedOut: false
+            ),
+            .events(records: [], latestSequence: 7, timedOut: true),
             .failure(code: "pane-not-found"),
             .integrationStatuses([
                 ControlIntegrationInfo(

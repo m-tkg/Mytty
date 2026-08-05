@@ -169,6 +169,21 @@ public enum ControlRequest: Equatable, Sendable {
     /// pane's run starts or ends. `status: nil` clears an earlier report.
     case setPaneStatus(paneID: String, status: String?)
 
+    /// Long-poll fan-in over every pane's agent events, for an
+    /// orchestrator watching several workers at once: one `events` call
+    /// replaces one `wait`/`agent wait` per pane. `afterSequence` is a
+    /// cursor from a previous `ControlResponse.events.latestSequence`; `0`
+    /// (the default for a first call) deliberately returns no history —
+    /// it only establishes a cursor at the current tip, so a fresh
+    /// listener doesn't replay everything that happened before it started
+    /// watching. A nonzero `afterSequence` with newer events retained
+    /// returns them immediately; otherwise the request blocks until a new
+    /// event arrives or `timeoutSeconds` elapses. `ControlEventLedger`
+    /// retains at most 1000 records, so a cursor that goes stale long
+    /// enough (a listener that stopped polling for a while) can silently
+    /// skip evicted history — see `ControlEventLedger.records(after:)`.
+    case events(afterSequence: UInt64, timeoutSeconds: Double)
+
     /// Creates a new worker pane split off `anchorPaneID`, launches
     /// `provider` in it with `access` and `task` as one shell input, and
     /// returns an `AgentJobID` an orchestrator can `waitAgent`/`sendAgent`/
@@ -216,6 +231,16 @@ public enum ControlResponse: Equatable, Sendable {
     case ok
     case content(ControlPaneContent)
     case waitResult(state: String?, timedOut: Bool)
+    /// Answer to `events`: `records` newer than the request's
+    /// `afterSequence` (empty when establishing a cursor, or when the
+    /// poll timed out), `latestSequence` the fresh cursor to pass as the
+    /// next call's `--after`, and `timedOut` true only when the deadline
+    /// was reached without a new event arriving.
+    case events(
+        records: [ControlAgentEventRecord],
+        latestSequence: UInt64,
+        timedOut: Bool
+    )
     case failure(code: String)
 
     case agentJob(AgentJobSnapshot)
@@ -240,6 +265,7 @@ extension ControlRequest: Codable {
         case closePane
         case focus
         case setPaneStatus
+        case events
         case spawnAgent
         case waitAgent
         case agentResult
@@ -272,6 +298,7 @@ extension ControlRequest: Codable {
         case jobID
         case command
         case status
+        case afterSequence
     }
 
     public init(from decoder: Decoder) throws {
@@ -355,6 +382,17 @@ extension ControlRequest: Codable {
                 status: try container.decodeIfPresent(
                     String.self,
                     forKey: .status
+                )
+            )
+        case .events:
+            self = .events(
+                afterSequence: try container.decode(
+                    UInt64.self,
+                    forKey: .afterSequence
+                ),
+                timeoutSeconds: try container.decode(
+                    Double.self,
+                    forKey: .timeoutSeconds
                 )
             )
         case .spawnAgent:
@@ -490,6 +528,10 @@ extension ControlRequest: Codable {
             try container.encode(RequestType.setPaneStatus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
             try container.encodeIfPresent(status, forKey: .status)
+        case let .events(afterSequence, timeoutSeconds):
+            try container.encode(RequestType.events, forKey: .type)
+            try container.encode(afterSequence, forKey: .afterSequence)
+            try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
         case let .spawnAgent(
             anchorPaneID, direction, provider, cwd, access, model, task, label
         ):
@@ -540,6 +582,7 @@ extension ControlResponse: Codable {
         case ok
         case content
         case waitResult
+        case events
         case failure
         case agentJob
         case agentWaitResult
@@ -557,6 +600,8 @@ extension ControlResponse: Codable {
         case code
         case job
         case integrations
+        case records
+        case latestSequence
     }
 
     public init(from decoder: Decoder) throws {
@@ -585,6 +630,18 @@ extension ControlResponse: Codable {
                 state: try container.decodeIfPresent(
                     String.self,
                     forKey: .state
+                ),
+                timedOut: try container.decode(Bool.self, forKey: .timedOut)
+            )
+        case .events:
+            self = .events(
+                records: try container.decode(
+                    [ControlAgentEventRecord].self,
+                    forKey: .records
+                ),
+                latestSequence: try container.decode(
+                    UInt64.self,
+                    forKey: .latestSequence
                 ),
                 timedOut: try container.decode(Bool.self, forKey: .timedOut)
             )
@@ -642,6 +699,11 @@ extension ControlResponse: Codable {
         case let .waitResult(state, timedOut):
             try container.encode(ResponseType.waitResult, forKey: .type)
             try container.encodeIfPresent(state, forKey: .state)
+            try container.encode(timedOut, forKey: .timedOut)
+        case let .events(records, latestSequence, timedOut):
+            try container.encode(ResponseType.events, forKey: .type)
+            try container.encode(records, forKey: .records)
+            try container.encode(latestSequence, forKey: .latestSequence)
             try container.encode(timedOut, forKey: .timedOut)
         case let .failure(code):
             try container.encode(ResponseType.failure, forKey: .type)

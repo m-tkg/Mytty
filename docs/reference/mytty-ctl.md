@@ -68,6 +68,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
 | `status` | `(<text> \| --clear) [--pane <pane-id>]` | `{"type":"ok"}` |
 | `wait` | `<pane-id> --until <idle\|attention> [--timeout-seconds <n>]` | `{"type":"waitResult","state":"...","timedOut":false}` |
+| `events` | `[--after <seq>] [--timeout <seconds>]` | `{"type":"events","records":[...],"latestSequence":7,"timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 
@@ -357,6 +358,46 @@ mytty-ctl wait "$paneA" --until attention --timeout-seconds 600
 
 `--timeout-seconds` defaults to `120`. `state` is the `AgentRunState` observed when the wait resolved (or `null` if no event has ever arrived for that pane); `timedOut` is `true` if the deadline was reached without the condition being satisfied. `--until idle` works even without the pane's provider having its hook integration installed, since Mytty estimates the run's lifecycle natively. A pane already running an agent whose hook integration isn't installed fails an `--until attention` wait immediately with `provider-integration-not-installed` instead of blocking. See [wait semantics](#wait-semantics) below.
 
+### events
+
+Long-poll fan-in over every pane's agent events, for an orchestrator watching several workers at once -- one `events` call in a loop replaces one `wait`/`agent wait` per pane run in parallel background shells.
+
+```bash
+mytty-ctl events                                    # establish a cursor, no history
+mytty-ctl events --after 7 --timeout 60             # block for the next event(s)
+```
+
+```json
+{
+  "type": "events",
+  "records": [
+    {
+      "sequence": 8,
+      "paneID": "...",
+      "provider": "codex",
+      "runID": "...",
+      "kind": "approval-requested",
+      "occurredAt": "2026-01-01T00:00:00Z",
+      "toolName": "shell",
+      "synthesized": false
+    }
+  ],
+  "latestSequence": 8,
+  "timedOut": false
+}
+```
+
+`--after` defaults to `0`, which deliberately returns no `records` -- it only hands back the current `latestSequence` so a caller can start watching from "now" without replaying everything that already happened. Pass that value (or any later `latestSequence` from a previous response) as the next call's `--after`: if events are already retained past that cursor they come back immediately, otherwise the request blocks until at least one new event lands on any pane or `--timeout` elapses. `--timeout` defaults to `30` seconds and clamps to `600`; a timed-out response carries an empty `records` list, `timedOut: true`, and the same `latestSequence` -- poll again with it rather than treating the timeout as an error. `records[].paneID`/`runID` are the same UUID-string forms `list`/`agent` responses use; `kind` is an `AgentEventKind` raw value; `synthesized` is `true` when mytty produced the event itself (native run estimation, Cursor's approval-pending estimate) rather than the provider's own hooks. The underlying ledger retains at most 1000 records app-wide, so a cursor that goes stale long enough silently skips whatever fell off the back instead of failing -- `events` is at-most-once delivery of retained history, not a guaranteed replay log.
+
+```bash
+cursor=$(mytty-ctl events | jq -r '.latestSequence')
+while true; do
+  response=$(mytty-ctl events --after "$cursor" --timeout 60)
+  cursor=$(echo "$response" | jq -r '.latestSequence')
+  echo "$response" | jq -c '.records[]'   # act on each new event
+done
+```
+
 ### close-pane
 
 Closes a pane immediately, with no confirmation dialog. The caller is assumed to be an automated agent, not a human clicking Close.
@@ -437,6 +478,7 @@ The job registry lives only in the running app's memory; it is not persisted. A 
 ## See also
 
 - [Orchestrate a team of agents with mytty-ctl](../how-to/orchestrate-agents-with-mytty-ctl.md) walks through staged multi-worker examples built on the `agent` commands.
+- `mytty-ctl guide`'s "WATCHING SEVERAL WORKERS AT ONCE" section has the same `events` cursor loop shown above, written for an agent reading the CLI's own built-in manual.
 - [mytty-ctl architecture](../explanation/mytty-ctl-architecture.md) explains why the control socket needs no setup and how job/run binding works underneath `agent wait`.
 - [Agent providers](agent-providers.md) covers which providers expose approval/input events, relevant to `wait --until attention`.
 - [Agent event protocol](agent-event-protocol.md) documents the `AgentProvider` and `AgentRunState` values surfaced in `list` and `wait`.
