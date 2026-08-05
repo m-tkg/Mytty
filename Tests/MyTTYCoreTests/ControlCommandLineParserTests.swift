@@ -390,7 +390,8 @@ struct ControlCommandLineParserTests {
             access: .workspaceWrite,
             model: nil,
             task: "investigate",
-            label: nil
+            label: nil,
+            worktreeBranch: nil
         ))
     }
 
@@ -407,6 +408,7 @@ struct ControlCommandLineParserTests {
                 "--model", "sonnet",
                 "--task", "review the diff",
                 "--label", "review-a",
+                "--worktree", "feat/review-a",
             ],
             environment: [:]
         )
@@ -418,7 +420,8 @@ struct ControlCommandLineParserTests {
             access: .review,
             model: "sonnet",
             task: "review the diff",
-            label: "review-a"
+            label: "review-a",
+            worktreeBranch: "feat/review-a"
         ))
     }
 
@@ -441,7 +444,8 @@ struct ControlCommandLineParserTests {
             access: .inherit,
             model: nil,
             task: "pair on the fix",
-            label: nil
+            label: nil,
+            worktreeBranch: nil
         ))
     }
 
@@ -455,11 +459,96 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, _, model, _, _) = request else {
+        guard case let .spawnAgent(_, _, _, _, _, model, _, _, _) = request
+        else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }
         #expect(model == nil)
+    }
+
+    @Test("agent spawn --worktree is optional and defaults to nil")
+    func agentSpawnWorktreeDefaultsToNil() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(
+            _, _, _, _, _, _, _, _, worktreeBranch
+        ) = request else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(worktreeBranch == nil)
+    }
+
+    @Test("agent spawn rejects an invalid --worktree branch")
+    func agentSpawnRejectsInvalidWorktreeBranch() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--task", "x", "--worktree", "-bad",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--task", "x", "--worktree", "",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn --worktree requires a value")
+    func agentSpawnWorktreeRequiresValue() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--task", "x", "--worktree",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn --worktree works with --task-file too")
+    func agentSpawnWorktreeWithTaskFile() throws {
+        let invocation = try ControlCommandLineParser.parseInvocation(
+            [
+                "agent", "spawn",
+                "--anchor", "pane-1",
+                "--provider", "cursor",
+                "--task-file", "/tmp/does-not-exist-anywhere.txt",
+                "--worktree", "feat/worker-a",
+            ],
+            environment: [:]
+        )
+        guard case let .agentSpawnPendingTaskFile(pending) = invocation else {
+            Issue.record("expected .agentSpawnPendingTaskFile, got \(invocation)")
+            return
+        }
+        #expect(pending.worktreeBranch == "feat/worker-a")
+        let request = try ControlCommandLineParser.spawnAgentRequest(
+            from: pending,
+            task: "do it"
+        )
+        guard case let .spawnAgent(
+            _, _, _, _, _, _, _, _, worktreeBranch
+        ) = request else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(worktreeBranch == "feat/worker-a")
     }
 
     @Test("agent spawn requires --anchor or MYTTY_SURFACE_ID")
@@ -571,6 +660,7 @@ struct ControlCommandLineParserTests {
                 access: .review,
                 model: nil,
                 label: "investigate-b",
+                worktreeBranch: nil,
                 taskFilePath: "/tmp/does-not-exist-anywhere.txt"
             )
         ))
@@ -586,6 +676,7 @@ struct ControlCommandLineParserTests {
             access: .workspaceWrite,
             model: "gpt-5.2",
             label: nil,
+            worktreeBranch: nil,
             taskFilePath: "/tmp/task.txt"
         )
         #expect(throws: ControlCommandLineError.self) {
@@ -606,7 +697,8 @@ struct ControlCommandLineParserTests {
             access: .workspaceWrite,
             model: "gpt-5.2",
             task: "do it",
-            label: nil
+            label: nil,
+            worktreeBranch: nil
         ))
     }
 

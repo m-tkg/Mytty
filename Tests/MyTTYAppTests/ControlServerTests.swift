@@ -555,7 +555,8 @@ struct ControlServerTests {
                 access: .workspaceWrite,
                 model: "gpt-5.2",
                 task: "investigate",
-                label: "investigate-a"
+                label: "investigate-a",
+                worktreeBranch: nil
             ),
             to: socketURL
         )
@@ -573,6 +574,9 @@ struct ControlServerTests {
             "invalid-model",
             "invalid-task",
             "inherit-unavailable",
+            "not-a-git-repository",
+            "worktree-create-failed",
+            "invalid-worktree-branch",
         ] {
             agentDelegate.spawnResult = .failure(AgentControlFailure(code))
             let failureResponse = try await perform(
@@ -584,7 +588,8 @@ struct ControlServerTests {
                     access: .workspaceWrite,
                     model: nil,
                     task: "investigate",
-                    label: nil
+                    label: nil,
+                    worktreeBranch: nil
                 ),
                 to: socketURL
             )
@@ -613,12 +618,43 @@ struct ControlServerTests {
                 access: .workspaceWrite,
                 model: nil,
                 task: "investigate",
-                label: nil
+                label: nil,
+                worktreeBranch: nil
             ),
             to: socketURL
         )
         #expect(response == .agentJob(job))
         #expect(agentDelegate.lastSpawnModel == nil)
+    }
+
+    @Test("spawnAgent forwards worktreeBranch through the wire protocol")
+    func agentSpawnForwardsWorktreeBranch() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let job = Self.makeJob(state: .launching)
+        agentDelegate.spawnResult = .success(job)
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .right,
+                provider: .codex,
+                cwd: nil,
+                access: .workspaceWrite,
+                model: nil,
+                task: "investigate",
+                label: nil,
+                worktreeBranch: "feat/worker-a"
+            ),
+            to: socketURL
+        )
+        #expect(response == .agentJob(job))
+        #expect(agentDelegate.lastSpawnWorktreeBranch == "feat/worker-a")
     }
 
     @Test("agent wait resolves once running/attention/completed is reached")
@@ -1222,6 +1258,7 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
     var lastSpawnTask: String?
     var lastSpawnLabel: String?
     var lastSpawnModel: String?
+    var lastSpawnWorktreeBranch: String?
     var lastSendText: String?
     var lastSendPressEnter: Bool?
 
@@ -1234,11 +1271,13 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
+        label: String?,
+        worktreeBranch: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         lastSpawnTask = task
         lastSpawnLabel = label
         lastSpawnModel = model
+        lastSpawnWorktreeBranch = worktreeBranch
         return spawnResult
     }
 
@@ -1346,7 +1385,8 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
+        label: String?,
+        worktreeBranch: String?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         .failure(AgentControlFailure("not-implemented"))
     }

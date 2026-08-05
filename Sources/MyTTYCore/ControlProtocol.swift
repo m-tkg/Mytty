@@ -190,6 +190,12 @@ public enum ControlRequest: Equatable, Sendable {
     /// etc. on for that exact spawn — see `AgentJobTracker` for how a job
     /// binds to the run it observes. The high-level counterpart to
     /// `split` + `send`.
+    ///
+    /// `worktreeBranch`, when present, has the worker launch inside a git
+    /// worktree for that branch (created if it doesn't already exist as a
+    /// sibling of the resolved base repository, reused as-is if it's
+    /// already registered) instead of the plain resolved cwd — see
+    /// `docs/reference/mytty-ctl.md`'s `agent spawn --worktree` section.
     case spawnAgent(
         anchorPaneID: String,
         direction: ControlSplitDirection,
@@ -198,7 +204,8 @@ public enum ControlRequest: Equatable, Sendable {
         access: AgentAccessPolicy,
         model: String?,
         task: String,
-        label: String?
+        label: String?,
+        worktreeBranch: String?
     )
     case waitAgent(
         jobID: AgentJobID,
@@ -299,6 +306,7 @@ extension ControlRequest: Codable {
         case command
         case status
         case afterSequence
+        case worktreeBranch
     }
 
     public init(from decoder: Decoder) throws {
@@ -425,6 +433,10 @@ extension ControlRequest: Codable {
                 label: try container.decodeIfPresent(
                     String.self,
                     forKey: .label
+                ),
+                worktreeBranch: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .worktreeBranch
                 )
             )
         case .waitAgent:
@@ -533,7 +545,8 @@ extension ControlRequest: Codable {
             try container.encode(afterSequence, forKey: .afterSequence)
             try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
         case let .spawnAgent(
-            anchorPaneID, direction, provider, cwd, access, model, task, label
+            anchorPaneID, direction, provider, cwd, access, model, task,
+            label, worktreeBranch
         ):
             try container.encode(RequestType.spawnAgent, forKey: .type)
             try container.encode(anchorPaneID, forKey: .anchorPaneID)
@@ -544,6 +557,10 @@ extension ControlRequest: Codable {
             try container.encodeIfPresent(model, forKey: .model)
             try container.encode(task, forKey: .task)
             try container.encodeIfPresent(label, forKey: .label)
+            try container.encodeIfPresent(
+                worktreeBranch,
+                forKey: .worktreeBranch
+            )
         case let .waitAgent(jobID, until, timeoutSeconds):
             try container.encode(RequestType.waitAgent, forKey: .type)
             try container.encode(jobID, forKey: .jobID)

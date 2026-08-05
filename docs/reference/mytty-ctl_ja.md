@@ -50,7 +50,7 @@ mytty-ctl list | jq .
 
 | コマンド | 引数 | 成功時のレスポンス |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
@@ -74,6 +74,8 @@ pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポ�
 ### agent spawn
 
 `--anchor`(デフォルトは `$MYTTY_SURFACE_ID`)を分割して新しいペインを作り、指定した provider を起動します。`--task`(または `--task-file` の内容。ファイルはリクエストを送る前に `mytty-ctl` 自身が読みます)は、起動コマンドと合わせて1回のシェル入力として渡すので、worker の TUI 起動と競合しうる別の `send` は発生しません。`--access` のデフォルトは `workspace-write` です。`review` を指定すると provider を read-only/plan モードで起動します。`inherit` を指定すると、anchor ペインで動いているエージェント(つまり呼び出し元自身のプロセス)の起動フラグからモード関連のフラグを抜き出して worker の起動コマンドに引き継ぎます。自分と同じ provider の worker を、自分と同じ permission/sandbox モードで動かしたいときに使ってください。anchor ペインの前面プロセスが別の provider の場合は `inherit-unavailable` で失敗します。読むのは起動時のフラグだけなので、起動後に対話的に切り替えたモード(Claude Code の shift+tab など)は引き継がれません。`--model` は省略可能で、provider が使うモデルを指定します。値は provider CLI 自身のモデルフラグ(`codex` は `-m <model>`、`claude` と `cursor` は `--model <model>`)にそのまま渡されます。例: `claude` の worker に `--model sonnet`。省略すると provider のデフォルトモデルになります。`--cwd` を省略した場合のデフォルトは、anchor ペインのシェルが報告した作業ディレクトリ(シェル統合が最後に知らせたディレクトリ)であって、呼び出し元プロセス自身の cwd ではありません。ペインのシェルと違うディレクトリで動いている場合 -- たとえば `claude --worktree` で起動すると claude は git worktree に移動しますが、ペインのシェルは元の場所に残ります -- は `--cwd "$PWD"` を明示しないと、worker が worktree ではなく元のチェックアウトで動き出します。すべてのタスクには worker contract(作業ディレクトリの外に出ない、詰まったら止めずに続ける、最後に簡潔な要約で締める、という指示)が自動で追記されます。また、打鍵される起動行の先頭には `HISTFILE` を unset するガード(`hist_ignore_space` 構成向けの行頭スペース付き)が付くので、タスク全文を含む起動コマンドも、その後そのペインのシェルに手で入力したコマンドも `~/.zsh_history` には残りません。
+
+`--worktree <branch>` を指定すると、単に解決済みの `--cwd`/anchor ペインのディレクトリではなく、`<branch>` 用の git worktree の中で worker を起動します。ベースとなるリポジトリは同じディレクトリから解決します(`git -C <dir> rev-parse --show-toplevel`)。worktree の置き場所は `<repo の親ディレクトリ>/<repo 名>-worktrees/<branch>` です(branch 中の `/` はディレクトリ名の部分だけ `-` に置き換わります。例: branch `feat/x` なら `mytty-worktrees/feat-x`)。リポジトリ本体の兄弟ディレクトリになるので、メインのチェックアウト側の `git status` には一切現れません。そのパスが既にそのリポジトリの登録済み worktree であれば、現在どの branch をチェックアウトしているかにかかわらずそのまま再利用します(再 spawn した場合に冪等になります)。そうでない場合、`<branch>` が既存の local branch ならそれをチェックアウトして worktree を作り、存在しなければ現在の `HEAD` から新規に作成します。Mytty が worktree を自動で削除することはありません -- `agent close` でもペインを閉じるだけです -- 未コミットの作業が残っている可能性があるためです。worker の branch をマージまたは破棄したら、ベースリポジトリ側で `git worktree remove <path>` を自分で実行して片付けてください。`not-a-git-repository`、`worktree-create-failed`、`invalid-worktree-branch` については下のエラーコード表を参照してください。
 
 ```bash
 job=$(mytty-ctl agent spawn \
@@ -438,6 +440,9 @@ mytty-ctl focus "$paneA"
 | `invalid-label` | `agent spawn`: `--label` に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
 | `invalid-model` | `agent spawn`: `--model` が空、制御文字か空白を含む、または 100 Unicode スカラー値を超えている |
 | `inherit-unavailable` | `agent spawn`: `--access inherit` を指定したが、anchor ペインの前面プロセスが `--provider` と同じ provider ではない |
+| `invalid-worktree-branch` | `agent spawn --worktree`: branch が空、100 Unicode スカラー値を超えている、または git の branch 名として不正 |
+| `not-a-git-repository` | `agent spawn --worktree`: 解決済みの `--cwd`/anchor ペインのディレクトリが git リポジトリの中にない |
+| `worktree-create-failed` | `agent spawn --worktree`: git が worktree を作成できなかった -- たとえば対象パスがディスク上に存在するが、そのリポジトリに登録済みの worktree ではない場合 |
 | `invalid-status` | `status`: テキストが空、制御文字を含む、または 100 Unicode スカラーを超えている |
 | `invalid-task` | `agent spawn`: 解決後のタスクテキストが空 |
 | `spawn-failed` | `agent spawn`: ペインを作成できなかった |
