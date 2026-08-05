@@ -845,11 +845,27 @@ public struct TerminalPreferencesStore {
     /// misrepresent the literal bytes a terminal shows. Ghostty enables them
     /// by default for fonts that have them (JetBrains Mono, Fira Code, …).
     private static let ligatureOffFeatures = "-calt, -liga, -dlig"
-    /// Appended after the user's font as an explicit fallback so Japanese
-    /// glyphs (notably 「の」) resolve deterministically instead of falling
-    /// through CoreText's system fallback, which can pick a mismatched
-    /// font — especially around launch or display changes.
+    /// Name of the deterministic Japanese fallback font. Earlier Mytty
+    /// versions appended this as a second `font-family` line, which Ghostty
+    /// treats as an ordered fallback *chain* — so a dead primary font (a
+    /// typo, an uninstalled font, a display name CoreText can't match) made
+    /// this font the primary for everything, including Latin text, and
+    /// Hiragino's proportional Latin glyphs stretched the whole grid.
+    /// Scoping it to CJK codepoints via `font-codepoint-map` instead (see
+    /// `japaneseCodepointMapLine`) keeps 「の」 and friends deterministic
+    /// without that failure mode: a dead primary now just falls through to
+    /// Ghostty's built-in monospace default for Latin text.
     private static let japaneseFallbackFontFamily = "Hiragino Sans"
+    private static let fontCodepointMapKey = "font-codepoint-map"
+    /// CJK punctuation, kana + kana extensions, common + rare unified
+    /// ideographs, compatibility ideographs, and full/half-width forms —
+    /// the codepoints the old whole-font fallback existed to cover.
+    private static let japaneseCodepointRanges =
+        "U+3000-U+303F,U+3040-U+309F,U+30A0-U+30FF,U+31F0-U+31FF,"
+            + "U+3400-U+4DBF,U+4E00-U+9FFF,U+F900-U+FAFF,U+FF00-U+FFEF"
+    private static let japaneseCodepointMapLine =
+        "\(fontCodepointMapKey) = \(japaneseCodepointRanges)="
+            + japaneseFallbackFontFamily
     private static let marker = "# Managed by mytty Settings: terminal"
     private static let managedKeys = Set([
         "font-family",
@@ -884,17 +900,30 @@ public struct TerminalPreferencesStore {
         let needsLigatureDefault = document.lastValue(
             for: Self.fontFeatureKey
         ) == nil
-        // A single font-family means no explicit fallback: append the
-        // Japanese fallback after it so 「の」 and friends don't drift to a
-        // mismatched font. Two or more entries mean the user (or an
-        // earlier save) already chose a fallback chain — leave it alone.
+        // Migration: earlier Mytty versions wrote the Japanese fallback as
+        // a second `font-family` line. That exact shape — two entries, the
+        // second being Hiragino Sans, the first something else — is safe
+        // to collapse back to a single primary; 3+ entries or a
+        // user-chosen Hiragino primary are deliberate fallback chains and
+        // are left untouched.
         let fontFamilies = document.values(for: "font-family")
-        let needsFontFallback = fontFamilies.count == 1
+        let needsFontFamilyMigration = fontFamilies.count == 2
+            && fontFamilies[1] == Self.japaneseFallbackFontFamily
             && fontFamilies[0] != Self.japaneseFallbackFontFamily
+
+        // Ensure a codepoint-scoped Japanese fallback exists, regardless of
+        // whether font-family is set at all, so CJK glyphs stay
+        // deterministic without a dead primary font taking over Latin text
+        // too (see japaneseCodepointMapLine).
+        let codepointMaps = document.values(for: Self.fontCodepointMapKey)
+        let needsCodepointMap = !codepointMaps.contains {
+            $0.contains(Self.japaneseFallbackFontFamily)
+        }
 
         guard !Self.shellCursorIsDisabled(in: current)
             || needsLigatureDefault
-            || needsFontFallback
+            || needsFontFamilyMigration
+            || needsCodepointMap
         else { return }
 
         var replacements: [String] = []
@@ -917,12 +946,27 @@ public struct TerminalPreferencesStore {
             keys: keys,
             with: replacements
         )
-        if needsFontFallback {
-            lines = ConfigurationDocument.inserting(
-                "font-family = \(quoted(Self.japaneseFallbackFontFamily))",
-                afterLastAssignmentOf: "font-family",
+        if needsFontFamilyMigration {
+            lines = ConfigurationDocument.removingLastAssignment(
+                of: "font-family",
                 in: lines
             )
+        }
+        if needsCodepointMap {
+            if ConfigurationDocument(lines: lines)
+                .values(for: "font-family").isEmpty
+            {
+                lines = ConfigurationDocument.appending(
+                    Self.japaneseCodepointMapLine,
+                    to: lines
+                )
+            } else {
+                lines = ConfigurationDocument.inserting(
+                    Self.japaneseCodepointMapLine,
+                    afterLastAssignmentOf: "font-family",
+                    in: lines
+                )
+            }
         }
         try write(lines: lines, to: url)
     }
@@ -1011,12 +1055,6 @@ public struct TerminalPreferencesStore {
         var managed: [String] = []
         if !preferences.fontFamily.isEmpty {
             managed.append("font-family = \(quoted(preferences.fontFamily))")
-            if preferences.fontFamily != Self.japaneseFallbackFontFamily {
-                managed.append(
-                    "font-family = "
-                        + quoted(Self.japaneseFallbackFontFamily)
-                )
-            }
         }
         managed.append("font-size = \(decimal(preferences.fontSize))")
         managed.append("cursor-style = \(preferences.cursorStyle.rawValue)")
@@ -1164,6 +1202,38 @@ private struct ConfigurationDocument {
         }) else { return lines }
         var result = lines
         result.insert(line, at: index + 1)
+        return result
+    }
+
+    /// Removes the last assignment line for `key`, leaving other
+    /// occurrences of `key` (and every other line) untouched. Used to
+    /// migrate away from a line an earlier Mytty version wrote without
+    /// disturbing anything else in the file.
+    static func removingLastAssignment(
+        of key: String,
+        in lines: [String]
+    ) -> [String] {
+        let document = ConfigurationDocument(lines: lines)
+        guard let index = lines.lastIndex(where: {
+            document.assignment($0)?.key == key
+        }) else { return lines }
+        var result = lines
+        result.remove(at: index)
+        return result
+    }
+
+    /// Appends `line` at the end of the document, after trimming trailing
+    /// blank lines, then restores a single trailing blank line — matching
+    /// the normalization `replacingAssignments` already applies. Used when
+    /// there's no anchor key to insert after (e.g. no `font-family` at
+    /// all).
+    static func appending(_ line: String, to lines: [String]) -> [String] {
+        var result = lines
+        while result.last?.isEmpty == true {
+            result.removeLast()
+        }
+        result.append(line)
+        result.append("")
         return result
     }
 

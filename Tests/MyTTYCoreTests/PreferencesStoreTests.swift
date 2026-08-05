@@ -814,7 +814,12 @@ struct PreferencesStoreTests {
         #expect(try store.load(from: harness.terminalConfiguration) == preferences)
     }
 
-    @Test("saves a Japanese fallback font after the primary font")
+    private static let japaneseCodepointMapLine =
+        "font-codepoint-map = U+3000-U+303F,U+3040-U+309F,U+30A0-U+30FF,"
+            + "U+31F0-U+31FF,U+3400-U+4DBF,U+4E00-U+9FFF,U+F900-U+FAFF,"
+            + "U+FF00-U+FFEF=Hiragino Sans"
+
+    @Test("save writes a single font-family line and leaves codepoint-map alone")
     func japaneseFallbackOnSave() throws {
         let harness = try Harness()
         defer { harness.remove() }
@@ -829,16 +834,19 @@ struct PreferencesStoreTests {
         )
         let lines = contents.components(separatedBy: "\n")
         let fontLines = lines.filter { $0.hasPrefix("font-family") }
-        #expect(fontLines == [
-            "font-family = \"JetBrains Mono NL\"",
-            "font-family = \"Hiragino Sans\"",
-        ])
-        // The fallback never masquerades as the user's chosen font.
+        #expect(fontLines == ["font-family = \"JetBrains Mono NL\""])
+        #expect(!contents.contains("font-codepoint-map"))
         let loaded = try store.load(from: harness.terminalConfiguration)
         #expect(loaded.fontFamily == "JetBrains Mono NL")
 
-        // A Hiragino primary doesn't get a duplicate fallback entry.
-        preferences.fontFamily = "Hiragino Sans"
+        // Saving again with the same font doesn't duplicate the line, and
+        // an existing codepoint-map elsewhere in the file survives the
+        // save untouched (save only owns font-family, not codepoint-map).
+        try Self.japaneseCodepointMapLine.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
         try store.save(preferences, to: harness.terminalConfiguration)
         let rewritten = try String(
             contentsOf: harness.terminalConfiguration,
@@ -847,10 +855,15 @@ struct PreferencesStoreTests {
         #expect(
             rewritten.components(separatedBy: "font-family").count == 2
         )
+        #expect(rewritten.contains(Self.japaneseCodepointMapLine))
+        #expect(
+            rewritten.components(separatedBy: "font-codepoint-map").count
+                == 2
+        )
     }
 
-    @Test("launch adds the Japanese fallback after a user's single font")
-    func japaneseFallbackOnLaunch() throws {
+    @Test("launch adds the codepoint-map fallback after a user's single font")
+    func japaneseCodepointMapOnLaunch() throws {
         let harness = try Harness()
         defer { harness.remove() }
         try """
@@ -868,15 +881,36 @@ struct PreferencesStoreTests {
             contentsOf: harness.terminalConfiguration,
             encoding: .utf8
         ).components(separatedBy: "\n")
-        let fontIndexes = lines.indices.filter {
-            lines[$0].hasPrefix("font-family")
-        }
-        // Appended directly after the user's font so the pair reads as one
-        // fallback chain.
-        #expect(fontIndexes.count == 2)
-        #expect(lines[fontIndexes[0]] == "font-family = \"JetBrains Mono\"")
-        #expect(lines[fontIndexes[1]] == "font-family = \"Hiragino Sans\"")
-        #expect(fontIndexes[1] == fontIndexes[0] + 1)
+
+        // The primary font is untouched; the codepoint-map line lands
+        // directly after it.
+        let fontIndex = lines.firstIndex(where: {
+            $0.hasPrefix("font-family")
+        })
+        #expect(fontIndex != nil)
+        #expect(lines[fontIndex!] == "font-family = \"JetBrains Mono\"")
+        #expect(lines[fontIndex! + 1] == Self.japaneseCodepointMapLine)
+        #expect(
+            lines.filter { $0.hasPrefix("font-family") }.count == 1
+        )
+        #expect(
+            lines.filter { $0.hasPrefix("font-codepoint-map") }.count == 1
+        )
+
+        // Idempotent: a second launch doesn't add another codepoint-map.
+        let prepared = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        #expect(
+            try String(
+                contentsOf: harness.terminalConfiguration,
+                encoding: .utf8
+            ) == prepared
+        )
     }
 
     @Test("launch keeps a user's own fallback font chain untouched")
@@ -899,8 +933,208 @@ struct PreferencesStoreTests {
             contentsOf: harness.terminalConfiguration,
             encoding: .utf8
         )
-        #expect(!contents.contains("Hiragino Sans"))
+        #expect(contents.contains("font-family = \"JetBrains Mono\""))
         #expect(contents.contains("UDEV Gothic NF"))
+        // 3+ font-family entries are a deliberate user chain: no migration.
+        #expect(
+            contents.components(separatedBy: "font-family").count == 3
+        )
+        // The codepoint-map ensure still applies independently.
+        #expect(contents.contains(Self.japaneseCodepointMapLine))
+    }
+
+    @Test("launch migrates the old two-line Hiragino fallback to a codepoint-map")
+    func japaneseFallbackMigratesOldTwoLineFallback() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-family = "JetBrains Mono"
+        font-family = "Hiragino Sans"
+        font-size = 14
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        let lines = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        ).components(separatedBy: "\n")
+
+        // The second font-family line is gone; the primary is untouched
+        // and the codepoint-map takes its place as the Japanese fallback.
+        #expect(
+            lines.filter { $0.hasPrefix("font-family") }
+                == ["font-family = \"JetBrains Mono\""]
+        )
+        #expect(
+            lines.filter { $0.hasPrefix("font-codepoint-map") }
+                == [Self.japaneseCodepointMapLine]
+        )
+    }
+
+    @Test("launch leaves a three-entry font-family chain alone beyond the codepoint-map ensure")
+    func japaneseFallbackLeavesThreeEntryChainAlone() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-family = "JetBrains Mono"
+        font-family = "UDEV Gothic NF"
+        font-family = "Hiragino Sans"
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        let lines = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        ).components(separatedBy: "\n")
+
+        #expect(
+            lines.filter { $0.hasPrefix("font-family") } == [
+                "font-family = \"JetBrains Mono\"",
+                "font-family = \"UDEV Gothic NF\"",
+                "font-family = \"Hiragino Sans\"",
+            ]
+        )
+        #expect(
+            lines.filter { $0.hasPrefix("font-codepoint-map") }
+                == [Self.japaneseCodepointMapLine]
+        )
+    }
+
+    @Test("launch keeps a user-chosen Hiragino primary and still ensures the codepoint-map")
+    func japaneseFallbackKeepsHiraginoAsChosenPrimary() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-family = "Hiragino Sans"
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        let lines = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        ).components(separatedBy: "\n")
+
+        #expect(
+            lines.filter { $0.hasPrefix("font-family") }
+                == ["font-family = \"Hiragino Sans\""]
+        )
+        #expect(
+            lines.filter { $0.hasPrefix("font-codepoint-map") }
+                == [Self.japaneseCodepointMapLine]
+        )
+    }
+
+    @Test("launch ensures the codepoint-map even with no font-family at all")
+    func japaneseFallbackEnsuredWithNoFontFamily() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-size = 14
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        let contents = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(!contents.contains("font-family"))
+        #expect(contents.contains(Self.japaneseCodepointMapLine))
+    }
+
+    @Test("launch adds our codepoint-map alongside a user's unrelated one")
+    func japaneseFallbackAddsAlongsideUserCodepointMap() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-family = "JetBrains Mono"
+        font-codepoint-map = U+E000-U+F8FF=SomeNerdFont
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+        let lines = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        ).components(separatedBy: "\n")
+
+        let codepointMapLines = lines.filter {
+            $0.hasPrefix("font-codepoint-map")
+        }
+        #expect(codepointMapLines.count == 2)
+        #expect(
+            codepointMapLines.contains(
+                "font-codepoint-map = U+E000-U+F8FF=SomeNerdFont"
+            )
+        )
+        #expect(codepointMapLines.contains(Self.japaneseCodepointMapLine))
+    }
+
+    @Test("launch is a true no-op (no write) when everything is already prepared")
+    func japaneseFallbackAlreadyPreparedIsNoWrite() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        shell-integration-features = no-cursor
+        font-feature = -calt, -liga, -dlig
+        font-family = "JetBrains Mono"
+        \(Self.japaneseCodepointMapLine)
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let before = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+
+        // Make the file unwritable: if prepareForLaunch attempted a write
+        // it would throw, proving the guard's early return actually skips
+        // the write rather than merely reproducing the same bytes.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o444],
+            ofItemAtPath: harness.terminalConfiguration.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.terminalConfiguration.path
+            )
+        }
+
+        try TerminalPreferencesStore().prepareForLaunch(
+            at: harness.terminalConfiguration
+        )
+
+        let after = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(after == before)
     }
 
     @Test("uses Ghostty-compatible defaults for empty configuration")
@@ -1082,6 +1316,7 @@ struct PreferencesStoreTests {
             ) == """
             shell-integration-features = no-cursor
             font-feature = -calt, -liga, -dlig
+            \(Self.japaneseCodepointMapLine)
 
             """
         )
