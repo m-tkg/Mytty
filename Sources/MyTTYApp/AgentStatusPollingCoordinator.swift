@@ -56,6 +56,19 @@ final class AgentStatusPollingCoordinator: NSObject {
     private var reportedInterruptions: [
         TerminalSurfaceID: AgentRunInterruption
     ] = [:]
+    /// Reports every surface whose polled foreground provider appeared,
+    /// changed, or disappeared this tick -- feeds
+    /// `NativeAgentRunEstimator.providerChanged` via
+    /// `NativeAgentRunCoordinator`, which needs the transition itself
+    /// (not just "something changed") to know whether to end an epoch,
+    /// start a new one, or both. Fired for every surface that was present
+    /// before and is absent now too, with `provider: nil`, since that's
+    /// how a closed pane or an agent process exiting reaches the estimator.
+    private let onProviderTransition: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider?,
+        _ processID: pid_t?
+    ) -> Void
 
     init(
         surfaces: @escaping () -> [TerminalSurfaceID: GhosttySurfaceView],
@@ -66,6 +79,11 @@ final class AgentStatusPollingCoordinator: NSObject {
             _ surfaceID: TerminalSurfaceID,
             _ provider: AgentProvider,
             _ interruption: AgentRunInterruption
+        ) -> Void = { _, _, _ in },
+        onProviderTransition: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider?,
+            _ processID: pid_t?
         ) -> Void = { _, _, _ in }
     ) {
         self.surfaces = surfaces
@@ -73,6 +91,7 @@ final class AgentStatusPollingCoordinator: NSObject {
         self.workingDirectory = workingDirectory
         self.onPoll = onPoll
         self.onInterruptedRun = onInterruptedRun
+        self.onProviderTransition = onProviderTransition
         super.init()
     }
 
@@ -148,7 +167,23 @@ final class AgentStatusPollingCoordinator: NSObject {
                 workingDirectories[surfaceID] = agentDirectory.standardizedFileURL
             }
         }
+
         let providersChanged = providers != providersBySurface
+        // Every surface whose provider mapping is different this tick,
+        // including a surface that had a provider before and has none now
+        // (closed pane, or the agent process exited) -- computed here,
+        // where both the old and new dictionaries are still in scope,
+        // rather than reconstructed from the post-assignment state below.
+        if providersChanged {
+            for surfaceID in Set(providers.keys).union(providersBySurface.keys)
+            where providers[surfaceID] != providersBySurface[surfaceID] {
+                let processID = providers[surfaceID] != nil
+                    ? currentSurfaces[surfaceID]?.foregroundProcessID
+                    : nil
+                onProviderTransition(surfaceID, providers[surfaceID], processID)
+            }
+        }
+
         let workingDirectoriesChanged = workingDirectories != workingDirectoriesBySurface
         guard providersChanged || workingDirectoriesChanged else { return false }
         providersBySurface = providers

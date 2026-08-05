@@ -41,19 +41,42 @@ final class WindowSessionCoordinator {
     private let presentActionError: (Error) -> Void
     private let broadcastSnapshot: () -> Void
     private let closeSettingsIfNeeded: (Int) -> Void
+    /// Forwarded, unmodified, to every `TerminalWindowController` this
+    /// coordinator creates -- see `AppDelegate.nativeAgentRunCoordinator`
+    /// for what ultimately consumes these two.
+    private let onNativeProviderTransition: (
+        _ surfaceID: TerminalSurfaceID,
+        _ provider: AgentProvider?,
+        _ processID: pid_t?
+    ) -> Void
+    private let onNativeCommandFinished: (
+        _ surfaceID: TerminalSurfaceID,
+        _ exitCode: Int?
+    ) -> Void
 
     init(
         updateAgentSleepPrevention: @escaping () -> Void,
         setAgentSleepPreventionMode: @escaping (AgentSleepPreventionMode) -> Void,
         presentActionError: @escaping (Error) -> Void,
         broadcastSnapshot: @escaping () -> Void,
-        closeSettingsIfNeeded: @escaping (Int) -> Void
+        closeSettingsIfNeeded: @escaping (Int) -> Void,
+        onNativeProviderTransition: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ provider: AgentProvider?,
+            _ processID: pid_t?
+        ) -> Void = { _, _, _ in },
+        onNativeCommandFinished: @escaping (
+            _ surfaceID: TerminalSurfaceID,
+            _ exitCode: Int?
+        ) -> Void = { _, _ in }
     ) {
         self.updateAgentSleepPrevention = updateAgentSleepPrevention
         self.setAgentSleepPreventionMode = setAgentSleepPreventionMode
         self.presentActionError = presentActionError
         self.broadcastSnapshot = broadcastSnapshot
         self.closeSettingsIfNeeded = closeSettingsIfNeeded
+        self.onNativeProviderTransition = onNativeProviderTransition
+        self.onNativeCommandFinished = onNativeCommandFinished
     }
 
     var activeController: TerminalWindowController? {
@@ -230,6 +253,12 @@ final class WindowSessionCoordinator {
                     tabID: tabID,
                     endedAt: screenPoint
                 )
+            },
+            onNativeProviderTransition: { [weak self] surfaceID, provider, processID in
+                self?.onNativeProviderTransition(surfaceID, provider, processID)
+            },
+            onNativeCommandFinished: { [weak self] surfaceID, exitCode in
+                self?.onNativeCommandFinished(surfaceID, exitCode)
             }
         )
         controllers.append(controller)
