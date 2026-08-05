@@ -474,6 +474,63 @@ struct AttentionCenterTests {
         #expect(try harness.repository.loadEvents().count == eventCountAfterFirstSweep)
         #expect(center.runs[runID]?.state == .disconnected)
     }
+
+    @Test("a single sweep call closes out every stale run left non-terminal")
+    @MainActor
+    func sweepInterruptedRunsBatchesMultipleStaleRuns() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+
+        // Three runs left non-terminal by a previous app instance, as if
+        // the process had died mid-turn for each of them independently
+        // (e.g. after a long-neglected log accumulated many stale runs
+        // before the sweep first shipped).
+        let runningRun = AgentRunID()
+        let waitingInputRun = AgentRunID()
+        let waitingApprovalRun = AgentRunID()
+
+        try center.append(harness.event(
+            runID: runningRun,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 1
+        ))
+        try center.append(harness.event(
+            runID: waitingInputRun,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 2
+        ))
+        try center.append(harness.event(
+            runID: waitingInputRun,
+            surfaceID: surfaceID,
+            kind: .inputRequested,
+            at: 3
+        ))
+        try center.append(harness.event(
+            runID: waitingApprovalRun,
+            surfaceID: surfaceID,
+            kind: .started,
+            at: 4
+        ))
+        try center.append(harness.event(
+            runID: waitingApprovalRun,
+            surfaceID: surfaceID,
+            kind: .approvalRequested,
+            at: 5
+        ))
+        #expect(center.runs[runningRun]?.state == .running)
+        #expect(center.runs[waitingInputRun]?.state == .waitingInput)
+        #expect(center.runs[waitingApprovalRun]?.state == .waitingApproval)
+
+        try center.sweepInterruptedRuns(now: Date(timeIntervalSince1970: 100))
+
+        #expect(center.runs[runningRun]?.state == .disconnected)
+        #expect(center.runs[waitingInputRun]?.state == .disconnected)
+        #expect(center.runs[waitingApprovalRun]?.state == .disconnected)
+    }
 }
 
 @MainActor

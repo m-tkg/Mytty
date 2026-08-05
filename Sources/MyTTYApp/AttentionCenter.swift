@@ -187,22 +187,34 @@ final class AttentionCenter: ObservableObject {
     /// force-quit, or SIGKILL can only be dead. Call once at startup, right
     /// after `reload()`, before windows restore, so the status bar never
     /// shows a phantom active agent for a session that can't exist
-    /// anymore. Appends through the normal `append(_:)` path (persistence
-    /// + reload), so it's idempotent the same way any other event is: a
-    /// second sweep of an already-swept run finds it already terminal and
-    /// its deterministic event ID already recorded, so `append` is a
-    /// no-op.
+    /// anymore. Persists each sweep event directly through `repository`
+    /// rather than the normal `append(_:)` path, then reloads once at the
+    /// end -- with a stale-run count in the hundreds (a first launch after
+    /// this sweep shipped, or a long-neglected log), `append(_:)`'s
+    /// per-call `reload()` would replay the entire event log once per
+    /// stale run instead of once total. It's idempotent the same way any
+    /// other event is: a second sweep of an already-swept run finds it
+    /// already terminal and its deterministic event ID already recorded,
+    /// so `repository.append` reports no insertion for it.
     func sweepInterruptedRuns(now: Date = Date()) throws {
         let staleRuns = AgentHookEventAdapter.runsNeedingStartupSweep(
             Array(runs.values)
         )
+        guard !staleRuns.isEmpty else { return }
+
+        var insertedAny = false
         for run in staleRuns {
-            try append(
-                AgentHookEventAdapter.startupSweepEvent(
-                    run: run,
-                    occurredAt: now
-                )
+            let event = AgentHookEventAdapter.startupSweepEvent(
+                run: run,
+                occurredAt: now
             )
+            if try repository.append(event) {
+                expireStatusNote(for: event)
+                insertedAny = true
+            }
+        }
+        if insertedAny {
+            try reload(now: now)
         }
     }
 
