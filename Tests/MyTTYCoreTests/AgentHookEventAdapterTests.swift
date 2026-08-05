@@ -143,6 +143,185 @@ struct AgentHookEventAdapterTests {
         #expect(input?.runID == succeeded?.runID)
     }
 
+    // MARK: - Background agent wait (Claude Code Stop)
+
+    @Test("keeps a run open while one background subagent is still in flight")
+    func stopWithOneRunningBackgroundSubagentStaysRunning() throws {
+        let stop = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop",
+              "background_tasks": [
+                {"id": "bg-1", "type": "subagent", "status": "running", "description": "lint"}
+              ]
+            }
+            """
+        )
+
+        #expect(stop?.kind == .running)
+        #expect(stop?.message == "Waiting for 1 background agent")
+    }
+
+    @Test("pluralizes the wait message for multiple in-flight background subagents")
+    func stopWithMultipleRunningBackgroundSubagentsPluralizesMessage() throws {
+        let stop = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop",
+              "background_tasks": [
+                {"id": "bg-1", "type": "subagent", "status": "running"},
+                {"id": "bg-2", "type": "subagent", "status": "running"}
+              ]
+            }
+            """
+        )
+
+        #expect(stop?.kind == .running)
+        #expect(stop?.message == "Waiting for 2 background agents")
+    }
+
+    @Test("keeps a run open while an in-flight workflow task is still running")
+    func stopWithRunningWorkflowStaysRunning() throws {
+        let stop = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop",
+              "background_tasks": [
+                {"id": "bg-1", "type": "workflow", "status": "running"}
+              ]
+            }
+            """
+        )
+
+        #expect(stop?.kind == .running)
+    }
+
+    @Test(
+        "treats Stop as complete when background_tasks has no in-flight subagent/workflow entry",
+        arguments: [
+            // A running shell task (dev server, `tail -f`) doesn't count --
+            // it can outlive the agent's own work entirely.
+            #"[{"id": "bg-1", "type": "shell", "status": "running"}]"#,
+            // A subagent already reported finished doesn't count.
+            #"[{"id": "bg-1", "type": "subagent", "status": "completed"}]"#,
+            // No background_tasks at all.
+            "[]",
+            "null",
+            // Malformed entries: a bare string, and one missing "type".
+            #"["not-an-object"]"#,
+            #"[{"id": "bg-1", "status": "running"}]"#,
+        ]
+    )
+    func stopWithoutInFlightBackgroundAgentsSucceeds(backgroundTasksJSON: String) throws {
+        let stop = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop",
+              "background_tasks": \(backgroundTasksJSON)
+            }
+            """
+        )
+
+        #expect(stop?.kind == .succeeded)
+    }
+
+    @Test("Stop with no background_tasks field at all still succeeds")
+    func stopWithMissingBackgroundTasksFieldSucceeds() throws {
+        let stop = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop"
+            }
+            """
+        )
+
+        #expect(stop?.kind == .succeeded)
+    }
+
+    @Test("does not map idle_prompt notifications, but keeps agent_needs_input as input-requested")
+    func idlePromptIsNotMappedButAgentNeedsInputIs() throws {
+        let idlePrompt = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Notification",
+              "notification_type": "idle_prompt"
+            }
+            """
+        )
+        let agentNeedsInput = try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Notification",
+              "notification_type": "agent_needs_input"
+            }
+            """
+        )
+
+        #expect(idlePrompt == nil)
+        #expect(agentNeedsInput?.kind == .inputRequested)
+    }
+
+    @Test("a run left running by a background wait stays running until superseded")
+    func backgroundWaitRunStaysRunningUntilSuperseded() throws {
+        let userPromptSubmit = try #require(try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "UserPromptSubmit"
+            }
+            """
+        ))
+        let stop = try #require(try event(
+            provider: .claudeCode,
+            payload: """
+            {
+              "session_id": "claude-session",
+              "prompt_id": "1d97fd10-721e-4d85-bf79-c63b502fa365",
+              "hook_event_name": "Stop",
+              "background_tasks": [
+                {"id": "bg-1", "type": "subagent", "status": "running"}
+              ]
+            }
+            """
+        ))
+
+        let runningRuns = AgentEventReducer.reduce([userPromptSubmit, stop])
+        #expect(runningRuns[userPromptSubmit.runID]?.state == .running)
+
+        let newRun = try #require(makeRun(inState: .running))
+        let supersede = AgentHookEventAdapter.supersededRunSweepEvent(
+            run: try #require(runningRuns[userPromptSubmit.runID]),
+            supersededBy: newRun.id,
+            occurredAt: occurredAt.addingTimeInterval(120)
+        )
+
+        let sweptRuns = AgentEventReducer.reduce([userPromptSubmit, stop, supersede])
+        #expect(sweptRuns[userPromptSubmit.runID]?.state == .idle)
+    }
+
     @Test("captures the tool name on a Claude Code permission request")
     func claudeCodePermissionRequestCapturesToolName() throws {
         let approval = try event(
@@ -845,6 +1024,36 @@ struct AgentHookEventAdapterTests {
         let sweptTwice = AgentEventReducer.reduce([started, sweep, sweep])
         #expect(sweptTwice[runID]?.state == .disconnected)
         #expect(sweptTwice[runID]?.acceptedEventCount == acceptedAfterOneSweep)
+    }
+
+    // MARK: - Superseded run sweep
+
+    @Test("superseded run sweep event is idle, mytty-synthesized, and deterministic per (old run, new run) pair")
+    func supersededRunSweepEventFieldsAndDeterminism() throws {
+        let run = try #require(makeRun(inState: .running))
+        let newRunID = AgentRunID()
+
+        let first = AgentHookEventAdapter.supersededRunSweepEvent(
+            run: run,
+            supersededBy: newRunID,
+            occurredAt: occurredAt
+        )
+        let second = AgentHookEventAdapter.supersededRunSweepEvent(
+            run: run,
+            supersededBy: newRunID,
+            occurredAt: occurredAt.addingTimeInterval(3600)
+        )
+
+        #expect(first.kind == .idle)
+        #expect(first.runID == run.id)
+        #expect(first.surfaceID == run.surfaceID)
+        #expect(first.provider == run.provider)
+        #expect(first.sessionID == run.sessionID)
+        #expect(AgentHookEventAdapter.isMyttySynthesizedHookName(first.hookName))
+        // Deterministic per (old run, new run) pair, not per call/occurredAt
+        // -- re-detecting the same supersession a second time must land on
+        // the same event so replay dedup treats it as a no-op.
+        #expect(first.id == second.id)
     }
 
     /// Builds an `AgentRun` sitting in `state` via the reducer -- `AgentRun`
