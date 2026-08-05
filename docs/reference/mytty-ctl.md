@@ -20,17 +20,13 @@ A debug build (`Mytty Dev`) and a release build each expose their own socket und
 
 ## Using mytty-ctl outside Mytty
 
-The `PATH` entry above only covers panes Mytty itself opened. To call `mytty-ctl` from somewhere else -- another terminal app, a script -- use the "Install CLI" button in Settings > Orchestration. It symlinks the installed binary into `~/.local/bin`, with no admin prompt. If something else already sits at that name (a link pointing elsewhere, or a real file), the button reports a failure instead of silently overwriting it.
-
-If `~/.local/bin` isn't already on your shell's `PATH`, the button shows a line to add after installing:
+The `PATH` entry above only covers panes Mytty itself opened. Mytty doesn't manage a CLI installation for anywhere else, but nothing stops you from setting one up by hand. Run `echo $MYTTY_CTL_BIN` in any Mytty pane to see where the bundled binary lives, then symlink it onto your own `PATH`, e.g.:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+ln -s "$MYTTY_CTL_BIN" ~/.local/bin/mytty-ctl
 ```
 
-Add that to your shell profile (`.zshrc` or similar) and open a new shell, or re-source it, and `mytty-ctl` resolves by name.
-
-A development build (Mytty Dev) installs under a different name, `~/.local/bin/mytty-ctl-dev`, so it never takes over the release build's link.
+That alone isn't enough to run `mytty-ctl` from a plain terminal tab or script, though: outside a Mytty pane there is no `MYTTY_CONTROL_SOCKET` in the environment, so `mytty-ctl` has nothing to connect to. Read that variable's value from inside a pane (`echo $MYTTY_CONTROL_SOCKET`) too, and export it in whatever shell you want to call `mytty-ctl` from.
 
 ## Calling mytty-ctl from inside Codex's sandbox
 

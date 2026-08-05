@@ -2,22 +2,13 @@ import AppKit
 import MyTTYCore
 import SwiftUI
 
-/// Styling for the command line tool "installed" indicator, sourced from the
-/// same mapping as the other installed-state badges so they can't drift apart.
-enum CommandLineToolStatusStyle {
-    static let installedSymbolName = AgentIntegrationStatus.installed.symbolName
-    static let installedTint = AgentIntegrationStatus.installed.color
-}
-
 /// Settings > Orchestration. Gathers everything related to letting an
 /// agent running in a Mytty pane drive `mytty-ctl` to run other agents in
-/// other panes as a team: the CLI symlink (moved here from General), the
-/// "teach agents about Mytty orchestration" toggle (moved here from Agents), a
-/// preview of exactly what that toggle writes, and worked examples of how
-/// to actually ask an agent to do this.
+/// other panes as a team: the "teach agents about Mytty orchestration"
+/// toggle (moved here from Agents), a preview of exactly what that toggle
+/// writes, and worked examples of how to actually ask an agent to do this.
 struct OrchestrationSettingsView: View {
     @ObservedObject var model: AgentIntegrationSettingsModel
-    @ObservedObject var commandLineToolInstall: CommandLineToolInstallModel
     let localizer: MyTTYLocalizer
 
     @State private var isPointerPreviewExpanded = false
@@ -26,11 +17,6 @@ struct OrchestrationSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 overviewRow
-
-                Divider()
-                    .padding(.leading, 44)
-
-                commandLineToolRow
 
                 Divider()
                     .padding(.leading, 44)
@@ -57,7 +43,6 @@ struct OrchestrationSettingsView: View {
         }
         .onAppear {
             model.refresh()
-            commandLineToolInstall.refresh()
         }
     }
 
@@ -77,91 +62,6 @@ struct OrchestrationSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 16)
-    }
-
-    // MARK: - Command line tool
-
-    private var commandLineToolRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                Image(systemName: "terminal")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(localizer[.commandLineTool])
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(
-                        String(
-                            format: localizer[
-                                .orchestrationCommandLineToolDescriptionFormat
-                            ],
-                            commandLineToolInstall.linkName
-                        )
-                    )
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if commandLineToolInstall.isInstalled {
-                    Label {
-                        Text(
-                            String(
-                                format: localizer[.commandLineToolInstalled],
-                                commandLineToolInstall.linkName
-                            )
-                        )
-                        .foregroundStyle(.secondary)
-                    } icon: {
-                        Image(
-                            systemName:
-                                CommandLineToolStatusStyle.installedSymbolName
-                        )
-                        .foregroundStyle(CommandLineToolStatusStyle.installedTint)
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                } else {
-                    Button(localizer[.installCommandLineTool]) {
-                        commandLineToolInstall.install()
-                    }
-                    .disabled(commandLineToolInstall.isUpdating)
-                }
-            }
-            .frame(minHeight: 64)
-
-            if commandLineToolInstall.isUpdating {
-                ProgressView()
-                    .controlSize(.small)
-                    .padding(.leading, 44)
-            } else if let failure = commandLineToolInstall.failure {
-                Text(
-                    String(
-                        format: failure == .conflict
-                            ? localizer[.commandLineToolConflict]
-                            : localizer[.commandLineToolInstallFailed],
-                        commandLineToolInstall.linkName
-                    )
-                )
-                .font(.caption)
-                .foregroundStyle(.red)
-                .padding(.leading, 44)
-            } else if commandLineToolInstall.isInstalled,
-                      commandLineToolInstall.pathHintNeeded {
-                Text(
-                    String(
-                        format: localizer[.commandLineToolPathHint],
-                        commandLineToolInstall.pathExportLine
-                    )
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 44)
-            }
-        }
-        .padding(.vertical, 4)
     }
 
     // MARK: - Agent guidance
@@ -329,25 +229,10 @@ struct OrchestrationSettingsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 exampleRow(
-                    label: localizer[
-                        .orchestrationExampleGuidanceOnCLIInstalledLabel
-                    ],
+                    label: localizer[.orchestrationExampleGuidanceOnLabel],
                     prompt: localizer[.orchestrationExamplePromptGuided],
                     isCurrent: model.paneTeamPointerEnabled
-                        && commandLineToolInstall.isInstalled
                 )
-                exampleRow(
-                    label: localizer[
-                        .orchestrationExampleGuidanceOnCLINotInstalledLabel
-                    ],
-                    prompt: localizer[.orchestrationExamplePromptGuided],
-                    isCurrent: model.paneTeamPointerEnabled
-                        && !commandLineToolInstall.isInstalled
-                )
-                Text(localizer[.orchestrationExampleCLINote])
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 exampleRow(
                     label: localizer[.orchestrationExampleGuidanceOffLabel],
                     prompt: localizer[.orchestrationExamplePromptUnguided],

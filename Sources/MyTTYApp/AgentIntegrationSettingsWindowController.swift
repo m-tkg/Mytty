@@ -7,7 +7,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let settingsModel: SettingsModel
     private let integrationsModel: AgentIntegrationSettingsModel
     private let defaultTerminalModel: DefaultTerminalModel
-    private let commandLineToolInstallModel: CommandLineToolInstallModel
     private let remoteAccessModel: RemoteAccessSettingsModel
     private let remoteMacsModel: RemoteMacsSettingsModel
 
@@ -16,7 +15,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         integrationsModel: AgentIntegrationSettingsModel,
         updateModel: ApplicationUpdateModel,
         defaultTerminalModel: DefaultTerminalModel,
-        commandLineToolInstallModel: CommandLineToolInstallModel,
         remoteAccessModel: RemoteAccessSettingsModel,
         remoteMacsModel: RemoteMacsSettingsModel,
         openRemotePane: @escaping (PairedMac) -> Void
@@ -24,7 +22,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.settingsModel = settingsModel
         self.integrationsModel = integrationsModel
         self.defaultTerminalModel = defaultTerminalModel
-        self.commandLineToolInstallModel = commandLineToolInstallModel
         self.remoteAccessModel = remoteAccessModel
         self.remoteMacsModel = remoteMacsModel
         let view = SettingsView(
@@ -32,7 +29,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             integrations: integrationsModel,
             updates: updateModel,
             defaultTerminal: defaultTerminalModel,
-            commandLineToolInstall: commandLineToolInstallModel,
             remoteAccess: remoteAccessModel,
             remoteMacs: remoteMacsModel,
             onOpenRemotePane: openRemotePane
@@ -68,7 +64,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         integrationsModel.refresh()
         defaultTerminalModel.refresh()
-        commandLineToolInstallModel.refresh()
         remoteAccessModel.refresh()
         remoteMacsModel.refresh()
         showWindow(nil)
