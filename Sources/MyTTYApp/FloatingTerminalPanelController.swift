@@ -233,10 +233,10 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
 
     /// Switches the input source to an ASCII-capable one as the panel takes
     /// focus. `TerminalWindowController` does the same for its own surfaces
-    /// (`forceASCIIInputIfNeeded`) but can't cover this one, which isn't in
-    /// its `surfaces`. The global hot key makes it matter more here: the
-    /// panel is routinely summoned from another app, and whatever IME that
-    /// app was using would otherwise still be active at the prompt.
+    /// (`evaluateASCIIInputForActivePane`) but can't cover this one, which
+    /// isn't in its `surfaces`. The global hot key makes it matter more
+    /// here: the panel is routinely summoned from another app, and whatever
+    /// IME that app was using would otherwise still be active at the prompt.
     private func forceASCIIInputIfNeeded(shellIsFresh: Bool) {
         let foregroundCommandName = surface.flatMap {
             TerminalAgentProcessDetector.commandName(
