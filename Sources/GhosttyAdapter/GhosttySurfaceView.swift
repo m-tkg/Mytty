@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import GhosttyKit
 import QuartzCore
+import os
 
 public enum GhosttySurfaceEvent: Equatable, Sendable {
     case titleChanged(String)
@@ -33,6 +34,11 @@ public enum GhosttySurfaceEvent: Equatable, Sendable {
 public enum GhosttySurfaceError: Error, Equatable, Sendable {
     case creationFailed
 }
+
+private let ghosttySurfaceLog = Logger(
+    subsystem: "dev.mytty.ghostty-adapter",
+    category: "surface"
+)
 
 public struct GhosttyGridSize: Equatable, Sendable {
     public let columns: Int
@@ -297,6 +303,9 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         )
 
         guard let app = runtime.nativeApp else {
+            ghosttySurfaceLog.error(
+                "surface creation failed: runtime.nativeApp is nil"
+            )
             throw GhosttySurfaceError.creationFailed
         }
 
@@ -344,6 +353,13 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         }
 
         guard let surface else {
+            let errnoMessage = String(cString: strerror(errno))
+            ghosttySurfaceLog.error(
+                """
+                ghostty_surface_new returned nil \
+                (errno: \(errnoMessage, privacy: .public))
+                """
+            )
             throw GhosttySurfaceError.creationFailed
         }
         native = surface
@@ -367,10 +383,24 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
 
         for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
             guard let keyPointer = strdup(key) else {
+                let errnoMessage = String(cString: strerror(errno))
+                ghosttySurfaceLog.error(
+                    """
+                    strdup failed for environment key \
+                    (errno: \(errnoMessage, privacy: .public))
+                    """
+                )
                 releaseEnvironmentStorage(result)
                 throw GhosttySurfaceError.creationFailed
             }
             guard let valuePointer = strdup(value) else {
+                let errnoMessage = String(cString: strerror(errno))
+                ghosttySurfaceLog.error(
+                    """
+                    strdup failed for environment value \
+                    (errno: \(errnoMessage, privacy: .public))
+                    """
+                )
                 free(keyPointer)
                 releaseEnvironmentStorage(result)
                 throw GhosttySurfaceError.creationFailed
