@@ -416,6 +416,89 @@ public struct WindowSession: Codable, Equatable, Sendable {
         }
         tabs[index].equalizePanes()
     }
+
+    /// Moves `paneID` into this window's done tab for its containing
+    /// tab (`mytty-ctl park` / `agent park`), creating that tab —
+    /// pinned title, appended at the end of the tab strip, never
+    /// selected — when none already matches
+    /// `OrchestrationDoneTab.matches`. When an existing done tab is
+    /// reused, the new pane lands at `TabSession.attachBalanced`'s
+    /// placement rather than always the outer edge.
+    ///
+    /// Fails with `.alreadyParked` when `paneID` already lives in a
+    /// done tab (`pinnedTitle` starts with
+    /// `OrchestrationDoneTab.donePrefix`) — there's no "done of done".
+    ///
+    /// Mirrors `movePane`'s handling of a source tab's sole pane: the
+    /// source tab is removed, and if it was selected, selection follows
+    /// the pane to the done tab (the same fixup `movePane` performs —
+    /// this never *initially* selects the done tab on creation).
+    /// Returns the destination tab's ID.
+    @discardableResult
+    public mutating func parkPane(
+        _ paneID: TerminalSurfaceID,
+        parentTitle: String,
+        containerAspectRatio: Double
+    ) throws -> TabID {
+        guard let sourceIndex = tabs.firstIndex(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { throw WindowSessionError.surfaceNotFound(paneID) }
+
+        let sourceTab = tabs[sourceIndex]
+        guard !OrchestrationDoneTab.isDoneTitle(sourceTab.pinnedTitle) else {
+            throw WindowSessionError.alreadyParked
+        }
+
+        let sourceTabID = sourceTab.id
+        let doneTitle = OrchestrationDoneTab.title(
+            parentTitle: parentTitle,
+            parentTabID: sourceTabID
+        )
+
+        let node: SplitNode
+        var sourceTabRemoved = false
+        if sourceTab.paneIDs.count == 1 {
+            node = sourceTab.root
+            tabs.remove(at: sourceIndex)
+            sourceTabRemoved = true
+        } else {
+            var source = sourceTab
+            node = try source.detach(pane: paneID)
+            tabs[sourceIndex] = source
+        }
+
+        let destinationID: TabID
+        if let existingIndex = tabs.firstIndex(where: {
+            OrchestrationDoneTab.matches(
+                pinnedTitle: $0.pinnedTitle,
+                parentTabID: sourceTabID
+            )
+        }) {
+            var destination = tabs[existingIndex]
+            try destination.attachBalanced(
+                pane: node,
+                containerAspectRatio: containerAspectRatio
+            )
+            tabs[existingIndex] = destination
+            destinationID = destination.id
+        } else {
+            guard let firstPaneID = node.paneIDs.first else {
+                throw WindowSessionError.surfaceNotFound(paneID)
+            }
+            let doneTab = TabSession(
+                root: node,
+                focusedSurfaceID: firstPaneID,
+                pinnedTitle: doneTitle
+            )
+            try add(tab: doneTab, select: false)
+            destinationID = doneTab.id
+        }
+
+        if sourceTabRemoved, selectedTabID == sourceTabID {
+            selectedTabID = destinationID
+        }
+        return destinationID
+    }
 }
 
 public enum WindowSessionError: Error, Equatable, Sendable {
@@ -424,6 +507,75 @@ public enum WindowSessionError: Error, Equatable, Sendable {
     case invalidTabIndex(Int)
     case surfaceNotFound(TerminalSurfaceID)
     case cannotCloseLastTab
+    /// `parkPane` was asked to park a pane that already lives in a done
+    /// tab — see `OrchestrationDoneTab`.
+    case alreadyParked
+}
+
+/// Naming and lookup for the "done" tab `WindowSession.parkPane` moves
+/// finished orchestrated workers into, so a working tab full of live
+/// panes doesn't accumulate finished ones. Kept separate from
+/// `WindowSession.parkPane` so the naming rule is independently
+/// testable and reusable (the app resolves the parent tab's display
+/// title before calling `parkPane`, since that needs a localizer this
+/// Foundation-only core layer doesn't have).
+public enum OrchestrationDoneTab {
+    /// Every done tab's `pinnedTitle` starts with this.
+    public static let donePrefix = "done_"
+
+    /// The parent-title portion is clamped to this many Unicode scalars
+    /// so a hostile terminal-controlled tab title (an OSC title escape,
+    /// ultimately) can't produce an absurd tab name.
+    private static let maximumParentTitleScalars = 60
+
+    /// `done_<parentTitle>_<id8>`, where `<id8>` is the first 8
+    /// lowercase hex characters of `parentTabID` (hyphens removed) and
+    /// `<parentTitle>` is clamped/sanitized — see `clampedParentTitle`.
+    public static func title(
+        parentTitle: String,
+        parentTabID: TabID
+    ) -> String {
+        "\(donePrefix)\(clampedParentTitle(parentTitle))_"
+            + idSuffix(for: parentTabID)
+    }
+
+    /// True when `pinnedTitle` is an existing done tab *for
+    /// `parentTabID` specifically* — found by suffix rather than a full
+    /// name match, since the parent tab's display title (embedded in
+    /// the middle of the done tab's name) may have changed since the
+    /// done tab was created.
+    public static func matches(
+        pinnedTitle: String?,
+        parentTabID: TabID
+    ) -> Bool {
+        guard let pinnedTitle, isDoneTitle(pinnedTitle) else { return false }
+        return pinnedTitle.hasSuffix("_\(idSuffix(for: parentTabID))")
+    }
+
+    /// True for any done tab, regardless of which parent it belongs to
+    /// — used to reject parking a pane that's already parked (no "done
+    /// of done").
+    public static func isDoneTitle(_ pinnedTitle: String?) -> Bool {
+        pinnedTitle?.hasPrefix(donePrefix) == true
+    }
+
+    private static func idSuffix(for tabID: TabID) -> String {
+        String(
+            tabID.rawValue.uuidString
+                .replacingOccurrences(of: "-", with: "")
+                .lowercased()
+                .prefix(8)
+        )
+    }
+
+    private static func clampedParentTitle(_ title: String) -> String {
+        let scalars = title.unicodeScalars.filter {
+            !CharacterSet.controlCharacters.contains($0)
+        }
+        return String(
+            String.UnicodeScalarView(scalars.prefix(maximumParentTitleScalars))
+        )
+    }
 }
 
 public struct SessionSnapshot: Codable, Equatable, Sendable {

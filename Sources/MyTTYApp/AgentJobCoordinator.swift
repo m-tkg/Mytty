@@ -268,8 +268,11 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             }
         }
 
-        let splitDirection = SplitDirection(rawValue: direction.rawValue)
-            ?? .right
+        let splitTarget = BalancedSplitResolution.resolve(
+            direction: direction,
+            anchorPaneID: anchorSurfaceID,
+            controller: controller
+        )
         let initialInput = AgentLaunchPlan.initialInput(
             provider: provider,
             access: resolvedAccess,
@@ -279,8 +282,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         )
 
         guard let newPaneID = controller.splitPane(
-            anchorSurfaceID,
-            direction: splitDirection,
+            splitTarget.paneID,
+            direction: splitTarget.direction,
             workingDirectory: resolvedWorkingDirectory,
             initialInput: initialInput,
             orchestrated: true
@@ -456,6 +459,26 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         // instead of leaving it `.launching`/`.running` forever.
         tracker.reconcile(runs: [], paneExists: false, now: now())
         trackers[jobID] = tracker
+        return .success(())
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        parkAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        guard var tracker = trackers[jobID] else {
+            return .failure(AgentControlFailure("job-not-found"))
+        }
+        refresh(&tracker)
+        trackers[jobID] = tracker
+        guard let controller = windowSessionCoordinator.controller(
+            owning: tracker.paneID
+        ) else {
+            return .failure(AgentControlFailure("job-lost"))
+        }
+        if let failureCode = controller.parkPane(forControl: tracker.paneID) {
+            return .failure(AgentControlFailure(failureCode))
+        }
         return .success(())
     }
 }

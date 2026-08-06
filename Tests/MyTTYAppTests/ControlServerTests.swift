@@ -1316,6 +1316,17 @@ private final class StubControlDelegate: ControlServerDelegate {
         knownPaneIDs.contains(paneID)
     }
 
+    var parkPaneResult: String?
+    var lastParkPaneID: String?
+
+    func controlServer(
+        _ server: ControlServer,
+        parkPaneID paneID: String
+    ) -> String? {
+        lastParkPaneID = paneID
+        return parkPaneResult
+    }
+
     var integrationStatuses: [ControlIntegrationInfo] = []
     var enableIntegrationResult:
         Result<[ControlIntegrationInfo], AgentControlFailure> =
@@ -1439,6 +1450,16 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
     ) -> Result<Void, AgentControlFailure> {
         closeResult
     }
+
+    var parkResult: Result<Void, AgentControlFailure> =
+        .failure(AgentControlFailure("job-not-found"))
+
+    func controlServer(
+        _ server: ControlServer,
+        parkAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        parkResult
+    }
 }
 
 /// Backs `ControlServerAgentDelegate` with a real `AgentJobTracker`
@@ -1551,6 +1572,13 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
     func controlServer(
         _ server: ControlServer,
         closeAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        parkAgentJobID jobID: AgentJobID
     ) -> Result<Void, AgentControlFailure> {
         .failure(AgentControlFailure("not-implemented"))
     }

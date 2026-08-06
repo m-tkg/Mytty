@@ -170,10 +170,14 @@ extension ControlCoordinator: ControlServerDelegate {
         let url = workingDirectory.map {
             URL(fileURLWithPath: $0, isDirectory: true)
         }
+        let target = BalancedSplitResolution.resolve(
+            direction: direction,
+            anchorPaneID: surfaceID,
+            controller: controller
+        )
         return controller.splitPane(
-            surfaceID,
-            direction: SplitDirection(rawValue: direction.rawValue)
-                ?? .right,
+            target.paneID,
+            direction: target.direction,
             workingDirectory: url,
             initialInput: command.map { AgentLaunchPlan.initialInput(command: $0) },
             orchestrated: true
@@ -307,6 +311,16 @@ extension ControlCoordinator: ControlServerDelegate {
             return false
         }
         return controller(owning: surfaceID)?.focus(pane: surfaceID) ?? false
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        parkPaneID paneID: String
+    ) -> String? {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let controller = controller(owning: surfaceID)
+        else { return "pane-not-found" }
+        return controller.parkPane(forControl: surfaceID)
     }
 
     func controlServerIntegrationStatuses(

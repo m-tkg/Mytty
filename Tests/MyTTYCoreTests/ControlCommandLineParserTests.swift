@@ -90,6 +90,38 @@ struct ControlCommandLineParserTests {
                 command: "codex -- task"
             )
         )
+        #expect(
+            try ControlCommandLineParser.parse(["split", "pane-1", "auto"])
+                == .split(
+                    paneID: "pane-1",
+                    direction: .auto,
+                    workingDirectory: nil,
+                    command: nil
+                )
+        )
+    }
+
+    @Test("split defaults to auto (balanced placement) when the direction is omitted")
+    func parsesSplitOmittedDirectionDefaultsToAuto() throws {
+        #expect(
+            try ControlCommandLineParser.parse(["split", "pane-1"])
+                == .split(
+                    paneID: "pane-1",
+                    direction: .auto,
+                    workingDirectory: nil,
+                    command: nil
+                )
+        )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["split", "pane-1", "--cwd", "/tmp/repo"]
+            ) == .split(
+                paneID: "pane-1",
+                direction: .auto,
+                workingDirectory: "/tmp/repo",
+                command: nil
+            )
+        )
     }
 
     @Test("split rejects an explicitly empty --command")
@@ -107,6 +139,18 @@ struct ControlCommandLineParserTests {
             try ControlCommandLineParser.parse(
                 ["split", "pane-1", "sideways"]
             )
+        }
+    }
+
+    @Test("split rejects stray positional arguments beyond pane id and direction")
+    func rejectsExtraSplitArguments() {
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["split", "pane-1", "right", "extra"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["split"])
         }
     }
 
@@ -251,7 +295,7 @@ struct ControlCommandLineParserTests {
         )
     }
 
-    @Test("read, close-pane, and focus each require exactly one pane id")
+    @Test("read, close-pane, focus, and park each require exactly one pane id")
     func parsesSingleArgumentCommands() throws {
         #expect(
             try ControlCommandLineParser.parse(["read", "pane-1"])
@@ -265,11 +309,21 @@ struct ControlCommandLineParserTests {
             try ControlCommandLineParser.parse(["focus", "pane-1"])
                 == .focus(paneID: "pane-1")
         )
+        #expect(
+            try ControlCommandLineParser.parse(["park", "pane-1"])
+                == .parkPane(paneID: "pane-1")
+        )
         #expect(throws: ControlCommandLineError.self) {
             try ControlCommandLineParser.parse(["read"])
         }
         #expect(throws: ControlCommandLineError.self) {
             try ControlCommandLineParser.parse(["read", "pane-1", "extra"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["park"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["park", "pane-1", "extra"])
         }
     }
 
@@ -378,6 +432,18 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("--access workspace-write"))
     }
 
+    @Test("paneTeamGuide documents balanced placement and parking finished workers")
+    func paneTeamGuideDocumentsAutoAndPark() {
+        let guide = ControlCommandLineParser.paneTeamGuide
+        // --direction auto / balanced placement.
+        #expect(guide.contains("--direction <left|right|up|down|auto>"))
+        #expect(guide.contains("balanced"))
+        // agent park / park, and the done_<tab>_<id> naming.
+        #expect(guide.contains("agent park"))
+        #expect(guide.contains("done_"))
+        #expect(guide.contains("agent close"))
+    }
+
     // MARK: - agent spawn
 
     @Test("agent spawn applies every default")
@@ -394,10 +460,12 @@ struct ControlCommandLineParserTests {
         // workspace-write client-side -- the server resolves it via
         // `AgentAccessResolution` (see `agentAccessOmittedProducesNilAccess`
         // below and the resolution-order tests in
-        // `AgentAccessResolutionTests`).
+        // `AgentAccessResolutionTests`). An omitted `--direction`
+        // likewise defaults to `.auto` (balanced placement), not a fixed
+        // "right".
         #expect(request == .spawnAgent(
             anchorPaneID: "anchor-1",
-            direction: .right,
+            direction: .auto,
             provider: .codex,
             cwd: nil,
             access: nil,
@@ -406,6 +474,25 @@ struct ControlCommandLineParserTests {
             label: nil,
             worktreeBranch: nil
         ))
+    }
+
+    @Test("agent spawn accepts an explicit --direction auto")
+    func agentSpawnExplicitAuto() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--direction", "auto",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(_, direction, _, _, _, _, _, _, _) = request
+        else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(direction == .auto)
     }
 
     @Test("agent spawn without --access produces a nil access field")
@@ -488,7 +575,7 @@ struct ControlCommandLineParserTests {
         )
         #expect(request == .spawnAgent(
             anchorPaneID: "anchor-1",
-            direction: .right,
+            direction: .auto,
             provider: .claude,
             cwd: nil,
             access: .inherit,
@@ -704,7 +791,7 @@ struct ControlCommandLineParserTests {
         #expect(invocation == .agentSpawnPendingTaskFile(
             ControlCommandLineParser.PendingAgentSpawnRequest(
                 anchorPaneID: "pane-1",
-                direction: .right,
+                direction: .auto,
                 provider: .cursor,
                 cwd: nil,
                 access: .review,
@@ -785,7 +872,7 @@ struct ControlCommandLineParserTests {
         }
     }
 
-    @Test("agent result, focus, and close each require exactly one job id")
+    @Test("agent result, focus, close, and park each require exactly one job id")
     func agentSingleArgumentCommands() throws {
         let jobID = AgentJobID()
         #expect(
@@ -803,12 +890,25 @@ struct ControlCommandLineParserTests {
                 ["agent", "close", jobID.rawValue.uuidString]
             ) == .closeAgent(jobID: jobID)
         )
+        #expect(
+            try ControlCommandLineParser.parse(
+                ["agent", "park", jobID.rawValue.uuidString]
+            ) == .parkAgent(jobID: jobID)
+        )
         #expect(throws: ControlCommandLineError.self) {
             try ControlCommandLineParser.parse(["agent", "result"])
         }
         #expect(throws: ControlCommandLineError.self) {
             try ControlCommandLineParser.parse(
                 ["agent", "result", "not-a-uuid"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(["agent", "park"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            try ControlCommandLineParser.parse(
+                ["agent", "park", "not-a-uuid"]
             )
         }
     }

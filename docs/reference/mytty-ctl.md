@@ -46,19 +46,20 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 
 | Command | Arguments | Success response |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down\|auto>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
 | `agent focus` | `<job-id>` | `{"type":"ok"}` |
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
+| `agent park` | `<job-id>` | `{"type":"ok"}` |
 | `integration list` | none | `{"type":"integrationStatuses","integrations":[...]}` |
 | `integration enable` | `<codex\|claude-code\|opencode\|antigravity\|cursor>` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `integration repair` | `[<provider>]` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `guide` | none | pane-team playbook as plain text on stdout, no socket needed |
 | `list` | none | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
-| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
+| `split` | `<pane-id> [<left\|right\|up\|down\|auto>] [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
@@ -67,6 +68,9 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `events` | `[--after <seq>] [--timeout <seconds>]` | `{"type":"events","records":[...],"latestSequence":7,"timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
+| `park` | `<pane-id>` | `{"type":"ok"}` |
+
+`--direction`/the `split` direction argument defaults to `auto` when omitted: the new pane lands wherever keeps the tab's layout closest to an evenly filled grid (see [Balanced placement (`--direction auto`)](#balanced-placement---direction-auto) below), instead of always growing a strip off the anchor pane.
 
 Pane IDs are the UUID string form of `TerminalSurfaceID`. Get one from a `list` response, a `pane` response, or `$MYTTY_SURFACE_ID`. Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from an `agentJob`/`agentWaitResult`/`agentResult` response's `job.jobID.rawValue`.
 
@@ -79,6 +83,8 @@ Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and launches the 
 `review` launches the provider in its read-only/plan mode. `workspace-write` lets the worker edit files -- but for a `claude` worker it always launches with `--permission-mode acceptEdits`, regardless of the lead's own mode. **A lead running with a broader mode (`auto`, `--dangerously-skip-permissions`, ...) that passes `--access workspace-write` gets a worker that stops and waits on every approval prompt instead of matching the lead**, since `acceptEdits` still gates Bash commands. Prefer omitting `--access` (or explicit `--access inherit`) over `--access workspace-write` whenever the worker is the same provider as the lead; reach for `workspace-write` for a different-provider worker, or when a fixed acceptEdits-equivalent policy is genuinely what's wanted.
 
 `--model` is optional and picks the provider's model, passed straight through to the provider CLI's own model flag -- `-m <model>` for `codex`, `--model <model>` for `claude` and `cursor` -- e.g. `--model sonnet` for a `claude` worker. Omit it to use whatever model the provider defaults to. `--cwd` defaults to the anchor pane's shell-reported working directory (the last directory the pane's shell announced via shell integration), not the calling process's own cwd. An orchestrator whose process cwd differs from its pane's shell -- for example Claude Code launched with `--worktree`, which chdirs into a git worktree the pane's shell never entered -- should pass `--cwd "$PWD"` explicitly, or its workers start in the original checkout instead of the worktree. A worker contract (stay in the working directory, keep going instead of stopping to ask, end with a concise summary) is appended to every task automatically. The typed launch line is also prefixed with a guard that unsets `HISTFILE` (and starts with a space, for `hist_ignore_space` setups), so neither the launch command with its full task text nor anything typed into that pane's shell afterwards is persisted into `~/.zsh_history`.
+
+`--direction` defaults to `auto`: rather than always growing a strip off `--anchor`, Mytty picks whichever existing pane and side keeps the tab's layout closest to an evenly filled grid -- see [Balanced placement (`--direction auto`)](#balanced-placement---direction-auto) below. Pass an explicit `left`/`right`/`up`/`down` when the worker specifically needs to sit next to `--anchor` itself.
 
 `--worktree <branch>` launches the worker inside a git worktree for `<branch>` instead of the plain resolved `--cwd`/anchor-pane directory. The base repository is resolved from that same directory (`git -C <dir> rev-parse --show-toplevel`); the worktree lives at `<repo-parent>/<repo-name>-worktrees/<branch>` (a `/` in the branch becomes `-` in the directory name only, e.g. branch `feat/x` -> `mytty-worktrees/feat-x`), a sibling of the repository so it never shows up in the main checkout's `git status`. If that path is already a registered worktree of the repo, Mytty reuses it as-is -- idempotent respawn, regardless of which branch it currently has checked out. Otherwise, a `<branch>` that already exists as a local branch is checked out into the new worktree; one that doesn't is created from the current `HEAD`. Mytty never removes a worktree automatically -- not on `agent close`, not on pane close -- since it may hold uncommitted work; once a worker's branch is merged or abandoned, remove it yourself with `git worktree remove <path>` from the base repository. See the failure-code table below for `not-a-git-repository`, `worktree-create-failed`, and `invalid-worktree-branch`.
 
@@ -154,13 +160,14 @@ mytty-ctl agent result "$job"
 
 This reads the pane's current screen, not a provider transcript, so a worker's launch prompt asks it to keep its final summary concise enough to still be legible on screen.
 
-### agent send / agent focus / agent close
+### agent send / agent focus / agent close / agent park
 
-Resolve a job ID to its pane and reuse the pane-level `send`/`focus`/ `close-pane` behavior, so a follow-up always reaches the exact worker it was meant for even if other panes were opened or closed in between.
+Resolve a job ID to its pane and reuse the pane-level `send`/`focus`/`close-pane`/`park` behavior, so a follow-up always reaches the exact worker it was meant for even if other panes were opened or closed in between.
 
 ```bash
 mytty-ctl agent send "$job" "Also add a regression test." --enter
 mytty-ctl agent focus "$job"
+mytty-ctl agent park "$job"
 mytty-ctl agent close "$job"
 ```
 
@@ -169,6 +176,8 @@ mytty-ctl agent close "$job"
 ```
 
 `agent close` closes the job's pane and moves a nonterminal job to `lost`. A pane that disappeared on its own (closed by the user, the shell exited, ...) is reported the same way -- `lost`, not `pane-not-found` -- through every `agent` command.
+
+`agent park` is the recommended way to retire a *finished* worker once its result has been read (`agent result` or after `agent wait --until completed`): instead of closing the pane outright, it moves the job's pane into a `done_<tab>_<id>` tab in the same window -- see [Parking finished workers (`park` / `agent park`)](#parking-finished-workers-park--agent-park) below. Reach for `agent close` only when nothing will read the pane's output again.
 
 ### guide
 
@@ -253,9 +262,10 @@ mytty-ctl new-tab --cwd /path/to/project \
 
 ### split
 
-Splits an existing pane in the given direction. The split happens in the background — the target pane's tab is not selected and keyboard focus does not move; use `focus` on the returned pane ID to bring it forward.
+Splits an existing pane in the given direction, or, when the direction is omitted, at the balanced-placement position described in [Balanced placement (`--direction auto`)](#balanced-placement---direction-auto) below. The split happens in the background — the target pane's tab is not selected and keyboard focus does not move; use `focus` on the returned pane ID to bring it forward.
 
 ```bash
+mytty-ctl split "$MYTTY_SURFACE_ID"              # auto: balanced placement
 mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
 ```
 
@@ -432,6 +442,41 @@ mytty-ctl focus "$paneA"
 { "type": "ok" }
 ```
 
+### park
+
+Moves a pane into its containing tab's "done" tab, so a working tab full of orchestrated workers doesn't accumulate finished ones.
+
+```bash
+mytty-ctl park "$paneA"
+```
+
+```json
+{ "type": "ok" }
+```
+
+See [Parking finished workers (`park` / `agent park`)](#parking-finished-workers-park--agent-park) below for the done tab's naming, reuse, and creation rules.
+
+## Balanced placement (`--direction auto`)
+
+`split` and `agent spawn` both take `--direction <left|right|up|down|auto>`, and both default to `auto` when the direction is omitted. A fixed direction always splits next to the given pane (`--anchor` for `agent spawn`, the target pane for `split`); `auto` instead asks: of every pane already in that tab, which one is largest, and would splitting it along its longer side keep the layout closest to an evenly filled grid? Six workers spawned one at a time with `--direction auto` converge on roughly a 3x2 grid instead of a 1x6 strip running off the edge of the window.
+
+Concretely (`BalancedPaneInsertion.target` in `Sources/MyTTYCore/TabSession.swift`): every pane's frame is scaled into a container shaped like the tab's actual pane area (so a wide window fills columns before rows); the pane with the largest area is picked, ties going to the top-left-most pane for determinism; and it's split along its longer effective side -- width ≥ height splits `right`, otherwise `down`. The chosen pane can be different from `--anchor`/the pane named on the command line -- the new pane still lands "next to" *some* existing pane in the tab, just not necessarily the one you named, in exchange for a layout that stays readable as the team grows. Candidates are restricted to terminal panes when the tab has at least one, so an orchestrated split never lands next to a browser or remote pane while a terminal target is available.
+
+Pass an explicit `left`/`right`/`up`/`down` to opt back into the old fixed-anchor behavior -- useful when a worker specifically needs to sit beside the pane that spawned it (e.g. a companion pane for the same task).
+
+## Parking finished workers (`park` / `agent park`)
+
+`park <pane-id>` and `agent park <job-id>` move a pane out of its current tab and into a per-tab "done" tab in the same window, so a working tab stays readable as workers finish instead of accumulating panes an orchestrator no longer needs to look at every poll. Run this once a worker's result has been read (`agent result`, or after `agent wait --until completed`) -- `agent close` is still the right call once nothing will read the pane's output again.
+
+The done tab is named `done_<parent-tab-title>_<id8>`, where `<parent-tab-title>` is the source tab's current display title (its pinned title if renamed, otherwise the same title the pane list shows) and `<id8>` is the first 8 lowercase hex characters of the source tab's ID. It's created the first time a pane is parked out of a given tab -- appended at the end of the tab strip, like an orchestrated `new-tab`, and never selected, so parking never interrupts whatever the user is looking at. Every later `park`/`agent park` for panes from the *same* source tab reuses that same done tab, found by matching the `_<id8>` suffix rather than the full name -- the parent tab's title embedded in the name can drift (a rename) without breaking the lookup. New panes land in the done tab at the same balanced position `--direction auto` uses, not always the outer edge, so a done tab with several parked workers also stays a readable grid rather than a 1xN strip.
+
+Parking a tab's only remaining pane removes that now-empty source tab, mirroring how moving a pane through the pane-list context menu already behaves; the done tab it was already using (or a fresh one, named from the source tab's title at the moment it disappears) keeps its name from then on. Parking a pane that's already inside a done tab fails with `already-parked` -- there's no "done of done".
+
+```bash
+mytty-ctl agent park "$job_a"
+mytty-ctl park "$paneA"
+```
+
 ## Failure responses
 
 A failed request returns `{"type":"failure","code":"..."}` from the server; the CLI surfaces this as a non-zero exit with a stderr message rather than printing the JSON.
@@ -442,7 +487,9 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `not-ready` | The control server has no delegate yet (app still starting) |
 | `new-tab-failed` | `new-tab` could not create a tab |
 | `split-failed` | `split` could not split the given pane |
-| `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`); `agent spawn` also returns this if `--anchor` doesn't resolve to a live pane |
+| `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`, `park`); `agent spawn` also returns this if `--anchor` doesn't resolve to a live pane |
+| `already-parked` | `park`/`agent park`: the pane is already inside a done tab -- there's no "done of done" |
+| `park-failed` | `park`/`agent park`: the pane could not be moved into its done tab for a reason other than `pane-not-found`/`already-parked` |
 | `provider-integration-not-installed` | `wait --until attention` / `agent wait --until attention`: the pane's (or job's) foreground process is a recognized agent whose integration isn't enabled (see [wait semantics](#wait-semantics)) -- `agent spawn` no longer returns this code, since a job binds to a natively estimated run instead of a hook-reported one |
 | `provider-integration-needs-repair` | `agent spawn`: the provider's hook integration is installed but stale/broken -- native run estimation deliberately stays out of the way for `needs-repair`, so repair is the only fix |
 | `invalid-cwd` | `agent spawn`: `--cwd` doesn't name an existing directory |
@@ -455,9 +502,9 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `not-a-git-repository` | `agent spawn --worktree`: the resolved `--cwd`/anchor-pane directory isn't inside a git repository |
 | `worktree-create-failed` | `agent spawn --worktree`: git could not create the worktree -- e.g. the target path exists on disk but isn't a worktree already registered to the repo |
 | `spawn-failed` | `agent spawn`: the pane could not be created |
-| `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: the given job ID is unknown -- either it never existed, or it was issued before the last Mytty restart (job IDs are not persisted) |
+| `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`/`agent park`: the given job ID is unknown -- either it never existed, or it was issued before the last Mytty restart (job IDs are not persisted) |
 | `integration-declined` | `integration enable`/`integration repair`: the human at the Mac declined the confirmation dialog (or nobody answered it) |
-| `job-lost` | `agent send`/`agent focus`: the job's pane disappeared (see `lost` below); `agent result` and `agent close` do not use this code -- they answer with the job's `lost` state and an empty result, and closing a job whose pane is already gone still exits `0` |
+| `job-lost` | `agent send`/`agent focus`/`agent park`: the job's pane disappeared (see `lost` below); `agent result` and `agent close` do not use this code -- they answer with the job's `lost` state and an empty result, and closing a job whose pane is already gone still exits `0` |
 
 ## Wait semantics
 
@@ -485,7 +532,8 @@ The job registry lives only in the running app's memory; it is not persisted. A 
 - `close-pane` never shows a confirmation dialog. The one exception, closing the last pane of the last tab, still triggers the window's own close confirmation; this does not normally apply to panes created for subagent teams.
 - Pane IDs are `TerminalSurfaceID` UUID strings, obtained from `list`, a `pane` response, or `$MYTTY_SURFACE_ID`.
 - The maximum request size accepted by the control socket matches the agent-event socket's 64 KiB envelope limit; a very large `send` argument should be chunked or piped through the shell instead of passed as one oversized literal. `agent spawn` checks the same limit against the encoded request (task plus the appended worker contract) before opening a connection, so an oversized task fails as a plain CLI error instead of a socket write silently being rejected.
-- `agent spawn` never launches a worker in an existing pane -- every spawn creates a new one. This is what keeps job binding correct (see [Agent job binding](#agent-job-binding)); it also means closing jobs you no longer need (`agent close`) matters more than it does for a small number of manually managed panes.
+- `agent spawn` never launches a worker in an existing pane -- every spawn creates a new one. This is what keeps job binding correct (see [Agent job binding](#agent-job-binding)); it also means retiring jobs you no longer need to watch (`agent park` for a finished worker whose result you've read, `agent close` once nothing will read it again) matters more than it does for a small number of manually managed panes.
+- `park`/`agent park` never select the done tab they move a pane into, mirroring `new-tab`'s background-open behavior; a done tab is only ever brought forward by `focus`ing a pane inside it.
 - Job IDs are the `{"rawValue":"..."}` UUID form of `AgentJobID`, read from `job.jobID.rawValue` in any `agent` response. They are not interchangeable with pane IDs.
 
 ## See also
