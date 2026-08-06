@@ -1370,16 +1370,18 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         )
     }
 
-    /// Ghostty only evaluates link hover/clicks while a TUI captures the
-    /// mouse if shift is held (its capture-bypass modifier), so ⌘ alone
-    /// never reaches the link path in agent TUIs like Claude Code. Treat ⌘
-    /// as the same bypass by adding shift before handing mods to Ghostty.
+    /// Ghostty only bypasses TUI mouse capture for local handling (link
+    /// hover/clicks, selection) while shift is held. ⌘ needs that bypass to
+    /// reach the link path, and ⌥ needs it to start a rectangle selection
+    /// (Ghostty checks mods.alt for that), so add shift whenever either is
+    /// held. The tradeoff is that ⌘/⌥ mouse events no longer reach the TUI
+    /// itself, which is harmless for agent TUIs like Claude Code.
     nonisolated static func mouseEventMods(
         _ mods: ghostty_input_mods_e,
         mouseCaptured: Bool
     ) -> ghostty_input_mods_e {
         guard mouseCaptured,
-              mods.rawValue & GHOSTTY_MODS_SUPER.rawValue != 0,
+              mods.rawValue & (GHOSTTY_MODS_SUPER.rawValue | GHOSTTY_MODS_ALT.rawValue) != 0,
               mods.rawValue & GHOSTTY_MODS_SHIFT.rawValue == 0
         else { return mods }
         return ghostty_input_mods_e(

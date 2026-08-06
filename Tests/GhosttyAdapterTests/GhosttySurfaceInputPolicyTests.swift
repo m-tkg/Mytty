@@ -204,6 +204,34 @@ struct GhosttySurfaceInputPolicyTests {
         )
     }
 
+    @Test("adds shift to option mouse events while a TUI captures the mouse")
+    func optionMouseModsBypassMouseCapture() {
+        let option = GHOSTTY_MODS_ALT
+        #expect(
+            GhosttySurfaceView.mouseEventMods(
+                option,
+                mouseCaptured: true
+            ).rawValue == GHOSTTY_MODS_ALT.rawValue | GHOSTTY_MODS_SHIFT.rawValue
+        )
+
+        #expect(
+            GhosttySurfaceView.mouseEventMods(
+                option,
+                mouseCaptured: false
+            ).rawValue == GHOSTTY_MODS_ALT.rawValue
+        )
+
+        let shiftOption = ghostty_input_mods_e(
+            GHOSTTY_MODS_ALT.rawValue | GHOSTTY_MODS_SHIFT.rawValue
+        )
+        #expect(
+            GhosttySurfaceView.mouseEventMods(
+                shiftOption,
+                mouseCaptured: true
+            ).rawValue == shiftOption.rawValue
+        )
+    }
+
     @Test("only a flagged paste requires user confirmation")
     func requiresPasteConfirmation() {
         #expect(
