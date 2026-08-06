@@ -39,6 +39,7 @@ enum RemoteScrollback {
         screenText: String,
         viewportTextFromCursor: String?,
         gridRows: Int = 0,
+        gridColumns: Int = 0,
         styledLines: [RemoteStyledLine] = [],
         maxLines: Int = maxLines
     ) -> RemotePaneContent {
@@ -73,6 +74,26 @@ enum RemoteScrollback {
             // column — no cell-width math required.
             let lineText = row < lines.count ? lines[row] : ""
             cursorColumn = max(lineText.count - suffixLines[0].count, 0)
+        }
+
+        // Strip wrap-padding spaces line by line, after the cursor's raw
+        // row/column are pinned (they're computed from the same padded
+        // text on both sides, so the subtraction above stays exact) but
+        // before line-count capping, so indices still line up with
+        // `cursorRow`.
+        if gridColumns > 0 {
+            for index in lines.indices {
+                let rawColumn = index == cursorRow ? cursorColumn : nil
+                let stripped = strippingWrapPadding(
+                    lines[index],
+                    columns: gridColumns,
+                    rawColumn: rawColumn
+                )
+                lines[index] = stripped.text
+                if index == cursorRow {
+                    cursorColumn = stripped.column
+                }
+            }
         }
 
         if lines.count > maxLines {
@@ -179,5 +200,101 @@ enum RemoteScrollback {
             lines.removeFirst(drop)
         }
         return lines
+    }
+
+    /// Removes wrap-padding spaces a line editor (zsh's ZLE, TUIs) writes
+    /// into a row's last column when a wide character doesn't fit there
+    /// and wraps to the next row instead. That space is invisible on the
+    /// host — it sits at the row's right edge, past where the cursor
+    /// wraps — but ghostty's `unwrap=true` read joins the soft-wrapped
+    /// rows into one logical line, so the space lands mid-line, and the
+    /// remote client then re-wraps that logical line at its own width,
+    /// making the space visible where it never was on the host.
+    ///
+    /// This works by re-simulating the same column-filling ghostty's own
+    /// terminal emulation did to lay the logical line out over rows in
+    /// the first place, so it can tell a genuine row boundary (and any
+    /// padding space sitting on one) apart from a space that is just
+    /// ordinary text. A space only counts as padding when it sits in the
+    /// last column of a simulated row *and* the next character is wide:
+    /// a narrow character there would have fit in that same last column,
+    /// so a space in front of it is real content, not padding.
+    static func strippingWrapPadding(
+        _ line: String,
+        columns: Int,
+        rawColumn: Int? = nil
+    ) -> (text: String, column: Int?) {
+        // A line whose maximum possible display width (every character
+        // wide) still fits in one row cannot have wrapped, so it cannot
+        // contain padding — skip the walk entirely.
+        guard columns >= 2, line.count * 2 > columns else {
+            return (line, rawColumn)
+        }
+
+        let characters = Array(line)
+        var droppedIndices = Set<Int>()
+        var col = 0
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            let width = RemoteCellWidth.displayWidth(of: character)
+
+            // Zero-width scalars (combining marks, etc.) ride along with
+            // the previous cell and never occupy a column of their own.
+            if width == 0 {
+                index += 1
+                continue
+            }
+
+            if character == " ", col == columns - 1 {
+                var lookahead = index + 1
+                while lookahead < characters.count,
+                    RemoteCellWidth.displayWidth(of: characters[lookahead])
+                        == 0
+                {
+                    lookahead += 1
+                }
+                if lookahead < characters.count,
+                    RemoteCellWidth.displayWidth(of: characters[lookahead])
+                        == 2
+                {
+                    droppedIndices.insert(index)
+                    col = 0
+                    index += 1
+                    continue
+                }
+            }
+
+            // A character that doesn't fit in what's left of the row
+            // wraps to the next one first — this models ghostty's own
+            // auto-wrap (a spacer cell that contributes nothing to the
+            // text), not editor-written padding.
+            if col + width > columns {
+                col = 0
+            }
+            col += width
+            if col >= columns {
+                col = 0
+            }
+            index += 1
+        }
+
+        guard !droppedIndices.isEmpty else { return (line, rawColumn) }
+
+        var text = ""
+        text.reserveCapacity(characters.count)
+        for (position, character) in characters.enumerated()
+        where !droppedIndices.contains(position) {
+            text.append(character)
+        }
+
+        let column: Int?
+        if let rawColumn {
+            let droppedBefore = droppedIndices.count { $0 < rawColumn }
+            column = max(rawColumn - droppedBefore, 0)
+        } else {
+            column = nil
+        }
+        return (text, column)
     }
 }
