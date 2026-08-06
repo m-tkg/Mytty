@@ -63,6 +63,7 @@ final class RemotePaneBridge {
             screenText: screenText,
             viewportTextFromCursor: cursorSuffix,
             gridRows: gridSize.rows,
+            gridColumns: gridSize.columns,
             styledLines: styledLines
         )
     }
