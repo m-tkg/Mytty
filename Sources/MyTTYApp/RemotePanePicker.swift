@@ -10,6 +10,12 @@ struct RemotePaneSelection: Equatable {
     let title: String
 }
 
+/// Where a picked remote pane lands.
+enum RemotePaneOpenDestination {
+    case splitRight
+    case newTab
+}
+
 /// Drives the picker: the paired Macs, the panes the selected one currently
 /// has open, and the connection state while that list is still arriving.
 ///
@@ -94,10 +100,11 @@ final class RemotePanePickerModel: ObservableObject {
 struct RemotePanePickerView: View {
     @ObservedObject var model: RemotePanePickerModel
     let localizer: MyTTYLocalizer
-    let onPick: (RemotePaneSelection) -> Void
+    let onPick: (RemotePaneSelection, RemotePaneOpenDestination) -> Void
     let onCancel: () -> Void
 
     @State private var selectedPaneID: String?
+    @State private var destination: RemotePaneOpenDestination = .splitRight
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -120,6 +127,12 @@ struct RemotePanePickerView: View {
                 }
 
                 paneList
+
+                Picker(localizer[.remotePaneOpenDestination], selection: $destination) {
+                    Text(localizer[.splitRight]).tag(RemotePaneOpenDestination.splitRight)
+                    Text(localizer[.newTab]).tag(RemotePaneOpenDestination.newTab)
+                }
+                .pickerStyle(.segmented)
             }
 
             HStack {
@@ -130,7 +143,7 @@ struct RemotePanePickerView: View {
                     guard let selectedPaneID,
                           let selection = model.selection(forPaneID: selectedPaneID)
                     else { return }
-                    onPick(selection)
+                    onPick(selection, destination)
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(selectedPaneID == nil)
@@ -188,7 +201,7 @@ final class RemotePanePickerController {
         localizer: MyTTYLocalizer,
         over parent: NSWindow?,
         preselectedHostID: String? = nil,
-        onPick: @escaping (RemotePaneSelection) -> Void
+        onPick: @escaping (RemotePaneSelection, RemotePaneOpenDestination) -> Void
     ) {
         guard let parent else { return }
         let model = RemotePanePickerModel(
@@ -198,9 +211,9 @@ final class RemotePanePickerController {
         let view = RemotePanePickerView(
             model: model,
             localizer: localizer,
-            onPick: { [weak self] selection in
+            onPick: { [weak self] selection, destination in
                 self?.dismiss(from: parent)
-                onPick(selection)
+                onPick(selection, destination)
             },
             onCancel: { [weak self] in
                 self?.dismiss(from: parent)

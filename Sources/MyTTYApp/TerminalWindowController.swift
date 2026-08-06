@@ -727,17 +727,23 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private let remotePanePicker = RemotePanePickerController()
 
-    /// Asks which pane on which paired Mac to mirror, then opens it beside
-    /// the focused pane. Presented as a sheet because the pane list only
-    /// arrives once a connection to that Mac is up.
+    /// Asks which pane on which paired Mac to mirror and where to open it —
+    /// split to the right of the focused pane, or as a new tab. Presented
+    /// as a sheet because the pane list only arrives once a connection to
+    /// that Mac is up.
     func openRemotePane(preselectingHostID hostID: String? = nil) {
         remotePanePicker.present(
             connections: remoteConnections,
             localizer: localizer,
             over: window,
             preselectedHostID: hostID
-        ) { [weak self] selection in
-            self?.addRemotePane(selection, direction: .right)
+        ) { [weak self] selection, destination in
+            switch destination {
+            case .splitRight:
+                self?.addRemotePane(selection, direction: .right)
+            case .newTab:
+                self?.openRemoteTab(selection)
+            }
         }
     }
 
@@ -763,6 +769,41 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     adding: state,
                     direction: direction
                 )
+            }
+            remotes[state.id] = remote
+            renderedTabID = nil
+            sessionDidChange()
+            refreshPresentation(focusTerminal: true)
+        } catch {
+            presentActionError(error)
+        }
+    }
+
+    private func openRemoteTab(_ selection: RemotePaneSelection) {
+        let state = RemotePaneState(
+            hostID: selection.hostID,
+            remotePaneID: selection.remotePaneID,
+            hostName: selection.hostName,
+            title: selection.title
+        )
+        do {
+            let remote = makeRemote(for: state)
+            let tab = TabSession(initialRemote: state)
+            switch applicationPreferences.newTabPosition {
+            case .end:
+                try session.add(tab: tab, select: true)
+            case .afterCurrent:
+                if let currentIndex = session.tabs.firstIndex(
+                    where: { $0.id == session.selectedTabID }
+                ) {
+                    try session.insert(
+                        tab: tab,
+                        at: currentIndex + 1,
+                        select: true
+                    )
+                } else {
+                    try session.add(tab: tab, select: true)
+                }
             }
             remotes[state.id] = remote
             renderedTabID = nil
