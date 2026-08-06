@@ -604,6 +604,224 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
     }
 }
 
+extension SplitNode {
+    /// Exposes `paneFrames(in:)` to `BalancedPaneInsertion` without
+    /// widening that method's own access beyond `private` — this
+    /// extension can see it because it's declared in the same file.
+    fileprivate func balancedPaneFrames(
+        containerAspectRatio: Double
+    ) -> [PaneLayout] {
+        paneFrames(in: PaneFrame(
+            x: 0,
+            y: 0,
+            width: containerAspectRatio,
+            height: 1
+        ))
+    }
+
+    /// The frames that would result from splitting `targetID` in
+    /// `direction`, without actually mutating any real pane state — a
+    /// throwaway placeholder surface stands in for the pane the split
+    /// would add. Used only by `BalancedPaneInsertion.target`'s
+    /// row-balance tie-break, to score candidates before committing to
+    /// one. `nil` when `targetID` isn't in this tree.
+    fileprivate func simulatedFrames(
+        splitting targetID: TerminalSurfaceID,
+        direction: SplitDirection,
+        containerAspectRatio: Double
+    ) -> [PaneLayout]? {
+        let placeholder = SplitNode.surface(
+            TerminalSurfaceState(
+                workingDirectory: URL(fileURLWithPath: "/", isDirectory: true)
+            )
+        )
+        let transform: (SplitNode) -> SplitNode = { targetNode in
+            TabSession.wrapped(
+                targetNode,
+                adding: placeholder,
+                direction: direction
+            )
+        }
+        guard let simulatedRoot = replacing(pane: targetID, with: transform)
+        else { return nil }
+        return simulatedRoot.balancedPaneFrames(
+            containerAspectRatio: containerAspectRatio
+        )
+    }
+}
+
+/// Balanced (near-square) pane placement for orchestrated worker spawns.
+/// `mytty-ctl split --direction auto` and `agent spawn` (with
+/// `--direction` omitted, which defaults to `auto`) resolve through this
+/// instead of always growing a 1×N strip to the right.
+public enum BalancedPaneInsertion {
+    /// A typical macOS terminal window is noticeably wider than tall;
+    /// used when a caller can't measure its real container (or for any
+    /// test that doesn't care about a specific window shape).
+    public static let defaultContainerAspectRatio = 1.6
+
+    /// Picks which existing pane leaf to split, and in which direction,
+    /// so inserting a new pane there keeps the whole layout close to an
+    /// evenly filled grid.
+    ///
+    /// The rule: scale every leaf's frame into a container of width
+    /// `containerAspectRatio` and height `1` (matching the tab's actual
+    /// proportions, so a wide window fills columns before rows), and
+    /// pick the pane with the largest area to split along its *longer*
+    /// effective side: width ≥ height picks `.right`, otherwise
+    /// `.down`. Splitting the largest pane along its long axis is a
+    /// simple greedy rule that, applied repeatedly from a single pane,
+    /// converges toward near-square grids that fill horizontally first
+    /// for the wide aspect ratios real windows have.
+    ///
+    /// Ties on area (within a small relative epsilon) don't fall
+    /// straight to a positional rule: each tied candidate is simulated
+    /// (split along its own longer side) and the *resulting* layout is
+    /// scored by row balance -- panes are clustered into rows by
+    /// vertical-overlap (`rowGroups`), and the candidate minimizing
+    /// `maxRowCount - minRowCount` wins, so a fork that would leave one
+    /// row much fuller than another loses to one that keeps rows even.
+    /// This is what turns a 5-pane top-3/bottom-2 layout into a proper
+    /// 3-column x 2-row grid at 6 panes instead of a 4-top/2-bottom
+    /// split, at the aspect ratios real windows have. Only after that
+    /// tie-break also ties does position decide: the top-left-most
+    /// candidate (smallest `y`, then smallest `x`) for determinism.
+    ///
+    /// Candidates are restricted to terminal-surface leaves
+    /// (`SplitNode.surface`) whenever the tab has at least one, so an
+    /// orchestrated split never lands next to a browser/remote pane
+    /// when a terminal target is available; a tab with only
+    /// browser/remote panes falls back to any leaf so this still
+    /// returns a target. Returns `nil` only for an empty tree, which
+    /// shouldn't occur for a real `TabSession` (always at least one
+    /// pane) — callers should fall back to a fixed direction in that
+    /// case.
+    public static func target(
+        in root: SplitNode,
+        containerAspectRatio: Double = defaultContainerAspectRatio
+    ) -> (paneID: TerminalSurfaceID, direction: SplitDirection)? {
+        let aspect = normalizedAspectRatio(containerAspectRatio)
+        let frames = root.balancedPaneFrames(containerAspectRatio: aspect)
+        guard !frames.isEmpty else { return nil }
+
+        let terminalIDs = Set(root.surfaceIDs)
+        let candidates = terminalIDs.isEmpty
+            ? frames
+            : frames.filter { terminalIDs.contains($0.id) }
+        let pool = candidates.isEmpty ? frames : candidates
+
+        guard let maxArea = pool
+            .map({ $0.frame.width * $0.frame.height })
+            .max()
+        else { return nil }
+        let epsilon = max(1e-9, abs(maxArea) * 1e-9)
+        let tiedOnArea = pool.filter {
+            abs($0.frame.width * $0.frame.height - maxArea) <= epsilon
+        }
+        // Deterministic base ordering for every subsequent tie-break:
+        // top-left-most first.
+        let ordered = tiedOnArea.sorted { lhs, rhs in
+            if lhs.frame.y != rhs.frame.y { return lhs.frame.y < rhs.frame.y }
+            return lhs.frame.x < rhs.frame.x
+        }
+
+        guard ordered.count > 1 else {
+            let chosen = ordered[0]
+            return (chosen.id, direction(for: chosen.frame))
+        }
+
+        var best: PaneLayout?
+        var bestScore = Int.max
+        for candidate in ordered {
+            let candidateDirection = direction(for: candidate.frame)
+            guard let simulated = root.simulatedFrames(
+                splitting: candidate.id,
+                direction: candidateDirection,
+                containerAspectRatio: aspect
+            ) else { continue }
+            let counts = rowGroups(from: simulated).map(\.count)
+            guard let maxCount = counts.max(),
+                  let minCount = counts.min()
+            else { continue }
+            let score = maxCount - minCount
+            // Strict `<` only: `ordered` is already top-left-first, so
+            // the first candidate to reach a given score keeps it.
+            if score < bestScore {
+                bestScore = score
+                best = candidate
+            }
+        }
+
+        let chosen = best ?? ordered[0]
+        return (chosen.id, direction(for: chosen.frame))
+    }
+
+    /// Row clustering of every pane currently in `root`, for tests to
+    /// verify a final layout's shape directly (e.g. "6 panes form 2
+    /// rows of 3") rather than only the step-by-step target/direction
+    /// sequence that produced it. Internal (not `public`): this is a
+    /// verification hook for `@testable import`, not part of the
+    /// documented `mytty-ctl` placement contract.
+    static func rowGroups(
+        in root: SplitNode,
+        containerAspectRatio: Double = defaultContainerAspectRatio
+    ) -> [[TerminalSurfaceID]] {
+        let aspect = normalizedAspectRatio(containerAspectRatio)
+        let frames = root.balancedPaneFrames(containerAspectRatio: aspect)
+        return rowGroups(from: frames).map { $0.map(\.id) }
+    }
+
+    private static func normalizedAspectRatio(_ aspectRatio: Double) -> Double {
+        aspectRatio.isFinite && aspectRatio > 0
+            ? aspectRatio
+            : defaultContainerAspectRatio
+    }
+
+    private static func direction(for frame: PaneFrame) -> SplitDirection {
+        frame.width >= frame.height ? .right : .down
+    }
+
+    /// Groups frames into rows by vertical-overlap clustering: two
+    /// frames belong to the same row when their vertical overlap
+    /// exceeds 50% of the shorter frame's height, and the relation's
+    /// transitive closure forms each row -- a pane spanning multiple
+    /// stacked panes (e.g. a full-height pane beside a 2-high column)
+    /// merges those into one cluster, which is fine: this is only ever
+    /// used as a tie-break/verification score, not a rendering layout.
+    private static func rowGroups(from frames: [PaneLayout]) -> [[PaneLayout]] {
+        var clusters: [[PaneLayout]] = frames.map { [$0] }
+        var merged = true
+        while merged {
+            merged = false
+            mergeSearch: for i in 0..<clusters.count {
+                for j in (i + 1)..<clusters.count {
+                    let overlaps = clusters[i].contains { lhs in
+                        clusters[j].contains { rhs in
+                            verticalOverlapRatio(lhs.frame, rhs.frame) > 0.5
+                        }
+                    }
+                    guard overlaps else { continue }
+                    clusters[i] += clusters[j]
+                    clusters.remove(at: j)
+                    merged = true
+                    break mergeSearch
+                }
+            }
+        }
+        return clusters
+    }
+
+    private static func verticalOverlapRatio(
+        _ lhs: PaneFrame,
+        _ rhs: PaneFrame
+    ) -> Double {
+        let overlap = max(0, min(lhs.maxY, rhs.maxY) - max(lhs.minY, rhs.minY))
+        let shorterHeight = min(lhs.height, rhs.height)
+        guard shorterHeight > 0 else { return 0 }
+        return overlap / shorterHeight
+    }
+}
+
 public enum TabSessionError: Error, Equatable, Sendable {
     case surfaceNotFound(TerminalSurfaceID)
     case duplicateSurface(TerminalSurfaceID)
@@ -821,7 +1039,10 @@ public struct TabSession: Codable, Equatable, Sendable {
         }
     }
 
-    private static func wrapped(
+    /// `fileprivate` rather than `private` so `BalancedPaneInsertion`'s
+    /// tie-break simulation (same file) can build the same wrapped node
+    /// a real split would, without duplicating this switch.
+    fileprivate static func wrapped(
         _ targetNode: SplitNode,
         adding newNode: SplitNode,
         direction: SplitDirection
@@ -901,6 +1122,39 @@ public struct TabSession: Codable, Equatable, Sendable {
             throw TabSessionError.duplicateSurface(id)
         }
         root = Self.wrapped(root, adding: node, direction: .right)
+        if let first = node.paneIDs.first {
+            focusedSurfaceID = first
+        }
+    }
+
+    /// Inserts an existing pane subtree at the balanced-placement
+    /// position `BalancedPaneInsertion` computes, instead of always the
+    /// outer right edge `attach(pane:)` uses — used to park a finished
+    /// worker into a done tab without producing a 1×N strip. Falls back
+    /// to `attach(pane:)` if the algorithm can't find a target (an
+    /// empty tab, which shouldn't occur for a real `TabSession`).
+    public mutating func attachBalanced(
+        pane node: SplitNode,
+        containerAspectRatio: Double = BalancedPaneInsertion
+            .defaultContainerAspectRatio
+    ) throws {
+        for id in node.paneIDs where root.contains(id) {
+            throw TabSessionError.duplicateSurface(id)
+        }
+        guard let target = BalancedPaneInsertion.target(
+            in: root,
+            containerAspectRatio: containerAspectRatio
+        ), let replacement = root.replacing(pane: target.paneID, with: {
+            targetNode in
+            Self.wrapped(targetNode, adding: node, direction: target.direction)
+        }) else {
+            root = Self.wrapped(root, adding: node, direction: .right)
+            if let first = node.paneIDs.first {
+                focusedSurfaceID = first
+            }
+            return
+        }
+        root = replacement
         if let first = node.paneIDs.first {
             focusedSurfaceID = first
         }

@@ -15,6 +15,12 @@ public enum ControlSplitDirection: String, Codable, Equatable, Sendable {
     case right
     case up
     case down
+    /// Balanced placement: resolved app-side via `BalancedPaneInsertion`
+    /// against the tab containing the anchor pane, rather than always
+    /// splitting the anchor itself in a fixed direction. The default
+    /// for both `split` and `agent spawn` when `--direction` is
+    /// omitted.
+    case auto
 }
 
 public enum ControlWaitCondition: String, Codable, Equatable, Sendable {
@@ -163,6 +169,12 @@ public enum ControlRequest: Equatable, Sendable {
     )
     case closePane(paneID: String)
     case focus(paneID: String)
+    /// Moves `paneID` into its containing tab's "done" tab —
+    /// `mytty-ctl park`, for parking a finished orchestrated worker out
+    /// of the working tab. See `WindowSession.parkPane` /
+    /// `OrchestrationDoneTab`. Failure codes: `pane-not-found`,
+    /// `already-parked`, `park-failed`.
+    case parkPane(paneID: String)
     /// A pane agent's own progress self-report ("running tests", ...),
     /// shown in the status bar and echoed in `list`/`agent result`
     /// answers. Ephemeral by design — never persisted, cleared when the
@@ -230,6 +242,9 @@ public enum ControlRequest: Equatable, Sendable {
     case sendAgent(jobID: AgentJobID, text: String, pressEnter: Bool)
     case focusAgent(jobID: AgentJobID)
     case closeAgent(jobID: AgentJobID)
+    /// `agent park <job-id>` — resolves the job's pane and parks it the
+    /// same way `parkPane` does. See `ControlRequest.parkPane`.
+    case parkAgent(jobID: AgentJobID)
 
     /// Read-only status of every provider's hook integration.
     case integrationList
@@ -293,6 +308,8 @@ extension ControlRequest: Codable {
         case sendAgent
         case focusAgent
         case closeAgent
+        case parkPane
+        case parkAgent
         case integrationList
         case integrationEnable
         case integrationRepair
@@ -398,6 +415,10 @@ extension ControlRequest: Codable {
             self = .focus(
                 paneID: try container.decode(String.self, forKey: .paneID)
             )
+        case .parkPane:
+            self = .parkPane(
+                paneID: try container.decode(String.self, forKey: .paneID)
+            )
         case .setPaneStatus:
             self = .setPaneStatus(
                 paneID: try container.decode(String.self, forKey: .paneID),
@@ -486,6 +507,10 @@ extension ControlRequest: Codable {
             self = .closeAgent(
                 jobID: try container.decode(AgentJobID.self, forKey: .jobID)
             )
+        case .parkAgent:
+            self = .parkAgent(
+                jobID: try container.decode(AgentJobID.self, forKey: .jobID)
+            )
         case .integrationList:
             self = .integrationList
         case .integrationEnable:
@@ -550,6 +575,9 @@ extension ControlRequest: Codable {
         case let .focus(paneID):
             try container.encode(RequestType.focus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
+        case let .parkPane(paneID):
+            try container.encode(RequestType.parkPane, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
         case let .setPaneStatus(paneID, status):
             try container.encode(RequestType.setPaneStatus, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
@@ -593,6 +621,9 @@ extension ControlRequest: Codable {
             try container.encode(jobID, forKey: .jobID)
         case let .closeAgent(jobID):
             try container.encode(RequestType.closeAgent, forKey: .type)
+            try container.encode(jobID, forKey: .jobID)
+        case let .parkAgent(jobID):
+            try container.encode(RequestType.parkAgent, forKey: .type)
             try container.encode(jobID, forKey: .jobID)
         case .integrationList:
             try container.encode(RequestType.integrationList, forKey: .type)

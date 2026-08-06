@@ -483,6 +483,210 @@ struct WindowSessionTests {
         #expect(window == original)
     }
 
+    @Test("parks a pane from a multi-pane tab into a new done tab")
+    func parkPaneCreatesDoneTab() throws {
+        var first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let firstPaneID = first.focusedSurfaceID
+        let secondPane = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            workingDirectory: URL(fileURLWithPath: "/second", isDirectory: true)
+        )
+        try first.split(
+            surface: first.focusedSurfaceID,
+            adding: secondPane,
+            direction: .right
+        )
+        var window = makeWindow(tab: first)
+
+        let destinationID = try window.parkPane(
+            secondPane.id,
+            parentTitle: "My Tab",
+            containerAspectRatio: 1.6
+        )
+
+        let source = window.tabs.first { $0.id == first.id }
+        #expect(source?.paneIDs == [firstPaneID])
+        #expect(window.tabs.map(\.id).last == destinationID)
+        let destination = window.tabs.first { $0.id == destinationID }
+        #expect(destination?.paneIDs == [secondPane.id])
+        #expect(
+            destination?.pinnedTitle
+                == OrchestrationDoneTab.title(
+                    parentTitle: "My Tab",
+                    parentTabID: first.id
+                )
+        )
+        // Never selected on creation.
+        #expect(window.selectedTabID == first.id)
+    }
+
+    @Test("reuses an existing done tab found by id suffix even after the parent's title changed")
+    func parkPaneReusesExistingDoneTabBySuffix() throws {
+        var first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let secondPane = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            workingDirectory: URL(fileURLWithPath: "/second", isDirectory: true)
+        )
+        try first.split(
+            surface: first.focusedSurfaceID,
+            adding: secondPane,
+            direction: .right
+        )
+        let thirdPane = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(13)),
+            workingDirectory: URL(fileURLWithPath: "/third", isDirectory: true)
+        )
+        try first.split(
+            surface: first.focusedSurfaceID,
+            adding: thirdPane,
+            direction: .right
+        )
+        var window = makeWindow(tab: first)
+
+        let firstDestinationID = try window.parkPane(
+            secondPane.id,
+            parentTitle: "Original Title",
+            containerAspectRatio: 1.6
+        )
+        // The parent tab's title changes after the done tab exists --
+        // lookup must still find it by the id suffix, not the embedded
+        // parent-title text.
+        let secondDestinationID = try window.parkPane(
+            thirdPane.id,
+            parentTitle: "Renamed Title",
+            containerAspectRatio: 1.6
+        )
+
+        #expect(secondDestinationID == firstDestinationID)
+        let doneTabs = window.tabs.filter {
+            OrchestrationDoneTab.isDoneTitle($0.pinnedTitle)
+        }
+        #expect(doneTabs.count == 1)
+        #expect(doneTabs.first?.paneIDs == [secondPane.id, thirdPane.id])
+        #expect(
+            doneTabs.first?.pinnedTitle
+                == OrchestrationDoneTab.title(
+                    parentTitle: "Original Title",
+                    parentTabID: first.id
+                )
+        )
+    }
+
+    @Test("parking a tab's sole pane removes the source tab and follows selection")
+    func parkPaneRemovesEmptySourceTab() throws {
+        let source = makeTab(id: 1, surfaceID: 11, path: "/source")
+        let other = makeTab(id: 3, surfaceID: 31, path: "/other")
+        var window = makeWindow(tab: source)
+        try window.add(tab: other, select: false)
+        try window.select(tab: source.id)
+
+        let destinationID = try window.parkPane(
+            source.focusedSurfaceID,
+            parentTitle: "Source",
+            containerAspectRatio: 1.6
+        )
+
+        #expect(!window.tabs.contains { $0.id == source.id })
+        #expect(window.tabs.map(\.id) == [other.id, destinationID])
+        #expect(window.selectedTabID == destinationID)
+    }
+
+    @Test("rejects parking a pane that is already in a done tab")
+    func parkPaneRejectsAlreadyParked() throws {
+        var first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        let secondPane = TerminalSurfaceState(
+            id: TerminalSurfaceID(rawValue: makeUUID(12)),
+            workingDirectory: URL(fileURLWithPath: "/second", isDirectory: true)
+        )
+        try first.split(
+            surface: first.focusedSurfaceID,
+            adding: secondPane,
+            direction: .right
+        )
+        var window = makeWindow(tab: first)
+        try window.parkPane(
+            secondPane.id,
+            parentTitle: "First",
+            containerAspectRatio: 1.6
+        )
+        let before = window
+
+        #expect(throws: WindowSessionError.alreadyParked) {
+            try window.parkPane(
+                secondPane.id,
+                parentTitle: "Done tab",
+                containerAspectRatio: 1.6
+            )
+        }
+        #expect(window == before)
+    }
+
+    @Test("parkPane rejects an unknown pane")
+    func parkPaneRejectsUnknownPane() throws {
+        let tab = makeTab(id: 1, surfaceID: 11, path: "/first")
+        var window = makeWindow(tab: tab)
+        let unknownSurface = TerminalSurfaceID(rawValue: makeUUID(99))
+        let before = window
+
+        #expect(throws: WindowSessionError.surfaceNotFound(unknownSurface)) {
+            try window.parkPane(
+                unknownSurface,
+                parentTitle: "First",
+                containerAspectRatio: 1.6
+            )
+        }
+        #expect(window == before)
+    }
+
+    @Test("clamps an absurdly long parent title in the done tab's name")
+    func orchestrationDoneTabClampsParentTitle() {
+        let tabID = TabID(rawValue: makeUUID(1))
+        let longTitle = String(repeating: "x", count: 500)
+
+        let title = OrchestrationDoneTab.title(
+            parentTitle: longTitle,
+            parentTabID: tabID
+        )
+
+        #expect(title.hasPrefix("done_"))
+        #expect(title.count < longTitle.count)
+        #expect(OrchestrationDoneTab.matches(pinnedTitle: title, parentTabID: tabID))
+        #expect(OrchestrationDoneTab.isDoneTitle(title))
+    }
+
+    @Test("OrchestrationDoneTab.matches is scoped to the given parent tab")
+    func orchestrationDoneTabMatchesIsScoped() {
+        // `makeUUID` zeroes every byte but the last, so two small values
+        // share the same first-8-hex-character id suffix -- use distinct
+        // UUIDs here so the two tab IDs actually produce different
+        // suffixes.
+        let tabID = TabID(
+            rawValue: UUID(uuidString: "11111111-0000-0000-0000-000000000001")!
+        )
+        let otherTabID = TabID(
+            rawValue: UUID(uuidString: "22222222-0000-0000-0000-000000000002")!
+        )
+        let title = OrchestrationDoneTab.title(
+            parentTitle: "Some Tab",
+            parentTabID: tabID
+        )
+
+        #expect(OrchestrationDoneTab.matches(pinnedTitle: title, parentTabID: tabID))
+        #expect(
+            !OrchestrationDoneTab.matches(
+                pinnedTitle: title,
+                parentTabID: otherTabID
+            )
+        )
+        #expect(!OrchestrationDoneTab.matches(pinnedTitle: nil, parentTabID: tabID))
+        #expect(
+            !OrchestrationDoneTab.matches(
+                pinnedTitle: "not a done tab",
+                parentTabID: tabID
+            )
+        )
+    }
+
     private func makeWindow(tab: TabSession) -> WindowSession {
         WindowSession(
             id: WindowID(rawValue: makeUUID(20)),

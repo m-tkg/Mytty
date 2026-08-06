@@ -93,6 +93,14 @@ protocol ControlServerDelegate: AnyObject {
         focusPaneID paneID: String
     ) -> Bool
 
+    /// Parks a pane into its containing tab's done tab on behalf of
+    /// `mytty-ctl park`. Returns a failure code (`pane-not-found`,
+    /// `already-parked`, `park-failed`) or nil on success.
+    func controlServer(
+        _ server: ControlServer,
+        parkPaneID paneID: String
+    ) -> String?
+
     /// Current status of every provider's hook integration, for
     /// `integration list` and as the success payload of enable/repair.
     func controlServerIntegrationStatuses(
@@ -185,6 +193,13 @@ protocol ControlServerAgentDelegate: AnyObject {
     func controlServer(
         _ server: ControlServer,
         closeAgentJobID jobID: AgentJobID
+    ) -> Result<Void, AgentControlFailure>
+
+    /// `agent park <job-id>` — resolves the job's pane and parks it via
+    /// the same path `ControlServerDelegate`'s `parkPaneID` uses.
+    func controlServer(
+        _ server: ControlServer,
+        parkAgentJobID jobID: AgentJobID
     ) -> Result<Void, AgentControlFailure>
 
     /// Checked once before `agent wait` enters its poll loop, mirroring
@@ -359,6 +374,15 @@ final class ControlServer {
             }
             return .ok
 
+        case let .parkPane(paneID):
+            if let failureCode = delegate.controlServer(
+                self,
+                parkPaneID: paneID
+            ) {
+                return .failure(code: failureCode)
+            }
+            return .ok
+
         case let .setPaneStatus(paneID, status):
             if let failureCode = delegate.controlServer(
                 self,
@@ -398,7 +422,7 @@ final class ControlServer {
             ) { .integrationStatuses($0) }
 
         case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
-             .closeAgent:
+             .closeAgent, .parkAgent:
             // Routed to `processAgent` before this switch is reached — see
             // `isAgentRequest`. Kept here only so the switch stays
             // exhaustive against future `ControlRequest` cases.
@@ -409,7 +433,7 @@ final class ControlServer {
     private func isAgentRequest(_ request: ControlRequest) -> Bool {
         switch request {
         case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
-             .closeAgent:
+             .closeAgent, .parkAgent:
             true
         default:
             false
@@ -474,6 +498,11 @@ final class ControlServer {
         case let .closeAgent(jobID):
             return Self.encodeAgentResult(
                 delegate.controlServer(self, closeAgentJobID: jobID)
+            ) { _ in .ok }
+
+        case let .parkAgent(jobID):
+            return Self.encodeAgentResult(
+                delegate.controlServer(self, parkAgentJobID: jobID)
             ) { _ in .ok }
 
         default:

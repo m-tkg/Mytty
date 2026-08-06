@@ -33,6 +33,12 @@ struct ControlProtocolTests {
                 workingDirectory: "/tmp/repo",
                 command: "codex -s workspace-write -a never -- task"
             ),
+            .split(
+                paneID: "pane-1",
+                direction: .auto,
+                workingDirectory: nil,
+                command: nil
+            ),
             .send(paneID: "pane-1", text: "hello\n", pressEnter: true),
             .sendKey(
                 paneID: "pane-1",
@@ -52,6 +58,7 @@ struct ControlProtocolTests {
             ),
             .closePane(paneID: "pane-1"),
             .focus(paneID: "pane-1"),
+            .parkPane(paneID: "pane-1"),
             .setPaneStatus(paneID: "pane-1", status: "running tests"),
             .setPaneStatus(paneID: "pane-1", status: nil),
             .events(afterSequence: nil, timeoutSeconds: 30),
@@ -103,6 +110,20 @@ struct ControlProtocolTests {
                 label: nil,
                 worktreeBranch: nil
             ),
+            // `direction: .auto` -- an omitted `--direction`, the default
+            // for `agent spawn` since balanced placement replaced a
+            // fixed "right".
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .auto,
+                provider: .codex,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "investigate the bug",
+                label: nil,
+                worktreeBranch: nil
+            ),
             .waitAgent(
                 jobID: AgentJobID(),
                 until: .running,
@@ -117,6 +138,7 @@ struct ControlProtocolTests {
             .sendAgent(jobID: AgentJobID(), text: "hi", pressEnter: true),
             .focusAgent(jobID: AgentJobID()),
             .closeAgent(jobID: AgentJobID()),
+            .parkAgent(jobID: AgentJobID()),
             .integrationList,
             .integrationEnable(provider: .claudeCode),
             .integrationRepair(provider: .codex),

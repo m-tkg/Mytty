@@ -14,7 +14,7 @@ public enum ControlCommandLineParser {
 
     Commands:
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
-                  [--anchor <pane-id>] [--direction <left|right|up|down>]
+                  [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>] [--worktree <branch>]
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
@@ -22,6 +22,7 @@ public enum ControlCommandLineParser {
       agent send <job-id> <text> [--enter]
       agent focus <job-id>
       agent close <job-id>
+      agent park <job-id>
 
       integration list
       integration enable <codex|claude-code|opencode|antigravity|cursor>
@@ -29,7 +30,7 @@ public enum ControlCommandLineParser {
 
       list
       new-tab [--cwd <path>] [--command <text>]
-      split <pane-id> <left|right|up|down> [--cwd <path>] [--command <text>]
+      split <pane-id> [<left|right|up|down|auto>] [--cwd <path>] [--command <text>]
       send <pane-id> <text> [--enter]
       send-key <pane-id> <key> [--modifiers <mod,mod,...>]
       read <pane-id>
@@ -39,6 +40,11 @@ public enum ControlCommandLineParser {
       events [--after <seq>] [--timeout <seconds>]
       close-pane <pane-id>
       focus <pane-id>
+      park <pane-id>
+
+    An omitted `--direction`/direction argument on `split` and `agent spawn`
+    defaults to auto: the new pane lands wherever keeps the tab's layout
+    closest to an evenly filled grid, rather than always to the right.
 
     Every command prints one JSON object to stdout on success and exits 0.
     On failure it prints a message to stderr and exits 1. Run
@@ -94,11 +100,17 @@ public enum ControlCommandLineParser {
     agents and collect their output."
 
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
-                  [--anchor <pane-id>] [--direction <left|right|up|down>]
+                  [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>] [--worktree <branch>]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
-        launches the worker in it. Recommended: omit --access when
+        launches the worker in it. --direction defaults to auto: it picks
+        whichever existing pane and side keeps the tab's layout closest
+        to an evenly filled grid (filling across before stacking down),
+        so spawning several workers in a row produces a balanced grid
+        instead of a 1xN strip growing off the anchor. Pass an explicit
+        left/right/up/down only when you specifically want the new pane
+        anchored next to --anchor itself. Recommended: omit --access when
         spawning a worker of your own provider. An omitted --access
         behaves as inherit whenever the worker's --provider matches the
         anchor pane's current agent (workspace-write otherwise) --
@@ -175,6 +187,17 @@ public enum ControlCommandLineParser {
 
       agent close <job-id>
         Closes the job's pane once it's no longer needed.
+
+      agent park <job-id>
+        Once a worker has finished AND you've read its result (agent
+        result / agent wait --until completed), run this instead of
+        agent close: it moves the job's pane into a done_<tab>_<id> tab
+        in the same window (created the first time, reused after) so
+        the working tab stops accumulating finished workers while you
+        keep spawning more. The done tab is appended in the background
+        -- never selected -- and new panes land there at the same
+        balanced position --direction auto uses. Only close a pane
+        outright when you're sure nothing further will read its output.
 
       status <text> [--pane <pane-id>]  /  status --clear
         A pane agent's own progress self-report ("running tests", one
@@ -273,19 +296,23 @@ public enum ControlCommandLineParser {
 
     LOW-LEVEL PANE COMMANDS (escape hatch)
 
-    split/send/wait/read/close-pane/focus predate the agent API and still
-    work -- they're the right tool for driving a pane by hand (a human is
-    watching, or the task doesn't fit "spawn one worker with one task").
-    For running a team of workers, prefer `agent spawn`/`agent wait`/
-    `agent result` above: they solve the exact races described below.
+    split/send/wait/read/close-pane/focus/park predate the agent API and
+    still work -- they're the right tool for driving a pane by hand (a
+    human is watching, or the task doesn't fit "spawn one worker with one
+    task"). For running a team of workers, prefer `agent spawn`/`agent
+    wait`/`agent result` above: they solve the exact races described
+    below.
 
       1. Write the task to a file, then claim a pane and launch the worker
          with its task in one shot:
            echo "<task text>" > /tmp/task-a.md
-           "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" right --cwd <dir> \\
+           "$MYTTY_CTL_BIN" split "$MYTTY_SURFACE_ID" --cwd <dir> \\
              --command 'claude --permission-mode acceptEdits -- "$(cat /tmp/task-a.md)"'
          Give each sub-agent its own directory (ideally a git worktree) so
-         they don't fight over the same files. --command delivers the
+         they don't fight over the same files. Omitting the direction
+         argument (as above) places the pane wherever keeps the layout
+         balanced; pass `right`/`down`/etc. explicitly to anchor it next
+         to $MYTTY_SURFACE_ID instead. --command delivers the
          launch command and the task as one shell input to the new pane --
          the same mechanism `agent spawn` uses -- so there's no separate
          `send` that could race the worker's still-initializing TUI. See
@@ -296,9 +323,12 @@ public enum ControlCommandLineParser {
          history too.
       2. wait --until idle               block until the run finishes.
       3. read                            fetch the pane's screen text.
-      4. close-pane, once done with the pane, or focus to hand control back
-         to a human. `send` is still the right tool for a follow-up
-         instruction to an already-running agent.
+      4. park, once you've read the result and the pane's no longer
+         active, to move it into the tab's done_<tab>_<id> tab instead of
+         losing its output; close-pane only once nothing will read it
+         again; or focus to hand control back to a human. `send` is
+         still the right tool for a follow-up instruction to an
+         already-running agent.
 
       TESTING A TUI APP FROM INSIDE A PANE
 
@@ -651,20 +681,29 @@ public enum ControlCommandLineParser {
                 flags: [],
                 valued: ["--cwd", "--command"]
             )
-            guard positional.count == 2,
-                  let direction = ControlSplitDirection(
-                      rawValue: positional[1]
-                  )
-            else {
-                throw ControlCommandLineError.invalidArguments(
-                    "mytty-ctl split <pane-id> <left|right|up|down> "
-                        + "[--cwd <path>] [--command <text>]"
-                )
+            let splitUsage = "mytty-ctl split <pane-id> "
+                + "[<left|right|up|down|auto>] [--cwd <path>] "
+                + "[--command <text>]"
+            guard positional.count == 1 || positional.count == 2 else {
+                throw ControlCommandLineError.invalidArguments(splitUsage)
+            }
+            // An omitted direction defaults to `auto` (balanced
+            // placement), the same default `agent spawn`'s `--direction`
+            // now applies.
+            let direction: ControlSplitDirection
+            if positional.count == 2 {
+                guard let parsed = ControlSplitDirection(
+                    rawValue: positional[1]
+                ) else {
+                    throw ControlCommandLineError.invalidArguments(splitUsage)
+                }
+                direction = parsed
+            } else {
+                direction = .auto
             }
             let command = try nonEmptyCommand(
                 options.values["--command"],
-                usage: "mytty-ctl split <pane-id> <left|right|up|down> "
-                    + "[--cwd <path>] [--command <text>]"
+                usage: splitUsage
             )
             return .split(
                 paneID: positional[0],
@@ -838,6 +877,14 @@ public enum ControlCommandLineParser {
             }
             return .focus(paneID: arguments[0])
 
+        case "park":
+            guard arguments.count == 1 else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl park <pane-id>"
+                )
+            }
+            return .parkPane(paneID: arguments[0])
+
         default:
             throw ControlCommandLineError.invalidArguments(usage)
         }
@@ -916,14 +963,14 @@ public enum ControlCommandLineParser {
     // MARK: - agent
 
     private static let agentUsage = """
-    mytty-ctl agent <spawn|wait|result|send|focus|close> [arguments]
+    mytty-ctl agent <spawn|wait|result|send|focus|close|park> [arguments]
     Run `mytty-ctl guide` for the full agent orchestration recipe.
     """
 
     private static let agentSpawnUsage = """
     mytty-ctl agent spawn --provider <codex|claude|cursor> \
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
-    [--direction <left|right|up|down>] [--cwd <path>] \
+    [--direction <left|right|up|down|auto>] [--cwd <path>] \
     [--access <review|workspace-write|inherit>] [--model <text>] \
     [--label <text>] [--worktree <branch>]
     """
@@ -1061,6 +1108,16 @@ public enum ControlCommandLineParser {
             }
             return .closeAgent(jobID: jobID)
 
+        case "park":
+            guard arguments.count == 1,
+                  let jobID = AgentJobID(uuidString: arguments[0])
+            else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl agent park <job-id>"
+                )
+            }
+            return .parkAgent(jobID: jobID)
+
         default:
             throw ControlCommandLineError.invalidArguments(agentUsage)
         }
@@ -1102,7 +1159,10 @@ public enum ControlCommandLineParser {
             )
         }
 
-        let directionValue = options.values["--direction"] ?? "right"
+        // An omitted `--direction` resolves to balanced placement, the
+        // same default `split` now applies when its direction is
+        // omitted, rather than always growing a 1×N strip to the right.
+        let directionValue = options.values["--direction"] ?? "auto"
         guard let direction = ControlSplitDirection(
             rawValue: directionValue
         ) else {

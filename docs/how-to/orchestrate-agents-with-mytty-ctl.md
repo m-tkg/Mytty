@@ -44,6 +44,13 @@ findings_a=$(mytty-ctl agent result "$job_a" | jq -r '.content.text')
 findings_b=$(mytty-ctl agent result "$job_b" | jq -r '.content.text')
 ```
 
+Neither spawn passed `--direction`, so both workers land wherever balanced placement puts them -- see [Balanced placement and parking finished workers](#balanced-placement-and-parking-finished-workers) below. Once a worker's findings are collected, park it instead of closing it so its pane stays around (out of the way, in the tab's done tab) in case something later needs to look back at it:
+
+```bash
+mytty-ctl agent park "$job_a"
+mytty-ctl agent park "$job_b"
+```
+
 Two sequential waits are fine for two workers. Watching more than a couple at once, poll `events` in a loop instead of blocking on one `wait`/`agent wait` per pane -- one long-poll call picks up whichever worker's state changes next, on any pane:
 
 ```bash
@@ -69,6 +76,12 @@ mytty-ctl agent wait "$job_impl" --until completed
 ```
 
 Plain text sent with `agent send` does not activate `claude`'s approval dialog -- a bare keypress via `send-key` does. This needs the worker's provider hook integration installed; see [Hooks are optional](#hooks-are-optional) below.
+
+## Balanced placement and parking finished workers
+
+Neither `split` nor `agent spawn` needs a `--direction` -- both default to `auto`, which picks whichever existing pane in the tab keeps the layout closest to an evenly filled grid, splitting it along its longer side. Spawning six workers one at a time with `--direction auto` converges on roughly a 3x2 grid instead of a 1x6 strip running off the edge of the window; pass an explicit `left`/`right`/`up`/`down` only when a worker specifically needs to sit next to `--anchor` itself. See [Balanced placement](../reference/mytty-ctl.md#balanced-placement---direction-auto) in the reference for how the target pane and direction are chosen.
+
+Once a worker finishes and its result has been read (`agent result`, or after `agent wait --until completed`), run `agent park "$job"` (or `park "$pane_id"` for a pane not tracked by a job) instead of `agent close` -- it moves the pane into a `done_<tab>_<id>` tab in the same window rather than deleting it outright, so the working tab only shows live workers while finished ones stay reachable if something later needs to look back at their output. The done tab is created the first time a pane is parked out of a given tab, appended at the end of the tab strip and never selected (parking never interrupts what the user is looking at), and reused for every later `park` from that same source tab. Only reach for `agent close` once a worker's pane genuinely won't be needed again. See [Parking finished workers](../reference/mytty-ctl.md#parking-finished-workers-park--agent-park) in the reference for the done tab's naming and reuse rules.
 
 ## Hooks are optional
 

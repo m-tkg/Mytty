@@ -3626,6 +3626,67 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         return true
     }
 
+    /// The width/height aspect ratio of the area available to a tab's
+    /// pane tree, for `BalancedPaneInsertion` placement math. Every tab
+    /// in this window shares the same `surfaceHost` container regardless
+    /// of which one is currently rendered, so this works for placement
+    /// into a background (unselected) tab too. Falls back to
+    /// `BalancedPaneInsertion.defaultContainerAspectRatio` when the view
+    /// hasn't been laid out yet (zero or degenerate bounds).
+    func paneContainerAspectRatio() -> Double {
+        let size = surfaceHost.bounds.size
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0
+        else {
+            return BalancedPaneInsertion.defaultContainerAspectRatio
+        }
+        return Double(size.width / size.height)
+    }
+
+    /// Parks a pane on behalf of `mytty-ctl park` / `agent park`: moves
+    /// it into its containing tab's done tab (creating one — unselected,
+    /// at the end of the tab strip — if none matches yet) so a working
+    /// tab full of orchestrated workers doesn't accumulate finished
+    /// ones. Returns a failure code (`pane-not-found`, `already-parked`,
+    /// `park-failed`) or nil on success. Mirrors the private `movePane`
+    /// context-menu action's post-move bookkeeping, with
+    /// `focusTerminal: false` since parking must never steal focus.
+    @discardableResult
+    func parkPane(forControl paneID: TerminalSurfaceID) -> String? {
+        guard let sourceTab = session.tabs.first(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { return "pane-not-found" }
+        let parentTitle = displayTitle(for: sourceTab)
+        let sourceTabID = sourceTab.id
+        do {
+            try session.parkPane(
+                paneID,
+                parentTitle: parentTitle,
+                containerAspectRatio: paneContainerAspectRatio()
+            )
+            // The recorder is bound to the pane's containing tab, so a
+            // parked pane would leave the sidebar indicator on the wrong
+            // tab — same reasoning as `movePane`.
+            recording.stopIfRecording(surfaceID: paneID)
+            if !session.tabs.contains(where: { $0.id == sourceTabID }) {
+                paneLayout.removeZoom(tabID: sourceTabID)
+            }
+            renderedTabID = nil
+            sessionDidChange()
+            refreshPresentation(focusTerminal: false)
+            return nil
+        } catch WindowSessionError.alreadyParked {
+            return "already-parked"
+        } catch WindowSessionError.surfaceNotFound {
+            return "pane-not-found"
+        } catch {
+            dialogLog.error(
+                "park pane failed: \(error, privacy: .public)"
+            )
+            return "park-failed"
+        }
+    }
+
     private func updateSessionFrame() {
         guard let frame = window?.frame else { return }
         session.frame = WindowFrame(
