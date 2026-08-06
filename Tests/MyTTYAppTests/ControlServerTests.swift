@@ -70,6 +70,30 @@ struct ControlServerTests {
         #expect(delegate.lastSplitCommand == nil)
     }
 
+    @Test("split reports split-failed when the delegate can't create the pane")
+    func splitFailureReportsFailureCode() async throws {
+        // Mirrors `TerminalWindowController.splitPane(orchestrated: true)`
+        // returning nil when surface creation throws (see
+        // `TerminalWindowControllerTests` for that half of the incident
+        // this fixed): the delegate returning nil must become
+        // `split-failed`, never a hang or a dialog.
+        let delegate = StubControlDelegate()
+        delegate.nextPaneID = nil
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        let splitResponse = try await perform(
+            .split(
+                paneID: "pane-1",
+                direction: .right,
+                workingDirectory: nil,
+                command: nil
+            ),
+            to: socketURL
+        )
+        #expect(splitResponse == .failure(code: "split-failed"))
+    }
+
     @Test("newTab and split forward --command to the delegate")
     func newTabAndSplitForwardCommand() async throws {
         let delegate = StubControlDelegate()
@@ -1311,7 +1335,7 @@ private final class StubControlDelegate: ControlServerDelegate {
     func controlServer(
         _ server: ControlServer,
         enableIntegrationFor provider: AgentProvider
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure> {
         lastEnableProvider = provider
         return enableIntegrationResult
     }
@@ -1319,7 +1343,7 @@ private final class StubControlDelegate: ControlServerDelegate {
     func controlServer(
         _ server: ControlServer,
         repairIntegrationsFor provider: AgentProvider?
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure> {
         lastRepairProvider = .some(provider)
         return repairIntegrationsResult
     }

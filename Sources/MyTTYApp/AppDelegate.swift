@@ -164,8 +164,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             clamshellSleepBlocker.onChange = { [weak self] in
                 self?.updateAgentSleepPrevention()
             }
-            clamshellSleepBlocker.confirmApprovalPrompt = { [weak self] in
-                self?.confirmClamshellApprovalPrompt() ?? false
+            clamshellSleepBlocker.confirmApprovalPrompt = { [weak self] completion in
+                guard let self else {
+                    completion(false)
+                    return
+                }
+                self.confirmClamshellApprovalPrompt(completion: completion)
             }
             clamshellSleepBlocker.prepare()
             try launchApplication()
@@ -895,7 +899,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return self?.agentIntegrationSettingsModel?.states ?? []
             },
             confirmIntegrationInstall: { [weak self] providers, isRepair in
-                self?.confirmIntegrationInstallPrompt(
+                await self?.confirmIntegrationInstallPrompt(
                     providers: providers,
                     isRepair: isRepair
                 ) ?? false
@@ -1330,20 +1334,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The window a dialog with no obvious owner (integration/clamshell
+    /// prompts, `presentActionError` when it isn't a
+    /// `TerminalWindowController` calling) should sheet onto.
+    private func bestAvailableWindow() -> NSWindow? {
+        NSApp.keyWindow ?? NSApp.mainWindow
+            ?? windowSessionCoordinator.controllers.first?.window
+    }
+
     /// The human gate behind `mytty-ctl integration enable`/`repair`:
-    /// activates the app and blocks on a modal until the person at the Mac
-    /// answers. Deliberately the only path that reaches
-    /// `setInstalled` from the control socket — an AI orchestrator can
-    /// request an install but can never approve one (see
-    /// `docs/explanation/mytty-ctl-architecture.md`).
+    /// activates the app and awaits a sheet until the person at the Mac
+    /// answers, instead of blocking on `runModal()` -- which would freeze
+    /// every other in-flight `mytty-ctl` request too, since
+    /// `ControlServer.process` runs on the same main actor. Deliberately
+    /// the only path that reaches `setInstalled` from the control socket
+    /// — an AI orchestrator can request an install but can never approve
+    /// one (see `docs/explanation/mytty-ctl-architecture.md`).
     private func confirmIntegrationInstallPrompt(
         providers: [AgentProvider],
         isRepair: Bool
-    ) -> Bool {
+    ) async -> Bool {
         NSApp.activate(ignoringOtherApps: true)
         let names = providers.map(\.title).joined(separator: ", ")
-        let alert = NSAlert()
-        alert.alertStyle = .warning
+        let alert = ApplicationAlert.make(style: .warning)
         alert.messageText = isRepair
             ? localizer.integrationRepairPromptTitle(names)
             : localizer.integrationEnablePromptTitle(names)
@@ -1352,21 +1365,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? localizer[.repairIntegration]
             : localizer[.enableIntegration])
         alert.addButton(withTitle: localizer[.cancel])
-        return alert.runModal() == .alertFirstButtonReturn
+        let response = await ApplicationAlert.present(
+            alert,
+            on: bestAvailableWindow()
+        )
+        return response == .alertFirstButtonReturn
     }
 
     /// Explains the one-time background-item approval before System
     /// Settings (and its Touch ID / password sheet) appears, so the
-    /// request never comes out of nowhere.
-    private func confirmClamshellApprovalPrompt() -> Bool {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
+    /// request never comes out of nowhere. Reports the answer via
+    /// `completion` rather than blocking on `runModal()` -- this fires
+    /// from `ClamshellSleepBlocker.apply()`, a synchronous call chain that
+    /// must not stall waiting on a dialog either.
+    private func confirmClamshellApprovalPrompt(
+        completion: @escaping (Bool) -> Void
+    ) {
+        let alert = ApplicationAlert.make(style: .informational)
         alert.messageText = localizer[.sleepClamshellApprovalPromptTitle]
         alert.informativeText =
             localizer[.sleepClamshellApprovalPromptMessage]
         alert.addButton(withTitle: localizer[.openSystemSettings])
         alert.addButton(withTitle: localizer[.notNow])
-        return alert.runModal() == .alertFirstButtonReturn
+        Task { @MainActor [weak self] in
+            let response = await ApplicationAlert.present(
+                alert,
+                on: self?.bestAvailableWindow()
+            )
+            completion(response == .alertFirstButtonReturn)
+        }
     }
 
     private func setAgentSleepPreventionMode(
@@ -1487,7 +1514,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The one deliberate exception to "no app-modal dialogs": the app is
+    /// about to `terminate(nil)` right after, so there is no in-flight
+    /// `mytty-ctl` request (or anything else) left for a blocked main
+    /// actor to stall.
     private func presentLaunchError(_ error: Error) {
+        dialogLog.error("launch failed: \(error, privacy: .public)")
         let alert = ApplicationAlert.make(style: .critical)
         alert.messageText = localizer[.couldNotStart]
         alert.informativeText = String(describing: error)
@@ -1495,11 +1527,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    /// Logs unconditionally, then shows a non-blocking sheet
+    /// fire-and-forget -- never `runModal()`, which would block the main
+    /// actor `ControlServer` answers `mytty-ctl` requests on for as long
+    /// as the alert is up.
     private func presentActionError(_ error: Error) {
+        dialogLog.error("action failed: \(error, privacy: .public)")
         let alert = ApplicationAlert.make(style: .critical)
         alert.messageText = localizer[.couldNotCompleteAction]
         alert.informativeText = String(describing: error)
-        alert.runModal()
+        Task { @MainActor [weak self] in
+            _ = await ApplicationAlert.present(
+                alert,
+                on: self?.bestAvailableWindow()
+            )
+        }
     }
 
 }

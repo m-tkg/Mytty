@@ -54,9 +54,12 @@ final class ClamshellSleepBlocker {
 
     /// Asks the user before System Settings opens for the one-time
     /// background-item approval, so the auth sheet never appears out of
-    /// nowhere. Returning false skips opening Settings. When unset, the
-    /// approval settings open directly.
-    var confirmApprovalPrompt: (() -> Bool)?
+    /// nowhere. Calling `completion(false)` skips opening Settings. When
+    /// unset, the approval settings open directly. Callback-shaped (not a
+    /// synchronous `Bool`) because the confirmation is a non-blocking
+    /// sheet, not `runModal()` -- `apply()`/`applyViaDaemon()` stay
+    /// synchronous either way.
+    var confirmApprovalPrompt: ((_ completion: @escaping (Bool) -> Void) -> Void)?
 
     private let daemon: ClamshellDaemonControlling?
     private let flagURL: URL
@@ -153,9 +156,15 @@ final class ClamshellSleepBlocker {
         setApprovalNeeded(daemon.requiresApproval)
         if pendingUserIntent {
             pendingUserIntent = false
-            if daemon.requiresApproval,
-               confirmApprovalPrompt?() ?? true {
-                daemon.openApprovalSettings()
+            if daemon.requiresApproval {
+                guard let confirmApprovalPrompt else {
+                    daemon.openApprovalSettings()
+                    return
+                }
+                confirmApprovalPrompt { approved in
+                    guard approved else { return }
+                    daemon.openApprovalSettings()
+                }
             }
         }
     }

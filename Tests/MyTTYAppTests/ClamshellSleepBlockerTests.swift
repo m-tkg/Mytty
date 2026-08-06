@@ -118,9 +118,9 @@ struct ClamshellSleepBlockerTests {
         // confirmed prompt opens System Settings, and only once.
         var prompts = 0
         var promptAnswer = false
-        blocker.confirmApprovalPrompt = {
+        blocker.confirmApprovalPrompt = { completion in
             prompts += 1
-            return promptAnswer
+            completion(promptAnswer)
         }
         blocker.noteUserIntent()
         blocker.setDesired(keepAwake: true)
@@ -155,7 +155,10 @@ struct ClamshellSleepBlockerTests {
             runPrivileged: { _ in true }
         )
         var prompts = 0
-        blocker.confirmApprovalPrompt = { prompts += 1; return true }
+        blocker.confirmApprovalPrompt = { completion in
+            prompts += 1
+            completion(true)
+        }
 
         blocker.noteUserIntent()
         blocker.setDesired(keepAwake: false)

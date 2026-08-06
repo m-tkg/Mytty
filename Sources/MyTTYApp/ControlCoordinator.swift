@@ -23,7 +23,7 @@ final class ControlCoordinator {
     private let confirmIntegrationInstall: (
         _ providers: [AgentProvider],
         _ isRepair: Bool
-    ) -> Bool
+    ) async -> Bool
     private let installIntegration: (AgentProvider) -> Void
 
     init(
@@ -47,14 +47,15 @@ final class ControlCoordinator {
         /// commands; `AppDelegate` refreshes the settings model from disk
         /// before returning its states.
         integrationStates: @escaping () -> [AgentIntegrationSettingsState],
-        /// Puts the install/repair confirmation dialog in front of a human
-        /// and reports their answer. Lives app-side (not here) so it can
-        /// activate the app and run a modal — and so no code path exists
-        /// that installs hooks without it.
+        /// Puts the install/repair confirmation dialog (a sheet, awaited
+        /// without blocking the main actor `ControlServer` also runs
+        /// requests on) in front of a human and reports their answer.
+        /// Lives app-side (not here) so it can activate the app — and so
+        /// no code path exists that installs hooks without it.
         confirmIntegrationInstall: @escaping (
             _ providers: [AgentProvider],
             _ isRepair: Bool
-        ) -> Bool,
+        ) async -> Bool,
         /// Performs one provider's install after approval — the same
         /// `AgentIntegrationSettingsModel.setInstalled` the Settings
         /// toggle uses, pane-team pointer handling included.
@@ -323,8 +324,8 @@ extension ControlCoordinator: ControlServerDelegate {
     func controlServer(
         _ server: ControlServer,
         enableIntegrationFor provider: AgentProvider
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
-        installIntegrations(
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+        await installIntegrations(
             targets: currentStatus(of: provider) == .installed
                 ? []
                 : [provider],
@@ -335,7 +336,7 @@ extension ControlCoordinator: ControlServerDelegate {
     func controlServer(
         _ server: ControlServer,
         repairIntegrationsFor provider: AgentProvider?
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure> {
         // An explicitly named provider is always repaired (repairing a
         // not-yet-installed one is just an install); the no-argument form
         // only touches integrations that report needs-repair.
@@ -343,7 +344,7 @@ extension ControlCoordinator: ControlServerDelegate {
             ?? integrationStates()
                 .filter { $0.status == .needsRepair }
                 .map(\.provider)
-        return installIntegrations(targets: targets, isRepair: true)
+        return await installIntegrations(targets: targets, isRepair: true)
     }
 
     /// Shared enable/repair path: an empty `targets` is already satisfied
@@ -353,11 +354,11 @@ extension ControlCoordinator: ControlServerDelegate {
     private func installIntegrations(
         targets: [AgentProvider],
         isRepair: Bool
-    ) -> Result<[ControlIntegrationInfo], AgentControlFailure> {
+    ) async -> Result<[ControlIntegrationInfo], AgentControlFailure> {
         guard !targets.isEmpty else {
             return .success(controlServerIntegrationStatuses(server))
         }
-        guard confirmIntegrationInstall(targets, isRepair) else {
+        guard await confirmIntegrationInstall(targets, isRepair) else {
             return .failure(AgentControlFailure("integration-declined"))
         }
         targets.forEach(installIntegration)
