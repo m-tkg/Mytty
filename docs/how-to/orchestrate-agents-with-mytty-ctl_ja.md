@@ -35,7 +35,7 @@ job_b=$(mytty-ctl agent spawn --provider claude --worktree investigate-b \
   --label investigate-b | jq -r '.job.jobID.rawValue')
 ```
 
-どちらの worker も `claude` で、これを呼び出している lead と同じ provider です。そのため `--access` を省略すると、固定のフラグ集合ではなく lead 自身の permission モードを引き継ぎます。`--worktree` により、それぞれの worker は自分専用の git worktree を持つので、2つが同じファイルを取り合うことがありません。
+どちらの worker も `claude` で、これを呼び出している lead と同じ provider です。そのため `--access` を省略すると、固定のフラグ集合ではなく lead 自身の permission モードを引き継ぎます。worker が自分と同じ provider のときは、これが基本の使い方です。ここで `--access workspace-write` を明示的に指定するのは適切ではありません。`claude` の worker は lead 自身のモードに関わらず常に `--permission-mode acceptEdits` で起動するため、lead がより広い権限で動いていても、worker は承認プロンプトのたびに止まって待つようになってしまいます。`--worktree` により、それぞれの worker は自分専用の git worktree を持つので、2つが同じファイルを取り合うことがありません。
 
 ```bash
 mytty-ctl agent wait "$job_a" --until completed
@@ -57,9 +57,35 @@ done
 
 コマンドの全一覧・JSON の形・失敗コードは [mytty-ctl リファレンス](../reference/mytty-ctl_ja.md) を参照してください。このページはあくまで手早い案内であり、リファレンスの代わりではありません。
 
+worker が承認プロンプトで止まってしまった場合(`--access workspace-write` で起動した worker によくあります。`claude` はファイル編集を許可していても Bash コマンドの承認は別に必要です)は、経過時間で見当をつけるのではなく `--until attention` で捕捉し、そのままプロンプトに答えます。
+
+```bash
+mytty-ctl agent wait "$job_impl" --until attention
+result=$(mytty-ctl agent result "$job_impl")
+pane_impl=$(echo "$result" | jq -r '.job.paneID.rawValue')
+# $result の .content.text でどのプロンプトが出ているか確認してから答える
+mytty-ctl send-key "$pane_impl" "1"
+mytty-ctl agent wait "$job_impl" --until completed
+```
+
+`agent send` でテキストを送っても `claude` の承認ダイアログは反応しません。`send-key` で実際のキー入力を送る必要があります。この手順には worker の provider の hook 連携が必要です。詳しくは後述の「hook は必須ではない」を参照してください。
+
 ## hook は必須ではない
 
 worker の実行状態(running、idle、succeeded、failed、disconnected)は、設定で hook 連携を一度もインストールしていない provider でも観測できます。Mytty がペインのフォアグラウンドプロセスから実行状態をネイティブに推定するためです。provider の hook をインストールすると、この状態の精度が上がります(推定ではなく実際のライフサイクルイベントになります)。また `wait --until attention`/`agent wait --until attention` には hook が必須です。ネイティブ推定は承認・入力の要求をあえて一切報告しないため、hook 未導入の provider に対する attention wait はブロックせず即座に失敗します。
+
+## ペイン内で TUI アプリをテストする
+
+worker は自分のツール越しに、パイプで繋がれた標準入出力でシェルコマンドを実行しており、自分のペインの pty は自分の TUI がふさいでいます。そのため開発中の TUI アプリ(raw mode で端末を扱うもの)を同じセッションの中から直接動かしたり操作したりすることはできません。代わりに別のペインを開いて実行させると、そのアプリに本物の pty を渡せます。
+
+```bash
+pane=$(mytty-ctl split "$MYTTY_SURFACE_ID" right --command '<テスト対象のアプリ>' | jq -r '.paneID')
+mytty-ctl send "$pane" "<入力>" --enter   # キー入力そのものを送る場合は send-key
+mytty-ctl read "$pane"                    # 描画された画面を確認
+mytty-ctl close-pane "$pane"              # 終わったら閉じる
+```
+
+手早く動作確認するだけなら `script -q /dev/null <アプリ>` でも疑似端末を割り当てられます。これはテスト対象のプログラムを実行しているだけでサブエージェントを作っているわけではないので、worker contract が禁止している hidden/native なサブエージェントの作成には当たりません。
 
 ## 設定画面
 
