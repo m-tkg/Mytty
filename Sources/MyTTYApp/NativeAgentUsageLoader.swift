@@ -83,15 +83,24 @@ struct CodexUsageSource: AgentProviderUsageSource {
             for: .codex,
             homeDirectory: homeDirectory
         )
+        async let plan = Task.detached(priority: .utility) {
+            CodexAccountPlan.planName(
+                homeDirectory: homeDirectory,
+                environment: environment
+            )
+        }.value
         let data = await CodexRateLimitProbe(environment: environment).fetch()
         let sessionCost = await cost
+        let planName = await plan
         guard let data else {
-            return NativeAgentUsageParser.costOnly(sessionCost)
+            return NativeAgentUsageParser.costOnly(sessionCost)?
+                .withPlanName(planName)
         }
-        return (try? NativeAgentUsageParser.codexSummary(
+        let summary = (try? NativeAgentUsageParser.codexSummary(
             from: data,
             sessionCostUSD: sessionCost
         )) ?? NativeAgentUsageParser.costOnly(sessionCost)
+        return summary?.withPlanName(planName)
     }
 }
 
@@ -111,8 +120,19 @@ struct ClaudeCodeUsageSource: AgentProviderUsageSource {
             homeDirectory: homeDirectory,
             pathProfile: pathProfile
         )
+        // The token and the plan fields live in the same `claudeAiOauth`
+        // object, and reaching the Keychain copy of it costs a `security`
+        // subprocess — so resolve both from one read instead of letting
+        // the probe repeat the lookup.
+        let credentials = await Self.resolveCredentials(
+            homeDirectory: homeDirectory
+        )
+        let planName = ClaudePlanName.resolve(
+            subscriptionType: credentials?.subscriptionType,
+            rateLimitTier: credentials?.rateLimitTier
+        )
         let result = await ClaudeUsageProbe.fetch(
-            homeDirectory: homeDirectory,
+            accessToken: credentials?.accessToken,
             cacheURL: cacheURL
         )
         let sessionCost = await cost
@@ -126,7 +146,7 @@ struct ClaudeCodeUsageSource: AgentProviderUsageSource {
                     summary?.limits ?? [],
                     cacheURL: cacheURL
                 )
-                return summary
+                return summary?.withPlanName(planName)
             } catch {
                 await ClaudeUsageResilienceStore.shared.recordFailure(
                     cacheURL: cacheURL
@@ -137,19 +157,44 @@ struct ClaudeCodeUsageSource: AgentProviderUsageSource {
             .cachedLimits(cacheURL: cacheURL)
         return Self.fallbackSummary(
             sessionCostUSD: sessionCost,
-            limits: cachedLimits
+            limits: cachedLimits,
+            planName: planName
+        )
+    }
+
+    /// The local file first, the Keychain payload only when that's missing
+    /// or unusable.
+    private static func resolveCredentials(
+        homeDirectory: URL
+    ) async -> ClaudeCredentials? {
+        if let credentials = ClaudeCredentialStore.credentials(
+            homeDirectory: homeDirectory
+        ) {
+            return credentials
+        }
+        guard let payload = await ClaudeCredentialStore.keychainPayload()
+        else { return nil }
+        return ClaudeCredentialStore.credentials(
+            homeDirectory: homeDirectory,
+            keychainPayload: payload
         )
     }
 
     private static func fallbackSummary(
         sessionCostUSD: Double?,
-        limits: [AgentUsageLimit]
+        limits: [AgentUsageLimit],
+        planName: String?
     ) -> AgentUsageSummary? {
         let cost = sessionCostUSD.map {
             AgentUsageCost.session(amount: $0, currencyCode: "USD")
         }
         guard cost != nil || !limits.isEmpty else { return nil }
-        return AgentUsageSummary(cost: cost, limits: limits, limitsAreStale: true)
+        return AgentUsageSummary(
+            cost: cost,
+            limits: limits,
+            limitsAreStale: true,
+            planName: planName
+        )
     }
 }
 
@@ -349,20 +394,11 @@ private enum ClaudeUsageProbe {
     }
 
     static func fetch(
-        homeDirectory: URL,
+        accessToken: String?,
         cacheURL: URL,
         now: Date = Date()
     ) async -> ClaudeUsageProbeResult {
-        var token = ClaudeCredentialStore.accessToken(homeDirectory: homeDirectory)
-        if token == nil,
-           let payload = await ClaudeCredentialStore.keychainPayload()
-        {
-            token = ClaudeCredentialStore.accessToken(
-                homeDirectory: homeDirectory,
-                keychainPayload: payload
-            )
-        }
-        guard let token,
+        guard let token = accessToken,
               let url = URL(string: "https://api.anthropic.com/api/oauth/usage")
         else { return .deferred }
         guard await ClaudeUsageResilienceStore.shared.beginRequest(
@@ -420,20 +456,30 @@ private enum ClaudeUsageProbe {
     }
 }
 
+/// The `claudeAiOauth` fields this app reads out of `.credentials.json` /
+/// the Keychain payload: the access token plus the two plan-identifying
+/// fields (`AgentPlanName.ClaudePlanName` resolves them into a display
+/// label). All three come from the same object, so one parse serves both.
+struct ClaudeCredentials: Equatable {
+    let accessToken: String
+    let subscriptionType: String?
+    let rateLimitTier: String?
+}
+
 enum ClaudeCredentialStore {
-    static func accessToken(
+    static func credentials(
         homeDirectory: URL,
         keychainPayload: Data? = nil
-    ) -> String? {
+    ) -> ClaudeCredentials? {
         let url = homeDirectory
             .appending(path: ".claude", directoryHint: .isDirectory)
             .appending(path: ".credentials.json")
         if let data = try? Data(contentsOf: url),
-           let token = accessToken(from: data)
+           let credentials = credentials(from: data)
         {
-            return token
+            return credentials
         }
-        return keychainPayload.flatMap(accessToken(from:))
+        return keychainPayload.flatMap(credentials(from:))
     }
 
     static func keychainPayload() async -> Data? {
@@ -449,7 +495,7 @@ enum ClaudeCredentialStore {
         return Data(output.utf8)
     }
 
-    private static func accessToken(from data: Data) -> String? {
+    private static func credentials(from data: Data) -> ClaudeCredentials? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = object["claudeAiOauth"] as? [String: Any],
               let token = oauth["accessToken"] as? String,
@@ -459,6 +505,10 @@ enum ClaudeCredentialStore {
            expiresAt.doubleValue / 1_000 <= Date().timeIntervalSince1970 {
             return nil
         }
-        return token
+        return ClaudeCredentials(
+            accessToken: token,
+            subscriptionType: oauth["subscriptionType"] as? String,
+            rateLimitTier: oauth["rateLimitTier"] as? String
+        )
     }
 }

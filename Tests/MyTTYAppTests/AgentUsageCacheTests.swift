@@ -107,7 +107,7 @@ struct NativeAgentUsageAdapterTests {
         try credentials.write(to: directory.appending(path: ".credentials.json"))
 
         #expect(
-            ClaudeCredentialStore.accessToken(homeDirectory: home)
+            ClaudeCredentialStore.credentials(homeDirectory: home)?.accessToken
                 == "fixture-token"
         )
     }
@@ -121,10 +121,10 @@ struct NativeAgentUsageAdapterTests {
         """#.utf8)
 
         #expect(
-            ClaudeCredentialStore.accessToken(
+            ClaudeCredentialStore.credentials(
                 homeDirectory: home,
                 keychainPayload: payload
-            ) == "keychain-token"
+            )?.accessToken == "keychain-token"
         )
     }
 
@@ -668,6 +668,51 @@ struct NativeAgentUsageAdapterTests {
         #expect(summary?.limits == [
             AgentUsageLimit(title: "Plan", remainingPercent: 62.5),
         ])
+    }
+
+    @Test("resolves the Cursor plan name from membershipType")
+    func cursorMembershipTypeResolvesPlanName() throws {
+        let data = Data(#"""
+        {
+          "membershipType": "pro_plus",
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 10
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.planName == "Pro+")
+    }
+
+    @Test("doesn't crash on an unrecognized membershipType and never resurrects an otherwise-empty summary")
+    func cursorMembershipTypeUnrecognizedOrAlone() throws {
+        let withMeters = Data(#"""
+        {
+          "membershipType": "some-new-tier-nobody-heard-of",
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 10
+            }
+          }
+        }
+        """#.utf8)
+        let summaryWithMeters = try NativeAgentUsageParser.cursorSummary(from: withMeters)
+        #expect(summaryWithMeters != nil)
+        #expect(summaryWithMeters?.planName == "Some-new-tier-nobody-heard-of")
+
+        // A recognized plan with no cost, limits, or on-demand-unavailable
+        // signal still yields no summary at all.
+        let planOnly = Data(#"""
+        {
+          "membershipType": "pro"
+        }
+        """#.utf8)
+        let summaryPlanOnly = try NativeAgentUsageParser.cursorSummary(from: planOnly)
+        #expect(summaryPlanOnly == nil)
     }
 
     @Test("parses the full sanitized Enterprise usage-summary payload")
