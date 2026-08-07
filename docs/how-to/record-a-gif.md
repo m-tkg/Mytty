@@ -15,3 +15,7 @@ Recording stops when you stop it yourself, or automatically after 60 seconds. A 
 ## Show pressed keys in the recording
 
 Turn on **Show pressed keys in pane** in Settings to display the name of each key below the cursor as you type. This works outside of recording too, but it's especially handy for recordings and demos.
+
+## Recording a remote pane
+
+Recording also works on a [remote pane](open-a-pane-on-another-mac.md) mirrored from another Mac. Pressed keys aren't shown there, since the client has no local cursor position to draw the label around.
