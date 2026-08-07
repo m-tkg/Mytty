@@ -134,42 +134,18 @@ public enum NativeAgentUsageParser {
     ) throws -> AgentUsageSummary? {
         let response = try JSONDecoder().decode(CursorUsageResponse.self, from: data)
         let plan = response.individualUsage?.plan
+        let overall = response.individualUsage?.overall
+        let pooled = response.teamUsage?.pooled
         let onDemand = response.individualUsage?.onDemand
-        let onDemandCost: AgentUsageCost? = if onDemand?.enabled != false,
-                                              let used = onDemand?.used {
-            if let limit = onDemand?.limit, limit > 0 {
-                .budget(
-                    used: used / 100,
-                    limit: limit / 100,
-                    currencyCode: "USD"
-                )
-            } else if used > 0 {
-                .session(amount: used / 100, currencyCode: "USD")
-            } else {
-                nil
-            }
-        } else {
-            nil
-        }
-        let cost = onDemandCost ?? aggregatedEvents.flatMap(cursorAggregatedCost)
-        let totalPercent = plan?.totalPercentUsed ?? {
-            guard let used = plan?.used,
-                  let limit = plan?.limit,
-                  limit > 0
-            else { return nil }
-            return used / limit * 100
-        }()
-        let limits = [
-            totalPercent.map { ("Plan", $0) },
-            plan?.autoPercentUsed.map { ("Auto", $0) },
-            plan?.apiPercentUsed.map { ("API", $0) },
-        ].compactMap { value -> AgentUsageLimit? in
-            guard let (title, usedPercent) = value else { return nil }
-            return AgentUsageLimit(
-                title: title,
-                remainingPercent: 100 - usedPercent
-            )
-        }
+        let teamOnDemand = response.teamUsage?.onDemand
+
+        let cost = cursorCost(
+            onDemand: onDemand,
+            teamOnDemand: teamOnDemand
+        ) ?? aggregatedEvents.flatMap(cursorAggregatedCost)
+
+        let limits = cursorLimits(plan: plan, overall: overall, pooled: pooled)
+
         // Plan usage can read 0% used while the account still can't run
         // another request: on a plan with on-demand billing disabled, the
         // plan quota simply refuses further requests once free credits
@@ -182,6 +158,91 @@ public enum NativeAgentUsageParser {
             limits: limits,
             onDemandUnavailable: onDemandUnavailable
         )
+    }
+
+    /// Personal `plan`/`overall` usage takes precedence over the shared
+    /// `teamUsage.pooled` budget: on Enterprise/Team accounts without an
+    /// individual cap, the pooled quota is the only meter available, but
+    /// it isn't "this user's plan" so it surfaces under a different title.
+    private static func cursorLimits(
+        plan: CursorPlanUsage?,
+        overall: CursorCentsQuota?,
+        pooled: CursorCentsQuota?
+    ) -> [AgentUsageLimit] {
+        let planPercent = plan?.totalPercentUsed ?? {
+            guard let used = plan?.used, let limit = plan?.limit, limit > 0
+            else { return nil }
+            return used / limit * 100
+        }()
+        let overallPercent: Double? = if overall?.enabled != false,
+                                        let used = overall?.used,
+                                        let limit = overall?.limit,
+                                        limit > 0 {
+            used / limit * 100
+        } else {
+            nil
+        }
+        let pooledPercent: Double? = if pooled?.enabled != false,
+                                       let used = pooled?.used,
+                                       let limit = pooled?.limit,
+                                       limit > 0 {
+            used / limit * 100
+        } else {
+            nil
+        }
+        let primary: (title: String, usedPercent: Double)? =
+            if let planPercent { ("Plan", planPercent) }
+            else if let overallPercent { ("Plan", overallPercent) }
+            else if let pooledPercent { ("Team", pooledPercent) }
+            else { nil }
+
+        return [
+            primary,
+            plan?.autoPercentUsed.map { ("Auto", $0) },
+            plan?.apiPercentUsed.map { ("API", $0) },
+        ].compactMap { value -> AgentUsageLimit? in
+            guard let (title, usedPercent) = value else { return nil }
+            return AgentUsageLimit(
+                title: title,
+                remainingPercent: 100 - usedPercent
+            )
+        }
+    }
+
+    /// A personal on-demand budget wins over the shared team-pool budget,
+    /// and any budget wins over a bare session amount: on Enterprise/Team
+    /// accounts the personal on-demand cap is often `limit: null`, in which
+    /// case the team pool's budget is the real, more informative meter and
+    /// should be preferred over falling back to a plain session amount.
+    private static func cursorCost(
+        onDemand: CursorOnDemandUsage?,
+        teamOnDemand: CursorOnDemandUsage?
+    ) -> AgentUsageCost? {
+        cursorOnDemandBudget(onDemand)
+            ?? cursorOnDemandBudget(teamOnDemand)
+            ?? cursorOnDemandSession(onDemand)
+            ?? cursorOnDemandSession(teamOnDemand)
+    }
+
+    private static func cursorOnDemandBudget(
+        _ onDemand: CursorOnDemandUsage?
+    ) -> AgentUsageCost? {
+        guard onDemand?.enabled != false,
+              let used = onDemand?.used,
+              let limit = onDemand?.limit,
+              limit > 0
+        else { return nil }
+        return .budget(used: used / 100, limit: limit / 100, currencyCode: "USD")
+    }
+
+    private static func cursorOnDemandSession(
+        _ onDemand: CursorOnDemandUsage?
+    ) -> AgentUsageCost? {
+        guard onDemand?.enabled != false,
+              let used = onDemand?.used,
+              used > 0
+        else { return nil }
+        return .session(amount: used / 100, currencyCode: "USD")
     }
 
     /// Parses the ISO8601 `billingCycleStart`/`billingCycleEnd` timestamps out
@@ -314,6 +375,7 @@ private struct ClaudeUsageLimitModel: Decodable {
 
 private struct CursorUsageResponse: Decodable {
     let individualUsage: CursorIndividualUsage?
+    let teamUsage: CursorTeamUsage?
     let billingCycleStart: String?
     let billingCycleEnd: String?
 }
@@ -325,6 +387,12 @@ private struct CursorAggregatedEventsResponse: Decodable {
 private struct CursorIndividualUsage: Decodable {
     let plan: CursorPlanUsage?
     let onDemand: CursorOnDemandUsage?
+    let overall: CursorCentsQuota?
+}
+
+private struct CursorTeamUsage: Decodable {
+    let onDemand: CursorOnDemandUsage?
+    let pooled: CursorCentsQuota?
 }
 
 private struct CursorPlanUsage: Decodable {
@@ -337,6 +405,15 @@ private struct CursorPlanUsage: Decodable {
 }
 
 private struct CursorOnDemandUsage: Decodable {
+    let enabled: Bool?
+    let used: Double?
+    let limit: Double?
+}
+
+/// Shared shape for `individualUsage.overall` and `teamUsage.pooled`: a
+/// cents-denominated quota with the same `enabled`/`used`/`limit` fields as
+/// on-demand usage, but representing a capacity meter rather than spend.
+private struct CursorCentsQuota: Decodable {
     let enabled: Bool?
     let used: Double?
     let limit: Double?

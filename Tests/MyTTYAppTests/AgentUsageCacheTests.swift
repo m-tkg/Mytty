@@ -562,6 +562,139 @@ struct NativeAgentUsageAdapterTests {
         }
     }
 
+    @Test("uses individualUsage.overall as the Plan meter on Enterprise accounts")
+    func cursorOverallDrivesPlanMeter() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "overall": {
+              "enabled": true,
+              "used": 7384,
+              "limit": 10000
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.limits.count == 1)
+        let remainingPercent = summary?.limits.first?.remainingPercent
+        #expect(summary?.limits.first?.title == "Plan")
+        #expect(abs((remainingPercent ?? 0) - 26.16) < 0.0001)
+    }
+
+    @Test("falls back to teamUsage.pooled as a Team meter with no individualUsage")
+    func cursorPooledDrivesTeamMeter() throws {
+        let data = Data(#"""
+        {
+          "teamUsage": {
+            "pooled": {
+              "enabled": true,
+              "used": 12725135,
+              "limit": 28122000
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.limits.count == 1)
+        let remainingPercent = summary?.limits.first?.remainingPercent
+        #expect(summary?.limits.first?.title == "Team")
+        #expect(abs((remainingPercent ?? 0) - 54.75024891543987) < 0.0001)
+    }
+
+    @Test("uses teamUsage.onDemand as the cost when the personal cap has no limit")
+    func cursorTeamOnDemandDrivesCost() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 10
+            },
+            "onDemand": {
+              "enabled": true,
+              "used": 0,
+              "limit": null
+            }
+          },
+          "teamUsage": {
+            "onDemand": {
+              "enabled": true,
+              "used": 1311125,
+              "limit": 2000000
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.cost == .budget(
+            used: 13111.25,
+            limit: 20000,
+            currencyCode: "USD"
+        ))
+    }
+
+    @Test("prefers individualUsage.plan over overall/pooled when both are present")
+    func cursorPlanWinsOverOverallAndPooled() throws {
+        let data = Data(#"""
+        {
+          "individualUsage": {
+            "plan": {
+              "totalPercentUsed": 37.5
+            },
+            "overall": {
+              "enabled": true,
+              "used": 7384,
+              "limit": 10000
+            }
+          },
+          "teamUsage": {
+            "pooled": {
+              "enabled": true,
+              "used": 12725135,
+              "limit": 28122000
+            }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary?.limits == [
+            AgentUsageLimit(title: "Plan", remainingPercent: 62.5),
+        ])
+    }
+
+    @Test("parses the full sanitized Enterprise usage-summary payload")
+    func cursorEnterprisePayload() throws {
+        let data = Data(#"""
+        {
+          "billingCycleStart": "2026-04-01T00:00:00.000Z",
+          "billingCycleEnd": "2026-05-01T00:00:00.000Z",
+          "membershipType": "enterprise",
+          "limitType": "team",
+          "isUnlimited": false,
+          "individualUsage": {
+            "overall": { "enabled": true, "used": 7384, "limit": 10000, "remaining": 2616 }
+          },
+          "teamUsage": {
+            "onDemand": { "enabled": true, "used": 0, "limit": null, "remaining": null },
+            "pooled":   { "enabled": true, "used": 12725135, "limit": 28122000, "remaining": 15396865 }
+          }
+        }
+        """#.utf8)
+
+        let summary = try NativeAgentUsageParser.cursorSummary(from: data)
+
+        #expect(summary != nil)
+        #expect(!(summary?.limits.isEmpty ?? true))
+    }
+
     @Test("parses Cursor billing cycle dates with and without fractional seconds")
     func cursorBillingCycleParsing() {
         let withFractional = Data(#"""

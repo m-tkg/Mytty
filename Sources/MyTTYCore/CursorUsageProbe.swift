@@ -26,7 +26,8 @@ public enum CursorUsageProbe {
             for: summaryRequest
         ),
               (summaryResponse as? HTTPURLResponse)?.statusCode == 200,
-              (try? NativeAgentUsageParser.cursorSummary(from: summaryData)) != nil
+              (try? JSONSerialization.jsonObject(with: summaryData))
+                is [String: Any]
         else { return nil }
 
         let aggregatedEvents = await fetchAggregatedEvents(
