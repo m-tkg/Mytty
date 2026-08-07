@@ -173,4 +173,44 @@ struct RemotePaneScreenRendererTests {
         )
         #expect(lines == [[]])
     }
+
+    @Test
+    func styledLineLengthMismatchFallsBackToPlain() {
+        // The styled line's plainText ("hi") doesn't match the plain text
+        // ("hello") it's supposedly aligned to — a version-skewed host, or
+        // a host-side bug. Cursor-column math downstream assumes
+        // `cells.count == plain.count`, so a mismatch must fall back to
+        // plain, unstyled characters rather than risk misplacing the
+        // cursor or corrupting the visible text.
+        let styled = RemoteStyledLine(spans: [
+            RemoteTextSpan(text: "hi", foreground: 0xFF0000),
+        ])
+        let lines = RemotePaneScreenRenderer.renderedLines(
+            text: "hello",
+            cursorRow: nil,
+            cursorColumn: nil,
+            styledLines: [styled]
+        )
+        #expect(lines[0].map(\.text) == ["hello"])
+        #expect(lines[0][0].foreground == nil)
+    }
+
+    @Test
+    func matchingLengthWideCharacterLineKeepsItsColor() {
+        // A length-matching wide-character-only line must keep its color
+        // — the guard should only reject genuine mismatches, not
+        // legitimate lines just because they're full of multi-byte
+        // characters.
+        let styled = RemoteStyledLine(spans: [
+            RemoteTextSpan(text: "あい", foreground: 0x00FF00),
+        ])
+        let lines = RemotePaneScreenRenderer.renderedLines(
+            text: "あい",
+            cursorRow: nil,
+            cursorColumn: nil,
+            styledLines: [styled]
+        )
+        #expect(lines[0].map(\.text) == ["あい"])
+        #expect(lines[0][0].foreground == 0x00FF00)
+    }
 }

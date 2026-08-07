@@ -79,6 +79,11 @@ public enum RemotePaneScreenRenderer {
     /// Renders every line of a pane. Each element of the result is one
     /// line's styled runs, in display order; an empty array means a blank
     /// line.
+    ///
+    /// `cursorColumn` is a Character index into the corresponding line of
+    /// `text` (the plain text), not a display-cell/grid column — it comes
+    /// from `RemoteScrollback`'s character-count subtraction, not from
+    /// cell-width math, so wide characters count as one column here.
     public static func renderedLines(
         text: String,
         cursorRow: Int?,
@@ -137,6 +142,20 @@ public enum RemotePaneScreenRenderer {
                     )
                 )
             }
+        }
+        // The host and this client can be on different app versions (the
+        // Mac and the phone update independently), so the wire's
+        // `RemoteStyledLine.plainText == plain` invariant is a contract
+        // the host promises, not one this side can verify by construction.
+        // If a styled line ever doesn't decompose into exactly `plain`'s
+        // characters — a host bug, a version mismatch, or a future host
+        // that stops upholding the invariant — cursor-column math further
+        // down assumes `cells.count == plain.count`, so trust the styling
+        // less than the text: drop color for this line and render the
+        // plain characters unstyled rather than risk misplacing the
+        // cursor or corrupting the visible text.
+        guard cells.count == plain.count else {
+            return plain.map { RemotePaneCell(character: $0) }
         }
         return cells
     }
