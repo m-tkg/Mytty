@@ -1228,17 +1228,35 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             recording.stop()
             return
         }
-        guard let tab = session.selectedTab,
-              let surface = surfaces[tab.focusedSurfaceID]
-        else {
+        guard let tab = session.selectedTab else {
             presentActionError(TerminalRecordingError.terminalPaneRequired)
             return
         }
-        recording.start(
-            tabID: tab.id,
-            surfaceID: tab.focusedSurfaceID,
-            surface: surface
-        )
+        let focusedID = tab.focusedSurfaceID
+        // A remote pane has no local Ghostty surface, but `RemotePaneView`
+        // is still a plain `NSView` that `TerminalGIFRecorder` can cache
+        // to a bitmap, so recording extends to it. There is no local
+        // cursor to draw a pressed-key toast around on a remote pane, so
+        // `cursorRect` returns nil there deliberately; a browser pane
+        // (WKWebView) doesn't capture cleanly via `cacheDisplay(in:to:)`
+        // and stays out of scope.
+        if let surface = surfaces[focusedID] {
+            recording.start(
+                tabID: tab.id,
+                surfaceID: focusedID,
+                view: surface,
+                cursorRect: { [weak surface] in surface?.terminalCursorRect }
+            )
+        } else if let remote = remotes[focusedID] {
+            recording.start(
+                tabID: tab.id,
+                surfaceID: focusedID,
+                view: remote,
+                cursorRect: { nil }
+            )
+        } else {
+            presentActionError(TerminalRecordingError.terminalPaneRequired)
+        }
     }
 
     /// Sends composer text into the focused pane's terminal surface in one

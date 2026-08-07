@@ -1,5 +1,4 @@
 import AppKit
-import GhosttyAdapter
 import MyTTYCore
 
 /// Owns the active `TerminalGIFRecorder` (there is at most one per window)
@@ -8,16 +7,25 @@ import MyTTYCore
 /// `startRecording` / `stopRecording` / `recordingOutputURL` /
 /// `recordingFailed` / `recordingFilename` verbatim.
 ///
+/// This coordinator captures any `NSView`, not just a terminal surface:
+/// `TerminalWindowController` also feeds it `RemotePaneView`, since a
+/// mirrored remote pane has no Ghostty surface but is still just a view
+/// that can be cached to a bitmap. The caller supplies a `cursorRect`
+/// closure for the pressed-key toast instead of this type reaching into
+/// `GhosttySurfaceView` itself, which keeps it free of any dependency on
+/// `GhosttyAdapter`; remote panes pass `nil` because the client has no
+/// local cursor position to draw a toast around.
+///
 /// The public `toggleRecording()` entry point stays on
 /// `TerminalWindowController` because deciding *what* to record (the
-/// selected tab's focused surface, or failing with
-/// `.terminalPaneRequired` if there is none) reaches into `WindowSession`
-/// and `surfaces`, both controller-private; it resolves those and then
-/// calls into this coordinator's `start`/`stop`. Every other call site
-/// that used to read `terminalRecorder` directly (sidebar "is recording"
-/// rows, closing a tab/pane/window mid-recording, showing the pressed-key
-/// toast) now asks this coordinator via its `isRecording`/`noteKey`
-/// helpers instead.
+/// selected tab's focused surface or remote pane, or failing with
+/// `.terminalPaneRequired` if there is neither) reaches into
+/// `WindowSession`, `surfaces`, and `remotes`, all controller-private; it
+/// resolves those and then calls into this coordinator's `start`/`stop`.
+/// Every other call site that used to read `terminalRecorder` directly
+/// (sidebar "is recording" rows, closing a tab/pane/window
+/// mid-recording, showing the pressed-key toast) now asks this
+/// coordinator via its `isRecording`/`noteKey` helpers instead.
 @MainActor
 final class TerminalRecordingCoordinator {
     private(set) var recorder: TerminalGIFRecorder?
@@ -100,16 +108,22 @@ final class TerminalRecordingCoordinator {
     func start(
         tabID: TabID,
         surfaceID: TerminalSurfaceID,
-        surface: GhosttySurfaceView
+        view: NSView,
+        cursorRect: @escaping () -> NSRect?
     ) {
         guard !isRecording else { return }
         guard countdownEnabled() else {
-            startRecording(tabID: tabID, surfaceID: surfaceID, surface: surface)
+            startRecording(
+                tabID: tabID,
+                surfaceID: surfaceID,
+                view: view,
+                cursorRect: cursorRect
+            )
             return
         }
         pendingCountdown = (tabID, surfaceID)
         onRecordingStateChanged()
-        countdownTask = Task { @MainActor [weak self, weak surface] in
+        countdownTask = Task { @MainActor [weak self, weak view] in
             for count in [3, 2, 1] {
                 guard let self, !Task.isCancelled else { return }
                 self.showCountdown(surfaceID, count)
@@ -123,14 +137,15 @@ final class TerminalRecordingCoordinator {
             self.hideCountdown(surfaceID)
             self.countdownTask = nil
             self.pendingCountdown = nil
-            guard let surface else {
+            guard let view else {
                 self.onRecordingStateChanged()
                 return
             }
             self.startRecording(
                 tabID: tabID,
                 surfaceID: surfaceID,
-                surface: surface
+                view: view,
+                cursorRect: cursorRect
             )
         }
     }
@@ -138,16 +153,15 @@ final class TerminalRecordingCoordinator {
     private func startRecording(
         tabID: TabID,
         surfaceID: TerminalSurfaceID,
-        surface: GhosttySurfaceView
+        view: NSView,
+        cursorRect: @escaping () -> NSRect?
     ) {
         let recorder = TerminalGIFRecorder(
             tabID: tabID,
             surfaceID: surfaceID,
-            view: surface,
+            view: view,
             showPressedKeys: showPressedKeyToast(),
-            keyLabelCursorRect: { [weak surface] in
-                surface?.terminalCursorRect
-            },
+            keyLabelCursorRect: cursorRect,
             onLimitReached: { [weak self] in
                 self?.stop()
             },

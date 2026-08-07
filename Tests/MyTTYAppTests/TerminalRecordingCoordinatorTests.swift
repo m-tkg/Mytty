@@ -30,13 +30,51 @@ struct TerminalRecordingCoordinatorTests {
         coordinator.start(
             tabID: TabID(),
             surfaceID: TerminalSurfaceID(),
-            surface: surface
+            view: surface,
+            cursorRect: { [weak surface] in surface?.terminalCursorRect }
         )
 
         #expect(coordinator.isRecording)
         #expect(coordinator.recorder != nil)
         #expect(shown.isEmpty)
         #expect(hiddenCount == 0)
+        #expect(stateChangeCount == 1)
+    }
+
+    @Test("starts recording a plain NSView, such as a remote pane, without a cursor rect")
+    @MainActor
+    func recordsPlainViewWithoutCursorRect() throws {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 60))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 100, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = view
+        var stateChangeCount = 0
+        let coordinator = TerminalRecordingCoordinator(
+            showPressedKeyToast: { false },
+            fadeOut: { nil },
+            outputPanelTitle: { "" },
+            onRecordingStateChanged: { stateChangeCount += 1 },
+            presentError: { _ in },
+            countdownEnabled: { false },
+            showCountdown: { _, _ in },
+            hideCountdown: { _ in },
+            countdownStepDuration: .milliseconds(5)
+        )
+        defer { coordinator.recorder?.cancel() }
+
+        coordinator.start(
+            tabID: TabID(),
+            surfaceID: TerminalSurfaceID(),
+            view: view,
+            cursorRect: { nil }
+        )
+
+        #expect(coordinator.isRecording)
+        #expect(coordinator.recorder != nil)
         #expect(stateChangeCount == 1)
     }
 
@@ -61,7 +99,12 @@ struct TerminalRecordingCoordinatorTests {
         )
         defer { coordinator.recorder?.cancel() }
 
-        coordinator.start(tabID: tabID, surfaceID: surfaceID, surface: surface)
+        coordinator.start(
+            tabID: tabID,
+            surfaceID: surfaceID,
+            view: surface,
+            cursorRect: { [weak surface] in surface?.terminalCursorRect }
+        )
 
         #expect(coordinator.isRecording)
         #expect(coordinator.isRecording(tabID: tabID))
@@ -101,7 +144,8 @@ struct TerminalRecordingCoordinatorTests {
         coordinator.start(
             tabID: TabID(),
             surfaceID: TerminalSurfaceID(),
-            surface: surface
+            view: surface,
+            cursorRect: { [weak surface] in surface?.terminalCursorRect }
         )
         #expect(coordinator.isRecording)
         #expect(stateChangeCount == 1)
