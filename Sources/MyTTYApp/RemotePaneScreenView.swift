@@ -69,6 +69,14 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
 
     private var markedText = ""
 
+    /// Tracks frame changes of the enclosing scroll view's clip view, so a
+    /// pane that only got wider (a sibling pane closing, a window resize)
+    /// still widens its content. The host only pushes a new snapshot when
+    /// the mirrored pane's visible text or cursor actually changes, so a
+    /// viewport resize with no new content would otherwise leave
+    /// `documentView` frozen at its old, narrower size.
+    private var viewportFrameObserver: (any NSObjectProtocol)?
+
     private struct GridPoint: Equatable, Comparable {
         var row: Int
         var column: Int
@@ -105,6 +113,41 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override var isOpaque: Bool { true }
+
+    isolated deinit {
+        stopObservingViewportFrame()
+    }
+
+    /// Re-subscribes to the enclosing scroll view's clip view whenever this
+    /// view's place in the hierarchy changes (embedding in a scroll view,
+    /// moving to a different one, or being torn down), so the observer
+    /// never outlives, or misses, the clip view it should be watching.
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        stopObservingViewportFrame()
+        guard let clipView = enclosingScrollView?.contentView else { return }
+        clipView.postsFrameChangedNotifications = true
+        viewportFrameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.invalidateContentSize()
+            }
+        }
+        // The viewport may already differ from what the last `update` saw
+        // (e.g. a sibling pane closed and widened this scroll view before
+        // this view was reparented into it), so sync immediately too.
+        invalidateContentSize()
+    }
+
+    private func stopObservingViewportFrame() {
+        if let viewportFrameObserver {
+            NotificationCenter.default.removeObserver(viewportFrameObserver)
+        }
+        viewportFrameObserver = nil
+    }
 
     // MARK: - Content
 
@@ -178,12 +221,16 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
         let width = CGFloat(widestLine()) * cellWidth
         let height = CGFloat(max(1, lines.count)) * lineHeight
         let viewport = enclosingScrollView?.contentView.bounds.size ?? .zero
-        setFrameSize(
-            NSSize(
-                width: max(width, viewport.width),
-                height: max(height, viewport.height)
-            )
+        let newSize = NSSize(
+            width: max(width, viewport.width),
+            height: max(height, viewport.height)
         )
+        // `setFrameSize` can flip a scroller's visibility, which resizes
+        // the clip view and re-fires the frame-change notification this
+        // method is subscribed to; bailing out once the size has settled
+        // breaks that loop instead of letting it recurse indefinitely.
+        guard newSize != frame.size else { return }
+        setFrameSize(newSize)
     }
 
     private func widestLine() -> Int {
