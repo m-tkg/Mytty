@@ -156,7 +156,8 @@ public enum NativeAgentUsageParser {
         return AgentUsageSummary(
             cost: cost,
             limits: limits,
-            onDemandUnavailable: onDemandUnavailable
+            onDemandUnavailable: onDemandUnavailable,
+            planName: CursorPlanName.resolve(membershipType: response.membershipType)
         )
     }
 
@@ -378,6 +379,7 @@ private struct CursorUsageResponse: Decodable {
     let teamUsage: CursorTeamUsage?
     let billingCycleStart: String?
     let billingCycleEnd: String?
+    let membershipType: String?
 }
 
 private struct CursorAggregatedEventsResponse: Decodable {

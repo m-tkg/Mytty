@@ -3,6 +3,19 @@ import Combine
 import MyTTYCore
 import SwiftUI
 
+/// `.help` takes a non-optional `String`; this only attaches the modifier
+/// when there's actually a tooltip to show.
+private extension View {
+    @ViewBuilder
+    func optionalHelp(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
+        }
+    }
+}
+
 enum TerminalStatusBarTrailingItem: Hashable {
     case agent
     case sleepPrevention
@@ -327,6 +340,20 @@ struct TerminalStatusBarView: View {
         }
     }
 
+    /// The plan (if any) plus the existing "Copy Session ID" hint, in that
+    /// order — either half may be absent. Shown only in the agent label's
+    /// tooltip: the status bar's visible text never widens to fit the plan.
+    private var agentLabelTooltip: String? {
+        let plan = model.content.agentName != nil
+            ? model.content.agentUsage?.planName
+            : nil
+        let action = model.content.copyableAgentSessionID != nil
+            ? localizer[.copySessionID]
+            : nil
+        let parts = [plan, action].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     @ViewBuilder
     private func agentLabel(_ agent: String) -> some View {
         if model.content.copyableAgentSessionID != nil {
@@ -345,11 +372,12 @@ struct TerminalStatusBarView: View {
                     TerminalStatusBarLayout.trailingUsesIntrinsicWidth,
                 vertical: false
             )
-            .help(localizer[.copySessionID])
+            .optionalHelp(agentLabelTooltip)
             .accessibilityLabel(agent)
         } else {
             Label(agent, systemImage: "sparkles")
                 .lineLimit(1)
+                .optionalHelp(agentLabelTooltip)
         }
     }
 
