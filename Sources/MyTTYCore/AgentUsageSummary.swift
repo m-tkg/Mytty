@@ -24,16 +24,35 @@ public struct AgentUsageSummary: Equatable, Sendable {
     /// alone would read as "plenty left" even though no more usage is
     /// actually possible.
     public let onDemandUnavailable: Bool
+    /// The account's subscription plan (e.g. "Pro", "Max 20x"), normalized
+    /// by `AgentPlanName` for the provider that produced this summary.
+    /// `nil` when the provider's payload carried no recognizable plan.
+    public let planName: String?
 
     public init(
         cost: AgentUsageCost?,
         limits: [AgentUsageLimit],
         limitsAreStale: Bool = false,
-        onDemandUnavailable: Bool = false
+        onDemandUnavailable: Bool = false,
+        planName: String? = nil
     ) {
         self.cost = cost
         self.limits = limits
         self.limitsAreStale = limitsAreStale
         self.onDemandUnavailable = onDemandUnavailable
+        self.planName = planName
+    }
+
+    /// The plan is resolved from the provider's credentials rather than
+    /// from the usage payload, so every loader derives it separately and
+    /// stamps it onto whichever summary it ended up with.
+    public func withPlanName(_ planName: String?) -> AgentUsageSummary {
+        AgentUsageSummary(
+            cost: cost,
+            limits: limits,
+            limitsAreStale: limitsAreStale,
+            onDemandUnavailable: onDemandUnavailable,
+            planName: planName
+        )
     }
 }

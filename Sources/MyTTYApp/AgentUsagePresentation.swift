@@ -59,15 +59,18 @@ struct AgentUsageStatusContent: Equatable, Sendable {
     let costDescription: String?
     let limits: [AgentUsageMeterContent]
     let onDemandUnavailable: Bool
+    let planName: String?
 
     init(
         costDescription: String?,
         limits: [AgentUsageMeterContent],
-        onDemandUnavailable: Bool = false
+        onDemandUnavailable: Bool = false,
+        planName: String? = nil
     ) {
         self.costDescription = costDescription
         self.limits = limits
         self.onDemandUnavailable = onDemandUnavailable
+        self.planName = planName
     }
 }
 
@@ -108,7 +111,8 @@ extension AgentUsageSummary {
         return AgentUsageStatusContent(
             costDescription: costDescription,
             limits: visibleLimits,
-            onDemandUnavailable: onDemandUnavailable
+            onDemandUnavailable: onDemandUnavailable,
+            planName: planName
         )
     }
 

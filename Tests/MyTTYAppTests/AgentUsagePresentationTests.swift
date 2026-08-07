@@ -202,6 +202,29 @@ struct AgentUsagePresentationTests {
         )
     }
 
+    @Test("carries the plan name through to AgentUsageStatusContent")
+    func planNameReachesStatusContent() throws {
+        let summary = AgentUsageSummary(
+            cost: .session(amount: 0.42, currencyCode: "USD"),
+            limits: [AgentUsageLimit(title: "5h", remainingPercent: 80)],
+            planName: "Max 20x"
+        )
+
+        let content = try #require(summary.statusContent())
+        #expect(content.planName == "Max 20x")
+    }
+
+    @Test("never resurrects an otherwise-empty status from a plan alone")
+    func planAloneYieldsNoStatusContent() {
+        let summary = AgentUsageSummary(
+            cost: nil,
+            limits: [],
+            planName: "Max 20x"
+        )
+
+        #expect(summary.statusContent() == nil)
+    }
+
     @Test("spells out the low context warning for VoiceOver")
     func lowContextAccessibilityValue() throws {
         let low = AgentUsageMeterContent(
