@@ -75,6 +75,21 @@ public struct RemoteTextSpan: Codable, Equatable, Sendable {
         case strikethrough = "k"
     }
 
+    /// Compares style only, ignoring `text` — used when merging adjacent
+    /// spans (e.g. after joining physical lines back into a logical one)
+    /// to decide whether they can collapse into a single span.
+    func hasSameStyle(as other: RemoteTextSpan) -> Bool {
+        foreground == other.foreground
+            && background == other.background
+            && bold == other.bold
+            && faint == other.faint
+            && inverse == other.inverse
+            && italic == other.italic
+            && underline == other.underline
+            && underlineColor == other.underlineColor
+            && strikethrough == other.strikethrough
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decode(String.self, forKey: .text)
@@ -129,8 +144,83 @@ public struct RemoteStyledLine: Codable, Equatable, Sendable {
     }
 
     /// The line's characters without styling, e.g. for cursor-column math.
+    ///
+    /// Invariant the host relies on: once `RemoteScrollback` has aligned a
+    /// styled line to a plain line, this string is character-for-character
+    /// identical to that plain line. Every operation in this file (and in
+    /// `RemoteScrollback`) that produces or edits a styled line is written
+    /// to preserve that invariant, and callers verify it after every edit
+    /// rather than trusting it silently — a mismatch means the styled line
+    /// gets dropped in favor of plain text (colour is decoration, text and
+    /// cursor position are the contract).
     public var plainText: String {
         spans.map(\.text).joined()
+    }
+
+    /// Removes the characters at `offsets` (Character indices into
+    /// `plainText`), keeping every span's style intact for the characters
+    /// that remain. Used to strip wrap-padding spaces from a styled line
+    /// with the same offsets already computed for the corresponding plain
+    /// line, so the two stay character-aligned.
+    ///
+    /// `offsets` must be ascending and free of duplicates; this is the
+    /// contract `RemoteScrollback.wrapPaddingIndices` already produces.
+    /// Since the input is host-computed rather than wire data, offsets that
+    /// violate the contract (out of range, descending, repeated) are
+    /// tolerated rather than validated: they're simply skipped instead of
+    /// removing the wrong character, so a bug here degrades gracefully
+    /// instead of crashing or corrupting unrelated text.
+    public func removingCharacters(at offsets: [Int]) -> RemoteStyledLine {
+        guard !offsets.isEmpty else { return self }
+        var newSpans: [RemoteTextSpan] = []
+        var offsetIndex = 0
+        var charIndex = 0
+        for span in spans {
+            var newText = ""
+            newText.reserveCapacity(span.text.count)
+            for character in span.text {
+                // Skip past any offsets that no longer make sense (behind
+                // the cursor, i.e. not ascending) so a malformed offset
+                // list can't desync the walk or delete the wrong
+                // character.
+                while offsetIndex < offsets.count,
+                    offsets[offsetIndex] < charIndex {
+                    offsetIndex += 1
+                }
+                if offsetIndex < offsets.count, offsets[offsetIndex] == charIndex {
+                    offsetIndex += 1
+                } else {
+                    newText.append(character)
+                }
+                charIndex += 1
+            }
+            if !newText.isEmpty {
+                var span = span
+                span.text = newText
+                newSpans.append(span)
+            }
+        }
+        return RemoteStyledLine(spans: newSpans)
+    }
+
+    /// Joins several physical (wrap-broken) styled lines into one logical
+    /// line, merging adjacent spans that share the same style across the
+    /// join boundary so the result doesn't carry more spans on the wire
+    /// than the source did.
+    public static func joining(_ lines: [RemoteStyledLine]) -> RemoteStyledLine {
+        var result: [RemoteTextSpan] = []
+        for line in lines {
+            for span in line.spans {
+                if span.text.isEmpty { continue }
+                if var last = result.last, last.hasSameStyle(as: span) {
+                    last.text += span.text
+                    result[result.count - 1] = last
+                } else {
+                    result.append(span)
+                }
+            }
+        }
+        return RemoteStyledLine(spans: result)
     }
 
     private enum CodingKeys: String, CodingKey {
