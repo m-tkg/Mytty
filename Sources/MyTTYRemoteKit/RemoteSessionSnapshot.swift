@@ -91,6 +91,9 @@ public struct RemotePaneAgentStatus: Codable, Equatable, Sendable {
 
 public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
     public let id: String
+    /// The pane's *tab* name, which every pane of that tab shares. Kept
+    /// under this name for wire compatibility; `name` below is what
+    /// distinguishes one pane from its siblings.
     public var title: String
     public var command: String
     public var location: String
@@ -98,6 +101,10 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
     public var isActive: Bool
     /// Absent from hosts older than protocol version 5.
     public var agent: RemotePaneAgentStatus?
+    /// What this one pane calls itself: the worker's own `mytty-ctl status`
+    /// note, or the label it was spawned with. Absent from hosts older than
+    /// protocol version 7, and from any pane that never named itself.
+    public var name: String?
 
     public init(
         id: String,
@@ -106,7 +113,8 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
         location: String,
         kind: RemotePaneKind,
         isActive: Bool,
-        agent: RemotePaneAgentStatus? = nil
+        agent: RemotePaneAgentStatus? = nil,
+        name: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -115,6 +123,16 @@ public struct RemotePane: Codable, Equatable, Sendable, Identifiable {
         self.kind = kind
         self.isActive = isActive
         self.agent = agent
+        self.name = name
+    }
+
+    /// The pane's own name, or nil when it never named itself (or the host
+    /// is too old to send one). Callers pick their own fallback: the
+    /// picker uses the tab title it already shows as a section, the pane
+    /// list uses the running command.
+    public var resolvedName: String? {
+        guard let name, !name.isEmpty else { return nil }
+        return name
     }
 }
 

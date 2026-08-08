@@ -90,6 +90,39 @@ struct RemoteSessionSnapshotTests {
         #expect(snapshot().pane(withID: "p4") == nil)
     }
 
+    /// A pane names itself through `mytty-ctl status` or its spawn label;
+    /// everything else about it is shared with its tab siblings.
+    @Test
+    func resolvesOnlyANonEmptyName() {
+        #expect(pane("p1").resolvedName == nil)
+        var named = pane("p1")
+        named.name = "Reviewing #209"
+        #expect(named.resolvedName == "Reviewing #209")
+        named.name = ""
+        #expect(named.resolvedName == nil)
+    }
+
+    /// The name is optional in both directions: a host older than protocol
+    /// version 7 sends no such key, and a nameless pane must not add one.
+    @Test
+    func decodesAPayloadWithoutAName() throws {
+        let legacy = Data("""
+        {"id":"p1","title":"First","command":"zsh","location":"~",
+         "kind":"terminal","isActive":false}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(RemotePane.self, from: legacy)
+        #expect(decoded.name == nil)
+        #expect(decoded.resolvedName == nil)
+
+        var named = pane("p1")
+        named.name = "Watching the build"
+        let round = try JSONDecoder().decode(
+            RemotePane.self,
+            from: JSONEncoder().encode(named)
+        )
+        #expect(round.name == "Watching the build")
+    }
+
     @Test
     func emptySnapshotFindsNothing() {
         let empty = RemoteSessionSnapshot(windows: [])

@@ -80,6 +80,13 @@ final class ControlCoordinator {
         server.agentDelegate = agentJobCoordinator
     }
 
+    /// The spawn label of the agent job running in `paneID`, for callers
+    /// outside the control socket — the remote snapshot uses it to name a
+    /// pane whose worker hasn't reported a status note.
+    func agentJobLabel(forPane paneID: TerminalSurfaceID) -> String? {
+        agentJobCoordinator.jobLabel(forPane: paneID)
+    }
+
     func start() throws {
         try server.start()
     }

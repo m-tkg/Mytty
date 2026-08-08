@@ -283,8 +283,11 @@ struct PaneDetailView: View {
 
     /// The pane's title follows the Mac (the running command changes it),
     /// falling back to the value captured at push while reconnecting.
+    /// A pane that names itself is shown by that name rather than by the
+    /// tab title every pane of the tab shares.
     private var currentTitle: String {
-        client.snapshot?.pane(withID: pane.id)?.title ?? pane.title
+        let current = client.snapshot?.pane(withID: pane.id) ?? pane
+        return current.resolvedName ?? current.title
     }
 
     private var screen: RemoteClient.PaneScreen? {

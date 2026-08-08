@@ -28,6 +28,11 @@ Pairing stores a key under `~/Library/Application Support/mytty/remote-hosts.jso
 
 Choose **Pane > Open Remote Pane…**. Pick a paired Mac, then a pane from the list, and choose where it opens — split to the right of the focused pane (the default) or as a new tab.
 
+Panes are listed under the tab they belong to. A pane that has named itself
+— through `mytty-ctl status`, or with the label it was spawned with — is
+listed by that name; the rest fall back to their tab's title, which every
+pane of that tab shares. The iOS app lists panes the same way.
+
 The pane list only fills in once the connection is up, so it may be briefly empty. Panes already mirroring a third Mac are not offered: Mytty does not chain remote panes.
 
 ## What a remote pane can and cannot do

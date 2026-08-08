@@ -43,6 +43,16 @@ final class AgentJobCoordinator {
         self.worktreePreparer = worktreePreparer
     }
 
+    /// The label a pane's job was spawned with, if it has one. Panes opened
+    /// by hand have no job and no label; a pane reused by several jobs takes
+    /// the newest one's, since that is the work it is doing now.
+    func jobLabel(forPane paneID: TerminalSurfaceID) -> String? {
+        trackers.values
+            .filter { $0.paneID == paneID && $0.label?.isEmpty == false }
+            .max { $0.createdAt < $1.createdAt }?
+            .label
+    }
+
     private func refresh(_ tracker: inout AgentJobTracker) {
         let controller = windowSessionCoordinator.controller(
             owning: tracker.paneID
