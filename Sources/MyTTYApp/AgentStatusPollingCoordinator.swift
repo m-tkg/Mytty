@@ -36,6 +36,11 @@ final class AgentStatusPollingCoordinator: NSObject {
     /// resolved provider — a surface running no agent has no entry here,
     /// and the controller falls back to the shell's OSC 7-reported cwd.
     private(set) var workingDirectoriesBySurface: [TerminalSurfaceID: URL] = [:]
+    /// The name of each pane's foreground executable (`zsh`, `claude`, `vim`),
+    /// keyed by surface. Populated for every surface with a readable
+    /// foreground process, agent or not — the per-pane status bar names the
+    /// running program even when no agent is involved.
+    private(set) var commandNamesBySurface: [TerminalSurfaceID: String] = [:]
 
     private let throttle = AgentSessionThrottleCache()
     private let processProviderCache = AgentProcessProviderCache()
@@ -48,9 +53,10 @@ final class AgentStatusPollingCoordinator: NSObject {
     /// `pollForegroundAgentProcess`. The controller decides what a changed
     /// provider/session-ID set implies (sidebar/status bar refresh, usage
     /// refresh, `onAgentActivityChanged`) — this coordinator only reports
-    /// what changed. `providersChanged` covers both a changed foreground
-    /// provider set *and* a changed agent working-directory set, since both
-    /// affect the status bar/window-metadata presentation the same way.
+    /// what changed. `providersChanged` covers a changed foreground provider
+    /// set, a changed agent working-directory set *and* a changed foreground
+    /// command-name set, since all three affect the status bar/window-metadata
+    /// presentation the same way.
     private let onPoll: (_ providersChanged: Bool, _ sessionIDsChanged: Bool) -> Void
     /// Reports a run the user interrupted without the provider firing a
     /// completion hook, so the controller can end it. Fired once per
@@ -196,11 +202,23 @@ final class AgentStatusPollingCoordinator: NSObject {
         processProviderCache.purge(activeSurfaceIDs: currentSurfaces.keys)
         var providers: [TerminalSurfaceID: AgentProvider] = [:]
         var workingDirectories: [TerminalSurfaceID: URL] = [:]
+        var commandNames: [TerminalSurfaceID: String] = [:]
         for (surfaceID, surface) in currentSurfaces {
-            guard let provider = processProviderCache.provider(
+            let resolvedProvider = processProviderCache.provider(
                 surfaceID: surfaceID,
                 processID: surface.foregroundProcessID
-            ) else { continue }
+            )
+            // Read before the provider guard below: a pane sitting at a
+            // plain shell prompt has no provider but still has a foreground
+            // process worth naming. The path comes from the cache key the
+            // call above just refreshed, so this costs no extra syscall.
+            if let path = processProviderCache.executablePath(for: surfaceID),
+               let name = TerminalAgentProcessDetector.commandName(
+                   executablePath: path
+               ) {
+                commandNames[surfaceID] = name
+            }
+            guard let provider = resolvedProvider else { continue }
             providers[surfaceID] = provider
             if let agentDirectory = TerminalAgentProcessDetector.workingDirectory(
                 processID: surface.foregroundProcessID
@@ -226,9 +244,12 @@ final class AgentStatusPollingCoordinator: NSObject {
         }
 
         let workingDirectoriesChanged = workingDirectories != workingDirectoriesBySurface
-        guard providersChanged || workingDirectoriesChanged else { return false }
+        let commandNamesChanged = commandNames != commandNamesBySurface
+        guard providersChanged || workingDirectoriesChanged || commandNamesChanged
+        else { return false }
         providersBySurface = providers
         workingDirectoriesBySurface = workingDirectories
+        commandNamesBySurface = commandNames
         return true
     }
 

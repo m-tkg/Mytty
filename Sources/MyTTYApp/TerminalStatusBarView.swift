@@ -665,17 +665,8 @@ private final class BookmarkMenuRow: NSView {
 }
 
 private struct GitHubMarkImage: View {
-    private static let image: NSImage? = {
-        guard let url = ApplicationResources.resourceURL(
-            named: "mark-github-16",
-            withExtension: "svg"
-        ), let image = NSImage(contentsOf: url) else { return nil }
-        image.isTemplate = true
-        return image
-    }()
-
     var body: some View {
-        if let image = Self.image {
+        if let image = GitHubMarkImageSource.image {
             Image(nsImage: image)
                 .resizable()
                 .renderingMode(.template)

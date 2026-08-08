@@ -67,6 +67,10 @@ Provider-native identifiers are converted to Mytty run identifiers as follows: C
 
 ## Status bar session identifier
 
+Both status bars read the same per-pane state: the window's bar describes the
+focused pane, and a pane's own bar (shown while a tab is split) describes that
+pane, shortening the session identifier to its first eight characters.
+
 The status bar's session identifier comes from a separate, provider-specific source per provider:
 
 | Provider | Source |

@@ -740,6 +740,15 @@ private struct ShellSettingsView: View {
                         .frame(width: 42, alignment: .trailing)
                     }
                 }
+
+                Toggle(
+                    localizer[.showPaneStatusBar],
+                    isOn: applicationBinding(\.showPaneStatusBar)
+                )
+                .toggleStyle(.switch)
+                Text(localizer[.showPaneStatusBarNote])
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section(localizer[.cursor]) {
