@@ -115,6 +115,18 @@ struct LocalizationTests {
         #expect(japanese[.newTabPositionEnd] == "末尾")
         #expect(english[.newTabPositionAfterCurrent] == "After Current Tab")
         #expect(japanese[.newTabPositionAfterCurrent] == "現在のタブの次")
+        #expect(english[.showPaneStatusBar] == "Show a status bar in each pane")
+        #expect(japanese[.showPaneStatusBar] == "各ペインにステータスバーを表示")
+        #expect(
+            english[.showPaneStatusBarNote]
+                == "Only while a tab is split into two or more panes."
+        )
+        #expect(
+            japanese[.showPaneStatusBarNote]
+                == "タブが 2 ペイン以上に分割されているときだけ表示します。"
+        )
+        #expect(english[.branch] == "Branch")
+        #expect(japanese[.branch] == "ブランチ")
         #expect(english[.showTabUptime] == "Show Elapsed Time in Tabs")
         #expect(japanese[.showTabUptime] == "タブに経過時間を表示")
         #expect(english[.tabUptime] == "Elapsed Time")

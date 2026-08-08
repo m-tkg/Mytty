@@ -58,6 +58,16 @@ final class AgentProcessProviderCache {
         entries = entries.filter { active.contains($0.key) }
     }
 
+    /// The executable path observed for `surfaceID` on the last call to
+    /// `provider(surfaceID:processID:)`. It is part of the cache key, so the
+    /// caller gets the name of the foreground binary — agent or plain shell,
+    /// since negative results are cached too — without a second
+    /// `proc_pidpath`. `nil` until the first successful probe for that
+    /// surface, and briefly stale if a probe fails mid-poll.
+    func executablePath(for surfaceID: TerminalSurfaceID) -> String? {
+        entries[surfaceID]?.key.executablePath
+    }
+
     /// The provider (if any) running in `processID`'s foreground, using the
     /// cached classification when the process identity is unchanged since
     /// the last call for `surfaceID`.

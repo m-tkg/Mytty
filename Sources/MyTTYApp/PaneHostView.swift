@@ -32,6 +32,12 @@ final class PaneHostView: NSView {
 
     private let dimmingView = PaneDimmingView()
     private let orchestrationTintView = PaneOrchestrationTintView()
+    private let statusBarView = PaneStatusBarView()
+    /// 0 while the pane's own status bar is hidden. The content is always
+    /// pinned below the bar, so showing and hiding it never touches the
+    /// content constraints — those are torn down and rebuilt by every
+    /// zoom/unzoom `detachContent`/`attachContent` round trip.
+    private var statusBarHeight: NSLayoutConstraint?
     private let keyToastView = PaneKeyToastView()
     private let sizeIndicatorView = PaneSizeIndicatorView()
     private let countdownView = PaneCountdownView()
@@ -143,6 +149,19 @@ final class PaneHostView: NSView {
     init(content: NSView) {
         super.init(frame: .zero)
         wantsLayer = true
+        statusBarView.translatesAutoresizingMaskIntoConstraints = false
+        statusBarView.isHidden = true
+        addSubview(statusBarView)
+        let statusBarHeight = statusBarView.heightAnchor.constraint(
+            equalToConstant: 0
+        )
+        self.statusBarHeight = statusBarHeight
+        NSLayoutConstraint.activate([
+            statusBarView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            statusBarView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            statusBarView.topAnchor.constraint(equalTo: topAnchor),
+            statusBarHeight,
+        ])
         orchestrationTintView.translatesAutoresizingMaskIntoConstraints = false
         orchestrationTintView.wantsLayer = true
         updateOrchestrationTintColor()
@@ -212,6 +231,35 @@ final class PaneHostView: NSView {
         swapClickCatcher.onClick = nil
     }
 
+    /// Pushes this pane's own status bar state in, the way the pane layout
+    /// pushes dimming and the focus border. Returns whether the bar appeared
+    /// or disappeared — that changes how many rows the terminal has, which
+    /// the caller has to follow up on; a content-only change does not.
+    @discardableResult
+    func setStatusBar(
+        visible: Bool,
+        content: PaneStatusBarContent,
+        labels: PaneStatusBarLabels
+    ) -> Bool {
+        let visibilityChanged = isPaneStatusBarVisible != visible
+        if visibilityChanged {
+            statusBarView.isHidden = !visible
+            statusBarHeight?.constant = visible ? PaneStatusBarView.height : 0
+        }
+        if paneStatusBarContent != content || paneStatusBarLabels != labels {
+            paneStatusBarContent = content
+            paneStatusBarLabels = labels
+            statusBarView.apply(content, labels: labels)
+        }
+        return visibilityChanged
+    }
+
+    private(set) var paneStatusBarContent = PaneStatusBarContent()
+    private var paneStatusBarLabels: PaneStatusBarLabels?
+    var isPaneStatusBarVisible: Bool { !statusBarView.isHidden }
+    var paneStatusBarText: String { statusBarView.displayedText }
+    var isPaneRepositoryMarkVisible: Bool { statusBarView.isRepositoryMarkVisible }
+
     func updateInactiveDimming(_ amount: CGFloat) {
         let clamped = min(1, max(0, amount))
         dimmingView.layer?.backgroundColor = NSColor.black
@@ -229,7 +277,10 @@ final class PaneHostView: NSView {
         contentConstraints = [
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
             content.trailingAnchor.constraint(equalTo: trailingAnchor),
-            content.topAnchor.constraint(equalTo: topAnchor),
+            // Always below the status bar, whose height is 0 while it is
+            // hidden — so this constraint is the same whether or not the
+            // pane shows one.
+            content.topAnchor.constraint(equalTo: statusBarView.bottomAnchor),
             content.bottomAnchor.constraint(equalTo: bottomAnchor),
         ]
         NSLayoutConstraint.activate(contentConstraints)

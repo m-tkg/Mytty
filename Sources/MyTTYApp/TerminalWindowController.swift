@@ -1432,6 +1432,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             != preferences.agentMeterDisplay
         let activeBorderChanged = activePaneBorderStyle
             != Self.activePaneBorderStyle(for: preferences)
+        let paneStatusBarChanged = applicationPreferences.showPaneStatusBar
+            != preferences.showPaneStatusBar
         applicationPreferences = preferences
         recording.updateShowPressedKeys(
             preferences.showPressedKeyToast
@@ -1463,7 +1465,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         if activeBorderChanged {
             paneLayout.updateActiveBorder()
         }
-        if contextWarningChanged || meterDisplayChanged {
+        if contextWarningChanged || meterDisplayChanged || paneStatusBarChanged {
+            // The pane bars ride along with the window status bar refresh;
+            // the window chrome itself is unchanged, so no rebuild.
             updateStatusBar()
         }
         if languageChanged || placementChanged || statusBarChanged
@@ -3389,6 +3393,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 isTerminalPane: false
             )
             statusBarModel.updateBookmarks([], isTerminalPane: false)
+            updatePaneStatusBars()
             return
         }
 
@@ -3498,6 +3503,85 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         statusBarModel.updateBookmarks(
             bookmarkItems,
             isTerminalPane: isFocusedTerminalPane
+        )
+        updatePaneStatusBars()
+    }
+
+    /// Refreshes every pane's own status bar. Called from the tail of
+    /// `updateStatusBar()` — the single funnel every source of status change
+    /// already reaches — rather than wiring each source up a second time.
+    private func updatePaneStatusBars() {
+        let labels = paneStatusBarLabels
+        guard let tab = session.selectedTab else {
+            paneLayout.updateStatusBars(
+                visible: false,
+                content: [:],
+                labels: labels
+            )
+            return
+        }
+        // Same rule as the focus outline: a lone pane is already described
+        // by the window's status bar, so a bar per pane would only cost it a
+        // row. `paneIDs` rather than `surfaceIDs` — a terminal split against
+        // a browser is exactly when "which repository is this one?" matters.
+        let visible = applicationPreferences.showPaneStatusBar
+            && tab.root.paneIDs.count > 1
+        var content: [TerminalSurfaceID: PaneStatusBarContent] = [:]
+        if visible {
+            let meterDisplay = applicationPreferences.agentMeterDisplay
+            // Terminal panes only: browser and remote panes carry their own
+            // header already, and neither has a local process or repository.
+            for surfaceID in tab.root.surfaceIDs {
+                let provider = agentStatusPolling.providersBySurface[surfaceID]
+                let sessionStatus = agentStatusPolling.statusBySurface[surfaceID]
+                let contextTooltip = sessionStatus?.contextRemainingPercent.map {
+                    AgentUsageMeterContent(
+                        title: localizer[.context],
+                        remainingPercent: $0,
+                        display: meterDisplay,
+                        lowThresholdPercent: lowContextWarningThreshold
+                    )
+                    .tooltip(localizer: localizer)
+                }
+                content[surfaceID] = PaneStatusBarPresentation.content(
+                    agentName: provider.map { TerminalWindowTitle.name(for: $0) },
+                    agentSessionID: provider.flatMap {
+                        agentSessionID(
+                            for: surfaceID,
+                            provider: $0,
+                            processBound: agentStatusPolling
+                                .sessionIDsBySurface[surfaceID]
+                        )
+                    },
+                    agentModelName: sessionStatus?.modelName,
+                    contextTooltip: contextTooltip,
+                    processName: agentStatusPolling
+                        .commandNamesBySurface[surfaceID],
+                    repository: repositoryStatus.status(
+                        for: effectiveWorkingDirectory(for: surfaceID, in: tab)
+                    ),
+                    labels: labels
+                )
+            }
+        }
+        if paneLayout.updateStatusBars(
+            visible: visible,
+            content: content,
+            labels: labels
+        ) {
+            // Showing or hiding a bar changes how many rows each terminal
+            // has. Only on that change: `updateSizeIndicators()` ends with
+            // `onSizeIndicatorsChanged()`, which lands back here — the
+            // second pass reports no visibility change, so the loop stops.
+            paneLayout.updateSizeIndicators()
+        }
+    }
+
+    private var paneStatusBarLabels: PaneStatusBarLabels {
+        PaneStatusBarLabels(
+            openOnGitHub: localizer[.openOnGitHub],
+            branch: localizer[.branch],
+            sessionID: localizer[.sessionID]
         )
     }
 

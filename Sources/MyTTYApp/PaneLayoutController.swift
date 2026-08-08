@@ -33,6 +33,16 @@ final class PaneLayoutController {
     private var zoomState = PaneZoomState()
     private let zoomPresentation = PaneZoomOverlayPresentation()
     private var sizeIndicatorHideTask: Task<Void, Never>?
+    /// Last pushed pane-status-bar state, kept so a host built after the
+    /// fact — a freshly made pane, or the zoom overlay's replacement host —
+    /// starts out with the bar the rest of the panes already show.
+    private var statusBarsVisible = false
+    private var statusBarContent: [TerminalSurfaceID: PaneStatusBarContent] = [:]
+    private var statusBarLabels = PaneStatusBarLabels(
+        openOnGitHub: "",
+        branch: "",
+        sessionID: ""
+    )
 
     private let surfaceHost: NSView
     private let surfaces: () -> [TerminalSurfaceID: GhosttySurfaceView]
@@ -119,6 +129,11 @@ final class PaneLayoutController {
             let pane = PaneHostView(content: surface)
             pane.updateInactiveDimming(inactivePaneDimming())
             pane.isOrchestrated = state.isOrchestrated
+            // Applied here rather than waiting for the next status refresh,
+            // so the surface is laid out at its final height once instead of
+            // shrinking by the bar's height a frame later (each resize costs
+            // the program inside a SIGWINCH redraw).
+            applyStatusBar(to: pane, surfaceID: state.id)
             paneHosts[state.id] = pane
             return pane
 
@@ -187,6 +202,9 @@ final class PaneLayoutController {
             zoomPresentation.zoomedHost?
                 .updateInactiveDimming(inactivePaneDimming())
             zoomPresentation.zoomedHost?.isOrchestrated = pane.isOrchestrated
+            if let zoomedHost = zoomPresentation.zoomedHost {
+                applyStatusBar(to: zoomedHost, surfaceID: paneID)
+            }
             updateActiveBorder()
         }
         return shown
@@ -248,6 +266,48 @@ final class PaneLayoutController {
         let amount = inactivePaneDimming()
         paneHosts.values.forEach { $0.updateInactiveDimming(amount) }
         zoomPresentation.zoomedHost?.updateInactiveDimming(amount)
+    }
+
+    /// Pushes each pane's own status bar in. `content` only carries terminal
+    /// panes; a pane missing from it (browser, remote — both already have
+    /// their own header) keeps its bar hidden. Returns whether any bar
+    /// appeared or disappeared, since that resizes the terminals underneath.
+    @discardableResult
+    func updateStatusBars(
+        visible: Bool,
+        content: [TerminalSurfaceID: PaneStatusBarContent],
+        labels: PaneStatusBarLabels
+    ) -> Bool {
+        statusBarsVisible = visible
+        statusBarContent = content
+        statusBarLabels = labels
+        var changed = false
+        for (surfaceID, pane) in paneHosts {
+            changed = applyStatusBar(to: pane, surfaceID: surfaceID) || changed
+        }
+        if let zoomedID = zoomPresentation.paneID,
+           let zoomedHost = zoomPresentation.zoomedHost {
+            changed = applyStatusBar(to: zoomedHost, surfaceID: zoomedID)
+                || changed
+        }
+        return changed
+    }
+
+    @discardableResult
+    private func applyStatusBar(
+        to pane: PaneHostView,
+        surfaceID: TerminalSurfaceID
+    ) -> Bool {
+        let content = statusBarContent[surfaceID]
+        // Visibility follows "is this a terminal pane in a split tab",
+        // never the content: a pane whose process hasn't been read yet
+        // shows a blank bar for one poll tick, which beats resizing the
+        // terminal — and every program inside it — twice in a row.
+        return pane.setStatusBar(
+            visible: statusBarsVisible && content != nil,
+            content: content ?? PaneStatusBarContent(),
+            labels: statusBarLabels
+        )
     }
 
     /// Pushes the configured focus outline to every live host. Called after
