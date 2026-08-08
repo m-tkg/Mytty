@@ -70,4 +70,44 @@ struct RemoteAccessCoordinatorTests {
         #expect(selected.provider == nil)
         #expect(selected.run == nil)
     }
+
+    /// The pane's own `mytty-ctl status` note is the freshest thing it
+    /// said about itself, so it outranks the label it was spawned with.
+    @Test("a status note outranks the spawn label")
+    func statusNoteWinsOverLabel() {
+        #expect(
+            RemotePaneNameSelection.name(
+                statusNote: "Reviewing #209",
+                jobLabel: "reviewer"
+            ) == "Reviewing #209"
+        )
+    }
+
+    /// A run ending clears the note, and the pane would go nameless between
+    /// turns without this fallback.
+    @Test("the spawn label stands in once the note is cleared")
+    func labelStandsInForAClearedNote() {
+        #expect(
+            RemotePaneNameSelection.name(
+                statusNote: nil,
+                jobLabel: "reviewer"
+            ) == "reviewer"
+        )
+        #expect(
+            RemotePaneNameSelection.name(
+                statusNote: "",
+                jobLabel: "reviewer"
+            ) == "reviewer"
+        )
+    }
+
+    @Test("a pane nobody named has no name")
+    func unnamedPaneHasNoName() {
+        #expect(
+            RemotePaneNameSelection.name(statusNote: nil, jobLabel: nil) == nil
+        )
+        #expect(
+            RemotePaneNameSelection.name(statusNote: "", jobLabel: "") == nil
+        )
+    }
 }

@@ -714,6 +714,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             deviceDisplayName: Host.current().localizedName ?? "Mytty",
             windowSessionCoordinator: windowSessionCoordinator,
             attentionCenterProvider: { [weak self] in self?.attentionCenter },
+            agentJobLabelProvider: { [weak self] paneID in
+                self?.controlCoordinator?.agentJobLabel(forPane: paneID)
+            },
             localizerProvider: { [weak self] in
                 self?.localizer ?? MyTTYLocalizer(language: .systemDefault)
             }

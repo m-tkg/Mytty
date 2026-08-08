@@ -128,8 +128,13 @@ struct PaneListView: View {
                     Image(systemName: pane.kind == .terminal ? "terminal" : "safari")
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading) {
-                        Text(pane.command)
-                        Text(pane.location)
+                        // What the pane calls itself first — every pane of
+                        // a tab shares the tab's title, so the name is the
+                        // only thing that tells two rows apart. The command
+                        // joins the second line rather than losing its
+                        // place when a pane has a name.
+                        Text(pane.resolvedName ?? pane.command)
+                        Text(subtitle(for: pane))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -153,6 +158,14 @@ struct PaneListView: View {
             }
             if snapshot.tab(withID: tabID) == nil { dismiss() }
         }
+    }
+
+    /// The command keeps its place on the second line once a named pane
+    /// takes the first, so naming a pane never hides what it is running.
+    private func subtitle(for pane: RemotePane) -> String {
+        guard pane.resolvedName != nil else { return pane.location }
+        guard !pane.location.isEmpty else { return pane.command }
+        return "\(pane.command) · \(pane.location)"
     }
 }
 

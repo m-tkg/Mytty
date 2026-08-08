@@ -10,6 +10,31 @@ struct RemotePaneSelection: Equatable {
     let title: String
 }
 
+/// One tab's worth of a host's panes. The picker lists panes under the tab
+/// they belong to, because a tab's panes share its title and would
+/// otherwise be indistinguishable rows.
+struct RemotePanePickerGroup: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let panes: [RemotePane]
+
+    /// Flattens a snapshot into one group per tab, dropping empty tabs.
+    /// Windows are not shown: the picker's job is to name a pane, and a
+    /// window has no name of its own to show.
+    static func groups(in snapshot: RemoteSessionSnapshot) -> [RemotePanePickerGroup] {
+        snapshot.windows.flatMap { window in
+            window.tabs.compactMap { tab in
+                guard !tab.panes.isEmpty else { return nil }
+                return RemotePanePickerGroup(
+                    id: tab.id,
+                    title: tab.title,
+                    panes: tab.panes
+                )
+            }
+        }
+    }
+}
+
 /// Where a picked remote pane lands.
 enum RemotePaneOpenDestination {
     case splitRight
@@ -33,7 +58,7 @@ final class RemotePanePickerModel: ObservableObject {
         }
     }
 
-    @Published private(set) var panes: [(pane: RemotePane, tabTitle: String)] = []
+    @Published private(set) var groups: [RemotePanePickerGroup] = []
     @Published private(set) var state: RemoteClient.ConnectionState = .disconnected
 
     private let connections: RemotePaneConnectionCoordinator
@@ -70,20 +95,27 @@ final class RemotePanePickerModel: ObservableObject {
         hosts.first { $0.deviceID == selectedHostID }?.displayName ?? ""
     }
 
+    var isEmpty: Bool { groups.allSatisfy(\.panes.isEmpty) }
+
     func selection(forPaneID paneID: String) -> RemotePaneSelection? {
-        guard let hostID = selectedHostID,
-              let match = panes.first(where: { $0.pane.id == paneID })
-        else { return nil }
-        return RemotePaneSelection(
-            hostID: hostID,
-            hostName: selectedHostName,
-            remotePaneID: match.pane.id,
-            title: match.pane.title
-        )
+        guard let hostID = selectedHostID else { return nil }
+        for group in groups {
+            guard let pane = group.panes.first(where: { $0.id == paneID })
+            else { continue }
+            return RemotePaneSelection(
+                hostID: hostID,
+                hostName: selectedHostName,
+                remotePaneID: pane.id,
+                // The mirrored pane is labelled with what it calls itself,
+                // falling back to its tab's name.
+                title: pane.resolvedName ?? group.title
+            )
+        }
+        return nil
     }
 
     private func browseSelectedHost() {
-        panes = []
+        groups = []
         guard let hostID = selectedHostID else {
             state = .disconnected
             return
@@ -91,7 +123,7 @@ final class RemotePanePickerModel: ObservableObject {
         state = connections.connectionState(hostID: hostID)
         connections.browse(hostID: hostID) { [weak self] in
             guard let self else { return }
-            self.panes = self.connections.availablePanes(hostID: hostID)
+            self.groups = self.connections.availablePaneGroups(hostID: hostID)
             self.state = self.connections.connectionState(hostID: hostID)
         }
     }
@@ -155,7 +187,7 @@ struct RemotePanePickerView: View {
 
     @ViewBuilder
     private var paneList: some View {
-        if model.panes.isEmpty {
+        if model.isEmpty {
             VStack(spacing: 8) {
                 if model.state == .connecting {
                     ProgressView().controlSize(.small)
@@ -172,17 +204,19 @@ struct RemotePanePickerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(selection: $selectedPaneID) {
-                ForEach(model.panes, id: \.pane.id) { entry in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.pane.title.isEmpty
-                            ? entry.tabTitle
-                            : entry.pane.title)
-                            .font(.system(size: 13, weight: .medium))
-                        Text(entry.pane.command)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                ForEach(model.groups) { group in
+                    Section(group.title) {
+                        ForEach(group.panes) { pane in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pane.resolvedName ?? group.title)
+                                    .font(.system(size: 13, weight: .medium))
+                                Text(pane.command)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(pane.id)
+                        }
                     }
-                    .tag(entry.pane.id)
                 }
             }
             .frame(maxHeight: .infinity)

@@ -134,15 +134,12 @@ final class RemotePaneConnectionCoordinator {
         }
     }
 
-    /// The panes a host currently offers, for the "open remote pane" picker.
-    /// Empty until a session to that host is connected.
-    func availablePanes(hostID: String) -> [(pane: RemotePane, tabTitle: String)] {
+    /// The panes a host currently offers, for the "open remote pane"
+    /// picker, grouped by the tab they belong to. Empty until a session to
+    /// that host is connected.
+    func availablePaneGroups(hostID: String) -> [RemotePanePickerGroup] {
         guard let snapshot = sessions[hostID]?.client.snapshot else { return [] }
-        return snapshot.windows.flatMap { window in
-            window.tabs.flatMap { tab in
-                tab.panes.map { (pane: $0, tabTitle: tab.title) }
-            }
-        }
+        return RemotePanePickerGroup.groups(in: snapshot)
     }
 
     /// Opens (or reuses) a session to a host without attaching a pane, so
@@ -327,7 +324,9 @@ final class RemotePaneConnectionCoordinator {
                 agentStatusByPane[paneID] = nil
                 continue
             }
-            view.update(title: pane.title)
+            // The pane's own name outranks the tab title it shares with
+            // its siblings — the mirror should say which pane it is.
+            view.update(title: pane.resolvedName ?? pane.title)
             agentStatusByPane[paneID] = pane.agent
             view.update(agent: pane.agent)
         }

@@ -378,7 +378,10 @@ public enum RemoteMessageCodec {
     /// an older host still talk — the client simply sees no agent status.
     /// 6 added `acknowledgeAttention`, so a client viewing a pane can
     /// clear that pane's Attention items on the Mac.
-    public static let protocolVersion = 6
+    /// 7 added `RemotePane.name`, the pane's own `mytty-ctl status` note or
+    /// spawn label. Optional in both directions like `agent`: an older host
+    /// simply sends no name and the client falls back to the tab's title.
+    public static let protocolVersion = 7
 
     /// JSON payload only. Wire framing (and, for authenticated
     /// connections, encryption) is applied by `RemoteFrameCodec` /

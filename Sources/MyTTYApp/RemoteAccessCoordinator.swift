@@ -19,16 +19,22 @@ final class RemoteAccessCoordinator {
     /// coordinator never appends to it. Supplied as a closure because the
     /// `AttentionCenter` is built after this coordinator during launch.
     private let attentionCenterProvider: () -> AttentionCenter?
+    /// The spawn label of the agent job running in a pane, if any. A
+    /// closure for the same reason as `attentionCenterProvider`: the
+    /// control coordinator that owns the jobs is built after this one.
+    private let agentJobLabelProvider: (TerminalSurfaceID) -> String?
 
     init(
         deviceStoreURL: URL,
         deviceDisplayName: String,
         windowSessionCoordinator: WindowSessionCoordinator,
         attentionCenterProvider: @escaping () -> AttentionCenter?,
+        agentJobLabelProvider: @escaping (TerminalSurfaceID) -> String? = { _ in nil },
         localizerProvider: @escaping () -> MyTTYLocalizer
     ) {
         self.windowSessionCoordinator = windowSessionCoordinator
         self.attentionCenterProvider = attentionCenterProvider
+        self.agentJobLabelProvider = agentJobLabelProvider
         self.localizerProvider = localizerProvider
         let server = RemoteAccessServer(
             deviceStore: RemotePairedDeviceStore(fileURL: deviceStoreURL),
@@ -107,6 +113,23 @@ final class RemoteAccessCoordinator {
 /// previous provider linger there and must not label the new one. The
 /// run (and so the reported state) always belongs to the chosen provider;
 /// with none of its runs on record the state is simply absent.
+/// What a pane calls itself, as opposed to the tab it sits in.
+///
+/// The worker's own `mytty-ctl status` note comes first: it is the most
+/// recent thing the pane said about itself, and it changes as the work
+/// does. The label the pane was spawned with stands in once a run ends and
+/// clears the note, so an orchestrated pane keeps a name between turns. A
+/// pane nobody named has none at all, and the client falls back to
+/// something it already knows — the tab title, or the running command.
+enum RemotePaneNameSelection {
+    static func name(statusNote: String?, jobLabel: String?) -> String? {
+        for candidate in [statusNote, jobLabel] {
+            if let candidate, !candidate.isEmpty { return candidate }
+        }
+        return nil
+    }
+}
+
 enum RemoteHostAgentSelection {
     static func select(
         detected: AgentProvider?,
@@ -156,7 +179,8 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
                             kind: item.kind == .terminal
                                 ? .terminal : .browser,
                             isActive: item.isActive,
-                            agent: self.agentStatus(for: item)
+                            agent: self.agentStatus(for: item),
+                            name: self.paneName(for: item)
                         )
                     }
                 guard !panes.isEmpty else { return nil }
@@ -175,6 +199,13 @@ extension RemoteAccessCoordinator: RemoteAccessServerDelegate {
         return RemoteSessionSnapshot(
             windows: windows,
             serverProtocolVersion: RemoteMessageCodec.protocolVersion
+        )
+    }
+
+    private func paneName(for item: PaneListItem) -> String? {
+        RemotePaneNameSelection.name(
+            statusNote: attentionCenterProvider()?.statusNote(for: item.paneID),
+            jobLabel: agentJobLabelProvider(item.paneID)
         )
     }
 
