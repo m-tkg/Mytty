@@ -8,7 +8,9 @@ Antigravity provider は、1つの event カテゴリの下に2種類の実行�
 
 ステータスバーは、ペインのフォアグラウンドプロセスの実行ファイルパスと argv の先頭数個を調べて、そのペインで動いているエージェントを識別します(`Sources/MyTTYApp/TerminalAgentProcessDetector.swift` の `TerminalAgentProcessDetector.provider(executablePath:arguments:)`)。エージェントを直接起動していれば これで足りますが、リモートへの `ssh`、コンテナへの `docker exec`、ラッパースクリプトなど、バイナリ名がエージェントについて何も語らないラッパー越しでは手がかりがありません。
 
-そうした場合は、ラッパーを起動する前に環境変数 `MYTTY_AGENT=<provider>` を export してください。パス/argv による検出で provider が特定できなかったときに限り、Mytty はラッパープロセスの exec 時点の環境からこの変数を読み取ってフォールバックします。値は `AgentProvider` の識別子 — `codex`、`claude-code`、`opencode`、`antigravity`、`cursor` — のいずれかで、前後の空白除去と小文字化のあと完全一致のみ受理し、それ以外は無視します。ヒントが実検出を上書きすることはなく、効果は provider の識別(ステータスバーの表示と provider 単位の参照)だけです。hook イベント自体は Mytty のイベントソケットに届く必要があり、リモートホストやコンテナの中からは届かないため、ヒント経由で検出されたペインは通常、実行状態なしで provider だけが表示されます。
+同じ Mac の中で完結するラッパー — エージェントを `exec` せず子プロセスとして起動するシェルスクリプト — にヒントは要りません。ペインのフォアグラウンドがエージェントと判定できないシェルだった場合、Mytty はそのシェルの子孫（2 階層、数プロセスまで）を調べ、そこで見つかったエージェントとその実プロセスを採用します。セッション情報の読み取り、resume 用のフラグ、表示名のいずれもラッパーではなくそのプロセスを見ます。
+
+Mytty から中を覗けないラッパー（`ssh` でリモートに入る、`docker exec` でコンテナに入る等）の場合は、ラッパーを起動する前に環境変数 `MYTTY_AGENT=<provider>` を export してください。パス/argv による検出で provider が特定できなかったときに限り、Mytty はラッパープロセスの exec 時点の環境からこの変数を読み取ってフォールバックします。値は `AgentProvider` の識別子 — `codex`、`claude-code`、`opencode`、`antigravity`、`cursor` — のいずれかで、前後の空白除去と小文字化のあと完全一致のみ受理し、それ以外は無視します。ヒントが実検出を上書きすることはなく、効果は provider の識別(ステータスバーの表示と provider 単位の参照)だけです。hook イベント自体は Mytty のイベントソケットに届く必要があり、リモートホストやコンテナの中からは届かないため、ヒント経由で検出されたペインは通常、実行状態なしで provider だけが表示されます。
 
 ```sh
 MYTTY_AGENT=claude-code ssh devbox

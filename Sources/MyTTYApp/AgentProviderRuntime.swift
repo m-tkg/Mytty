@@ -10,6 +10,10 @@ import MyTTYCore
 struct AgentSessionQueryContext {
     let surfaceID: TerminalSurfaceID
     let surface: GhosttySurfaceView
+    /// The process running the agent, which is the pane's foreground
+    /// process unless a wrapper script launched it — see
+    /// `TerminalAgentProcessDetector.agentProcess(processID:)`.
+    let agentProcessID: pid_t
     let hookSessionID: () -> String?
     let workingDirectory: () -> URL?
 }
@@ -259,7 +263,7 @@ struct CodexProviderRuntime: AgentProviderRuntime {
         throttle: AgentSessionThrottleCache
     ) -> AgentProviderPollResult {
         let snapshot = CodexSessionInspector.snapshot(
-            processID: context.surface.foregroundProcessID
+            processID: context.agentProcessID
         )
         return AgentProviderPollResult(
             status: snapshot.status,
@@ -297,7 +301,7 @@ struct ClaudeCodeProviderRuntime: AgentProviderRuntime {
         ) {
             ClaudeCodeModelSelection.resolve(
                 arguments: TerminalAgentProcessDetector.arguments(
-                    processID: context.surface.foregroundProcessID
+                    processID: context.agentProcessID
                 ),
                 workingDirectory: workingDirectory
             )

@@ -142,6 +142,65 @@ struct TerminalAgentProcessDetectorTests {
         #expect(TerminalAgentProcessDetector.environment(processID: -1).isEmpty)
     }
 
+    /// The bug this guards: a pane whose agent was started by a wrapper
+    /// script has the shell in front and the agent as its child, so the pane
+    /// was named after the shell (`bash`) and no session status was read.
+    ///
+    /// `exec -a claude sleep` stands in for a real agent: only the process's
+    /// executable path and argv are examined, and no test may depend on an
+    /// agent actually being installed on the machine.
+    @Test("finds an agent launched by a wrapper script below the shell")
+    func agentBelowAWrapperScript() async throws {
+        let wrapper = Process()
+        wrapper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        wrapper.arguments = ["-c", "exec -a claude /bin/sleep 30 & wait"]
+        try wrapper.run()
+        defer {
+            wrapper.terminate()
+            wrapper.waitUntilExit()
+        }
+        let wrapperPID = wrapper.processIdentifier
+
+        var found: TerminalAgentProcessDetector.AgentProcess?
+        for _ in 0..<100 {
+            found = TerminalAgentProcessDetector.agentProcess(
+                processID: wrapperPID
+            )
+            if found != nil { break }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(found?.provider == .claudeCode)
+        // The agent's own pid, not the wrapper's: the session inspectors and
+        // the resume flags are read from it.
+        #expect(found?.processID != wrapperPID)
+        #expect(
+            TerminalAgentProcessDetector.childProcessIDs(of: wrapperPID)
+                .contains(found?.processID ?? -1)
+        )
+    }
+
+    @Test("a shell with nothing under it runs no agent")
+    func shellWithoutAnAgent() async throws {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        shell.arguments = ["-c", "/bin/sleep 30"]
+        try shell.run()
+        defer {
+            shell.terminate()
+            shell.waitUntilExit()
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+
+        #expect(
+            TerminalAgentProcessDetector.agentProcess(
+                processID: shell.processIdentifier
+            ) == nil
+        )
+        #expect(TerminalAgentProcessDetector.agentProcess(processID: 0) == nil)
+        #expect(TerminalAgentProcessDetector.agentProcess(processID: -1) == nil)
+    }
+
     @Test("identifies shell command names")
     func shellCommandNameDetection() {
         for name in ["zsh", "bash", "fish", "sh", "dash", "tcsh", "csh", "ksh", "nu", "pwsh"] {

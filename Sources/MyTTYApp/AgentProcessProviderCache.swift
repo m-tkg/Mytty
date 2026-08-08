@@ -37,6 +37,7 @@ final class AgentProcessProviderCache {
     private let startTime: (pid_t) -> (seconds: UInt64, microseconds: UInt64)?
     private let executablePath: (pid_t) -> String?
     private let classify: (pid_t) -> AgentProvider?
+    private let classifyDescendants: (pid_t) -> TerminalAgentProcessDetector.AgentProcess?
 
     init(
         startTime: @escaping (pid_t) -> (seconds: UInt64, microseconds: UInt64)? =
@@ -44,11 +45,14 @@ final class AgentProcessProviderCache {
         executablePath: @escaping (pid_t) -> String? =
             TerminalAgentProcessDetector.executablePath(processID:),
         classify: @escaping (pid_t) -> AgentProvider? =
-            TerminalAgentProcessDetector.provider(processID:)
+            TerminalAgentProcessDetector.provider(processID:),
+        classifyDescendants: @escaping (pid_t) -> TerminalAgentProcessDetector.AgentProcess? =
+            TerminalAgentProcessDetector.descendantAgentProcess(of:)
     ) {
         self.startTime = startTime
         self.executablePath = executablePath
         self.classify = classify
+        self.classifyDescendants = classifyDescendants
     }
 
     /// Drops cache entries for surfaces that no longer exist. Call once
@@ -68,13 +72,19 @@ final class AgentProcessProviderCache {
         entries[surfaceID]?.key.executablePath
     }
 
-    /// The provider (if any) running in `processID`'s foreground, using the
+    /// The agent (if any) running in `processID`'s foreground, using the
     /// cached classification when the process identity is unchanged since
     /// the last call for `surfaceID`.
-    func provider(
+    ///
+    /// Only the direct classification is cached. When it comes back empty
+    /// the descendant scan runs every tick: a wrapper script keeps the same
+    /// pid, start time and executable path across the agent it launches
+    /// starting and exiting, so caching that answer would pin the pane to
+    /// whatever was true the first time it was seen.
+    func agentProcess(
         surfaceID: TerminalSurfaceID,
         processID: pid_t
-    ) -> AgentProvider? {
+    ) -> TerminalAgentProcessDetector.AgentProcess? {
         guard processID > 0 else { return nil }
 
         guard let startTime = startTime(processID),
@@ -82,7 +92,12 @@ final class AgentProcessProviderCache {
         else {
             // A transient probe failure must not pin a stale or negative
             // result — fall through to full classification, uncached.
-            return classify(processID)
+            return classify(processID).map {
+                TerminalAgentProcessDetector.AgentProcess(
+                    processID: processID,
+                    provider: $0
+                )
+            } ?? classifyDescendants(processID)
         }
 
         let key = ProcessKey(
@@ -91,12 +106,19 @@ final class AgentProcessProviderCache {
             startTimeMicroseconds: startTime.microseconds,
             executablePath: executablePath
         )
+        let provider: AgentProvider?
         if let cached = entries[surfaceID], cached.key == key {
-            return cached.provider
+            provider = cached.provider
+        } else {
+            provider = classify(processID)
+            entries[surfaceID] = (key: key, provider: provider)
         }
-
-        let provider = classify(processID)
-        entries[surfaceID] = (key: key, provider: provider)
-        return provider
+        if let provider {
+            return TerminalAgentProcessDetector.AgentProcess(
+                processID: processID,
+                provider: provider
+            )
+        }
+        return classifyDescendants(processID)
     }
 }
