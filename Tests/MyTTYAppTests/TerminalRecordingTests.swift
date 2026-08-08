@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import UniformTypeIdentifiers
 import MyTTYCore
 import Testing
 
@@ -11,7 +12,8 @@ struct TerminalRecordingTests {
     func recordingLimits() {
         #expect(TerminalRecordingConfiguration.maximumDuration == 60)
         #expect(TerminalRecordingConfiguration.framesPerSecond == 8)
-        #expect(TerminalRecordingConfiguration.maximumFrameCount == 480)
+        #expect(TerminalRecordingConfiguration.maximumCaptureCount == 480)
+        #expect(TerminalRecordingConfiguration.maximumFrameRunTicks == 40)
         #expect(TerminalRecordingConfiguration.maximumPixelDimension == 4_096)
     }
 
@@ -181,6 +183,122 @@ struct TerminalRecordingTests {
                 as? [CFString: Any]
         )
         #expect((gif[kCGImagePropertyGIFLoopCount] as? NSNumber)?.intValue == 0)
+    }
+
+    /// The 0.125s sampling interval does not land on GIF's 1/100s grid, so
+    /// the delays alternate rather than all rounding the same way — eight of
+    /// them still add up to exactly one second.
+    @Test("keeps the total playback time exact on GIF's centisecond grid")
+    func frameTimingDoesNotDrift() {
+        #expect(
+            RecordingFrameTiming.delaysCentiseconds(
+                runs: Array(repeating: 1, count: 8),
+                frameDelay: 0.125
+            ) == [13, 12, 13, 12, 13, 12, 13, 12]
+        )
+        // The same eight ticks folded into one frame play for the same
+        // second.
+        #expect(
+            RecordingFrameTiming.delaysCentiseconds(
+                runs: [8],
+                frameDelay: 0.125
+            ) == [100]
+        )
+        #expect(
+            RecordingFrameTiming.delaysCentiseconds(
+                runs: [3, 5],
+                frameDelay: 0.125
+            ) == [38, 62]
+        )
+        // A run of 480 ticks is a full 60s recording; no drift there either.
+        let long = RecordingFrameTiming.delaysCentiseconds(
+            runs: Array(repeating: 1, count: 480),
+            frameDelay: 0.125
+        )
+        #expect(long.reduce(0, +) == 6_000)
+        #expect(long.allSatisfy { $0 > 0 })
+    }
+
+    @Test("gives every frame the delay it was assigned")
+    func perFrameDelays() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mytty-recording-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let frameURLs = try [
+            try writePNG(try makeImage(red: 1, green: 0, blue: 0), in: directory, name: "0"),
+            try writePNG(try makeImage(red: 0, green: 0, blue: 1), in: directory, name: "1"),
+        ]
+        let output = directory.appendingPathComponent("recording.gif")
+
+        try AnimatedGIFEncoder().encode(
+            frameURLs: frameURLs,
+            delaysCentiseconds: [100, 13],
+            to: output
+        )
+
+        let source = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        #expect(CGImageSourceGetCount(source) == 2)
+        #expect(try delayCentiseconds(of: source, at: 0) == 100)
+        #expect(try delayCentiseconds(of: source, at: 1) == 13)
+    }
+
+    /// The saving that matters: a terminal that nobody is typing into
+    /// produces the same pixels every tick, and every one of them used to
+    /// be encoded and written out.
+    @Test("folds identical samples into one frame instead of writing them again")
+    @MainActor
+    func foldsIdenticalSamples() throws {
+        let recorder = try makeRecorder(for: makeStaticView())
+        defer { recorder.cancel() }
+        try recorder.start()
+
+        for _ in 0..<9 { recorder.captureTick() }
+
+        // Ten ticks, one frame on disk, and its playback time covers all of
+        // them (10 × 0.125s).
+        #expect(recorder.recordedFrameTicks == [10])
+        #expect(
+            RecordingFrameTiming.delaysCentiseconds(
+                runs: recorder.recordedFrameTicks,
+                frameDelay: TerminalRecordingConfiguration.frameDelay
+            ) == [125]
+        )
+    }
+
+    @Test("starts a new frame when the pane changes")
+    @MainActor
+    func splitsWhenThePaneChanges() throws {
+        let view = makeStaticView()
+        let recorder = try makeRecorder(for: view)
+        defer { recorder.cancel() }
+        try recorder.start()
+
+        recorder.captureTick()
+        view.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        view.needsDisplay = true
+        recorder.captureTick()
+        recorder.captureTick()
+
+        #expect(recorder.recordedFrameTicks == [2, 2])
+    }
+
+    /// A frame that stood still for the cap keeps playing, but as a new
+    /// frame — long delays scrub badly and some viewers clamp them.
+    @Test("caps how long one frame may stand in for a still pane")
+    @MainActor
+    func capsTheRunOfOneFrame() throws {
+        let recorder = try makeRecorder(for: makeStaticView())
+        defer { recorder.cancel() }
+        try recorder.start()
+
+        let cap = TerminalRecordingConfiguration.maximumFrameRunTicks
+        for _ in 0..<(cap + 4) { recorder.captureTick() }
+
+        #expect(recorder.recordedFrameTicks == [cap, 5])
     }
 
     @Test("splits the fade-out duration into per-frame alpha steps")
@@ -366,4 +484,74 @@ struct TerminalRecordingTests {
         context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         return try #require(context.makeImage())
     }
+
+    private func writePNG(
+        _ image: CGImage,
+        in directory: URL,
+        name: String
+    ) throws -> URL {
+        let url = directory.appendingPathComponent("\(name).png")
+        let destination = try #require(CGImageDestinationCreateWithURL(
+            url as CFURL,
+            UTType.png.identifier as CFString,
+            1,
+            nil
+        ))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return url
+    }
+
+    private func delayCentiseconds(
+        of source: CGImageSource,
+        at index: Int
+    ) throws -> Int {
+        let properties = try #require(
+            CGImageSourceCopyPropertiesAtIndex(source, index, nil)
+                as? [CFString: Any]
+        )
+        let gif = try #require(
+            properties[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+        )
+        let delay = try #require(
+            gif[kCGImagePropertyGIFUnclampedDelayTime] as? NSNumber
+        )
+        return Int((delay.doubleValue * 100).rounded())
+    }
+
+    /// A view that draws the same pixels every time it is captured. Held by
+    /// a window so `cacheDisplay` has a backing store to render into.
+    @MainActor
+    private func makeStaticView() -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 120, height: 80))
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
+        let window = NSWindow(
+            contentRect: view.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = view
+        windows.append(window)
+        return view
+    }
+
+    @MainActor
+    private func makeRecorder(for view: NSView) throws -> TerminalGIFRecorder {
+        TerminalGIFRecorder(
+            tabID: TabID(),
+            surfaceID: TerminalSurfaceID(),
+            view: view,
+            showPressedKeys: false,
+            keyLabelCursorRect: { nil },
+            onLimitReached: {},
+            onFailure: { _ in }
+        )
+    }
 }
+
+/// Keeps the windows the capture tests render into alive for the duration
+/// of the suite; a released window takes its backing store with it.
+@MainActor
+private var windows: [NSWindow] = []

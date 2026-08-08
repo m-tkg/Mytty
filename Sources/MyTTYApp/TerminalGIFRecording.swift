@@ -6,11 +6,47 @@ import UniformTypeIdentifiers
 enum TerminalRecordingConfiguration {
     static let maximumDuration: TimeInterval = 60
     static let framesPerSecond = 8
-    static let maximumFrameCount = Int(maximumDuration)
+    /// How many times the recording samples the pane, not how many frames
+    /// the GIF ends up with: consecutive samples that look identical are
+    /// folded into one frame whose delay covers all of them.
+    static let maximumCaptureCount = Int(maximumDuration)
         * framesPerSecond
     static let frameDelay = 1 / Double(framesPerSecond)
+    /// Longest run of identical samples one frame may absorb (5s). GIF's
+    /// delay field could hold far more, but a frame that sits still for
+    /// minutes scrubs badly and some viewers clamp very long delays.
+    static let maximumFrameRunTicks = 40
     static let maximumPixelDimension = 4_096
     static let keyLabelDuration: TimeInterval = 1.2
+}
+
+/// Turns runs of identical samples into GIF delays.
+///
+/// GIF stores delays in hundredths of a second, and the 0.125s sampling
+/// interval does not land on that grid. Rounding each frame on its own
+/// would drift — 8 frames of 0.125s would become 8 × 13cs = 1.04s. So the
+/// rounding is applied to the *cumulative* time and the delays are the
+/// differences, which alternates 13, 12, 13, 12 … and keeps the total
+/// exact.
+enum RecordingFrameTiming {
+    static func delaysCentiseconds(
+        runs: [Int],
+        frameDelay: TimeInterval
+    ) -> [Int] {
+        var delays: [Int] = []
+        delays.reserveCapacity(runs.count)
+        var ticks = 0
+        var elapsed = 0
+        for run in runs {
+            ticks += max(1, run)
+            let boundary = Int((Double(ticks) * frameDelay * 100).rounded())
+            // A zero delay is read as "as fast as possible" by some
+            // viewers and as 10cs by others; never emit one.
+            delays.append(max(1, boundary - elapsed))
+            elapsed = boundary
+        }
+        return delays
+    }
 }
 
 enum TerminalRecordingError: Error, Sendable, CustomStringConvertible {
@@ -190,22 +226,26 @@ struct AnimatedGIFEncoder: Sendable {
         frameDelay: TimeInterval,
         to outputURL: URL
     ) throws {
+        let delay = max(1, Int((frameDelay * 100).rounded()))
         try encode(
             frameCount: frames.count,
-            frameDelay: frameDelay,
+            delayCentisecondsAt: { _ in delay },
             outputURL: outputURL,
             imageAt: { frames[$0] }
         )
     }
 
+    /// Per-frame delays, in hundredths of a second: a frame that stood in
+    /// for several identical samples carries all of their time.
     func encode(
         frameURLs: [URL],
-        frameDelay: TimeInterval,
+        delaysCentiseconds: [Int],
         to outputURL: URL
     ) throws {
+        precondition(frameURLs.count == delaysCentiseconds.count)
         try encode(
             frameCount: frameURLs.count,
-            frameDelay: frameDelay,
+            delayCentisecondsAt: { delaysCentiseconds[$0] },
             outputURL: outputURL,
             imageAt: { index in
                 guard let source = CGImageSourceCreateWithURL(
@@ -225,7 +265,7 @@ struct AnimatedGIFEncoder: Sendable {
 
     private func encode(
         frameCount: Int,
-        frameDelay: TimeInterval,
+        delayCentisecondsAt: (Int) -> Int,
         outputURL: URL,
         imageAt: (Int) throws -> CGImage
     ) throws {
@@ -245,13 +285,17 @@ struct AnimatedGIFEncoder: Sendable {
                 ],
             ] as CFDictionary
         )
-        let properties = [
-            kCGImagePropertyGIFDictionary: [
-                kCGImagePropertyGIFDelayTime: frameDelay,
-                kCGImagePropertyGIFUnclampedDelayTime: frameDelay,
-            ],
-        ] as CFDictionary
         for index in 0..<frameCount {
+            // Both keys carry the same value: readers disagree about which
+            // one wins, and a viewer must never see two different delays
+            // for one frame.
+            let delay = Double(delayCentisecondsAt(index)) / 100
+            let properties = [
+                kCGImagePropertyGIFDictionary: [
+                    kCGImagePropertyGIFDelayTime: delay,
+                    kCGImagePropertyGIFUnclampedDelayTime: delay,
+                ],
+            ] as CFDictionary
             CGImageDestinationAddImage(
                 destination,
                 try imageAt(index),
@@ -266,11 +310,11 @@ struct AnimatedGIFEncoder: Sendable {
 
 @MainActor
 enum TerminalFrameCapture {
-    static func image(
-        from view: NSView,
-        keyLabel: String?,
-        keyLabelCursorRect: NSRect? = nil
-    ) throws -> CGImage {
+    /// The pane's pixels, before the key label is composited on top.
+    /// Split out from `image(from:...)` so the recorder can compare one
+    /// sample against the last without paying for the composite and the
+    /// PNG encode first.
+    static func representation(of view: NSView) throws -> NSBitmapImageRep {
         view.layoutSubtreeIfNeeded()
         guard view.bounds.width >= 1,
               view.bounds.height >= 1,
@@ -279,13 +323,36 @@ enum TerminalFrameCapture {
               )
         else { throw TerminalRecordingError.unableToCapture }
         view.cacheDisplay(in: view.bounds, to: representation)
+        return representation
+    }
+
+    static func image(
+        from view: NSView,
+        keyLabel: String?,
+        keyLabelCursorRect: NSRect? = nil
+    ) throws -> CGImage {
+        try image(
+            from: try representation(of: view),
+            pointSize: view.bounds.size,
+            keyLabel: keyLabel,
+            keyLabelCursorRect: keyLabelCursorRect
+        )
+    }
+
+    static func image(
+        from representation: NSBitmapImageRep,
+        pointSize: CGSize,
+        keyLabel: String?,
+        keyLabelCursorRect: NSRect? = nil
+    ) throws -> CGImage {
         guard let source = representation.cgImage else {
             throw TerminalRecordingError.unableToCapture
         }
+        let bounds = CGRect(origin: .zero, size: pointSize)
 
         let size = targetPixelSize(
             source: source,
-            pointSize: view.bounds.size
+            pointSize: pointSize
         )
         let hasKeyLabel = keyLabel?.isEmpty == false
             && keyLabelCursorRect != nil
@@ -309,19 +376,19 @@ enum TerminalFrameCapture {
         )
         if let keyLabel, !keyLabel.isEmpty, let keyLabelCursorRect {
             let drawingScale = min(
-                CGFloat(size.width) / view.bounds.width,
-                CGFloat(size.height) / view.bounds.height
+                CGFloat(size.width) / bounds.width,
+                CGFloat(size.height) / bounds.height
             )
             let frame = keyLabelFrame(
                 keyLabel: keyLabel,
                 cursorRect: keyLabelCursorRect,
-                in: view.bounds
+                in: bounds
             )
             draw(
                 keyLabel: keyLabel,
                 in: context,
                 frame: frame,
-                bounds: view.bounds,
+                bounds: bounds,
                 scale: drawingScale
             )
         }
@@ -437,7 +504,33 @@ final class TerminalGIFRecorder: NSObject {
     private var showPressedKeys: Bool
     private var timer: Timer?
     private var temporaryDirectory: URL?
-    private var frameURLs: [URL] = []
+
+    /// One encoded frame and how many capture ticks it stands for.
+    private struct RecordedFrame {
+        let url: URL
+        var ticks: Int
+    }
+
+    /// The last sample's raw pixels, kept so the next one can be rejected
+    /// with a `memcmp` instead of a hash: at ~17MB a frame the compare
+    /// costs 1-2ms while hashing the same bytes costs ten times that, and
+    /// a match here skips the PNG encode entirely — so deduplicating makes
+    /// the capture tick cheaper, not dearer.
+    private struct FrameSignature {
+        var bytes: [UInt8]
+        var width: Int
+        var height: Int
+        var bytesPerRow: Int
+        /// The key label lives only in the composited image, so it is
+        /// compared as state: same pixels *and* same label means the
+        /// composite would have been identical too.
+        var keyLabel: String?
+        var keyLabelCursorRect: NSRect?
+    }
+
+    private var frames: [RecordedFrame] = []
+    private var captureCount = 0
+    private var previousSignature: FrameSignature?
     private var latestKeyLabel: (
         text: String,
         date: Date,
@@ -533,20 +626,22 @@ final class TerminalGIFRecorder: NSObject {
         ) -> Void
     ) {
         stopCapturing()
-        let frames = frameURLs
+        let recorded = frames
         let directory = temporaryDirectory
-        frameURLs.removeAll()
+        frames.removeAll()
+        previousSignature = nil
         temporaryDirectory = nil
 
         Task {
             let result = await Task.detached(priority: .utility) {
                 () -> Result<URL, TerminalRecordingError> in
-                guard !frames.isEmpty else { return .failure(.noFrames) }
+                guard !recorded.isEmpty else { return .failure(.noFrames) }
                 guard let directory else {
                     return .failure(.unableToCreateTemporaryDirectory)
                 }
-                var allFrames = frames
-                if let fadeOut, let lastFrame = frames.last {
+                var allFrames = recorded.map(\.url)
+                var runs = recorded.map(\.ticks)
+                if let fadeOut, let lastFrame = allFrames.last {
                     // A failed fade must not lose the recording itself.
                     let fadeFrames = try? TerminalRecordingFadeOutRenderer
                         .frames(
@@ -557,12 +652,24 @@ final class TerminalGIFRecorder: NSObject {
                             in: directory
                         )
                     allFrames.append(contentsOf: fadeFrames ?? [])
+                    // Every fade frame is its own tick. They go through the
+                    // same cumulative rounding as the captured ones so the
+                    // fade lasts exactly as long as it was configured to.
+                    runs.append(contentsOf: Array(
+                        repeating: 1,
+                        count: fadeFrames?.count ?? 0
+                    ))
                 }
                 let encoded = directory.appendingPathComponent("recording.gif")
                 do {
                     try AnimatedGIFEncoder().encode(
                         frameURLs: allFrames,
-                        frameDelay: TerminalRecordingConfiguration.frameDelay,
+                        delaysCentiseconds: RecordingFrameTiming
+                            .delaysCentiseconds(
+                                runs: runs,
+                                frameDelay: TerminalRecordingConfiguration
+                                    .frameDelay
+                            ),
                         to: encoded
                     )
                     let data = try Data(contentsOf: encoded, options: .mappedIfSafe)
@@ -590,15 +697,23 @@ final class TerminalGIFRecorder: NSObject {
             try? FileManager.default.removeItem(at: temporaryDirectory)
         }
         temporaryDirectory = nil
-        frameURLs.removeAll()
+        frames.removeAll()
+        captureCount = 0
+        previousSignature = nil
     }
 
     @objc private func captureTimerFired(_ timer: Timer) {
+        captureTick()
+    }
+
+    /// One capture tick. Separate from the timer callback so tests can
+    /// drive a recording without waiting on the run loop.
+    func captureTick() {
         let elapsed = startedAt.map { Date().timeIntervalSince($0) }
             ?? TerminalRecordingConfiguration.maximumDuration
         guard elapsed < TerminalRecordingConfiguration.maximumDuration,
-              frameURLs.count
-                < TerminalRecordingConfiguration.maximumFrameCount
+              captureCount
+                < TerminalRecordingConfiguration.maximumCaptureCount
         else {
             onLimitReached()
             return
@@ -618,6 +733,7 @@ final class TerminalGIFRecorder: NSObject {
         guard let view, let directory = temporaryDirectory else {
             throw TerminalRecordingError.unableToCapture
         }
+        captureCount += 1
         let now = Date()
         let keyLabel = latestKeyLabel.flatMap { label in
             now.timeIntervalSince(label.date)
@@ -625,13 +741,33 @@ final class TerminalGIFRecorder: NSObject {
                 ? label
                 : nil
         }
+        let representation = try TerminalFrameCapture.representation(of: view)
+
+        // Nothing moved since the last tick: give the frame already on disk
+        // another tick of playback time rather than writing the same pixels
+        // again. A terminal recording is mostly made of these — a 60s one
+        // wrote up to 480 PNGs, most of them byte-identical, at roughly 2MB
+        // apiece.
+        //
+        // This is about the cost of recording, not the size of the GIF:
+        // ImageIO already writes unchanged frames as inter-frame diffs, so
+        // a duplicate costs about 26 bytes in the output either way.
+        if var last = frames.last,
+           last.ticks < TerminalRecordingConfiguration.maximumFrameRunTicks,
+           matchesPreviousSample(representation, keyLabel: keyLabel) {
+            last.ticks += 1
+            frames[frames.count - 1] = last
+            return
+        }
+
         let image = try TerminalFrameCapture.image(
-            from: view,
+            from: representation,
+            pointSize: view.bounds.size,
             keyLabel: keyLabel?.text,
             keyLabelCursorRect: keyLabel?.cursorRect
         )
         let url = directory.appendingPathComponent(
-            String(format: "%04d.png", frameURLs.count)
+            String(format: "%04d.png", frames.count)
         )
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
@@ -643,6 +779,68 @@ final class TerminalGIFRecorder: NSObject {
         guard CGImageDestinationFinalize(destination) else {
             throw TerminalRecordingError.unableToWriteFrame
         }
-        frameURLs.append(url)
+        frames.append(RecordedFrame(url: url, ticks: 1))
+        rememberSample(representation, keyLabel: keyLabel)
     }
+
+    private func matchesPreviousSample(
+        _ representation: NSBitmapImageRep,
+        keyLabel: (text: String, date: Date, cursorRect: NSRect)?
+    ) -> Bool {
+        // A planar or unreadable representation, or a pane that changed
+        // size, falls back to writing every frame — the behavior this
+        // deduplication replaced.
+        guard !representation.isPlanar,
+              let data = representation.bitmapData,
+              let previous = previousSignature,
+              previous.width == representation.pixelsWide,
+              previous.height == representation.pixelsHigh,
+              previous.bytesPerRow == representation.bytesPerRow,
+              previous.keyLabel == keyLabel?.text,
+              previous.keyLabelCursorRect == keyLabel?.cursorRect
+        else { return false }
+        let count = representation.bytesPerRow * representation.pixelsHigh
+        guard previous.bytes.count == count else { return false }
+        return previous.bytes.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return false }
+            return memcmp(base, data, count) == 0
+        }
+    }
+
+    private func rememberSample(
+        _ representation: NSBitmapImageRep,
+        keyLabel: (text: String, date: Date, cursorRect: NSRect)?
+    ) {
+        guard !representation.isPlanar,
+              let data = representation.bitmapData
+        else {
+            previousSignature = nil
+            return
+        }
+        let count = representation.bytesPerRow * representation.pixelsHigh
+        var bytes: [UInt8]
+        if var existing = previousSignature?.bytes, existing.count == count {
+            // Same geometry as last tick: overwrite in place instead of
+            // handing back ~17MB to the allocator eight times a second.
+            existing.withUnsafeMutableBytes { buffer in
+                if let base = buffer.baseAddress {
+                    base.copyMemory(from: data, byteCount: count)
+                }
+            }
+            bytes = existing
+        } else {
+            bytes = [UInt8](UnsafeBufferPointer(start: data, count: count))
+        }
+        previousSignature = FrameSignature(
+            bytes: bytes,
+            width: representation.pixelsWide,
+            height: representation.pixelsHigh,
+            bytesPerRow: representation.bytesPerRow,
+            keyLabel: keyLabel?.text,
+            keyLabelCursorRect: keyLabel?.cursorRect
+        )
+    }
+
+    /// The frames written so far and how many ticks each one covers.
+    var recordedFrameTicks: [Int] { frames.map(\.ticks) }
 }
