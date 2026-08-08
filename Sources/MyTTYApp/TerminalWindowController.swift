@@ -1557,9 +1557,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 executableName: TerminalAgentProcessDetector.commandName(
                     processID: processID
                 ),
-                provider: TerminalAgentProcessDetector.provider(
-                    processID: processID
-                )
+                // Not the foreground process's own provider: an agent
+                // launched by a wrapper script sits below the shell that
+                // is in front, and the pane would be listed as `bash`.
+                provider: agentStatusPolling.providersBySurface[entry.key]
+                    ?? TerminalAgentProcessDetector.agentProcess(
+                        processID: processID
+                    )?.provider
             )
         }
         return PaneListWindowSnapshot(
@@ -3115,7 +3119,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             provider: provider,
             sessionID: agentStatusPolling.sessionIDsBySurface[surfaceID],
             workingDirectory: surfaceWorkingDirectory(for: surfaceID),
-            processID: surface.foregroundProcessID
+            processID: agentStatusPolling.agentProcessIDsBySurface[surfaceID]
+                ?? surface.foregroundProcessID
         )
     }
 
@@ -3616,11 +3621,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         for surfaceID: TerminalSurfaceID
     ) -> AgentResumeDescriptor? {
         guard let surface = surfaces[surfaceID] else { return nil }
-        let processID = surface.foregroundProcessID
-        guard let provider = TerminalAgentProcessDetector.provider(
-            processID: processID
-        ),
-        let kind = TerminalAgentProcessDetector.resumeKind(
+        // The resume flags live on the agent, which is not the foreground
+        // process when a wrapper script launched it.
+        guard let agent = TerminalAgentProcessDetector.agentProcess(
+            processID: surface.foregroundProcessID
+        ) else { return nil }
+        let processID = agent.processID
+        let provider = agent.provider
+        guard let kind = TerminalAgentProcessDetector.resumeKind(
             processID: processID
         ),
         let sessionID = agentSessionID(
@@ -3762,9 +3770,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         forPane paneID: TerminalSurfaceID
     ) -> (executablePath: String, arguments: [String])? {
         guard let surface = surfaces[paneID] else { return nil }
-        return TerminalAgentProcessDetector.invocation(
-            processID: surface.foregroundProcessID
-        )
+        // `--access inherit` copies the anchor pane's agent flags, so this
+        // has to follow a wrapper script down to the agent it launched.
+        let processID = agentStatusPolling.agentProcessIDsBySurface[paneID]
+            ?? TerminalAgentProcessDetector.agentProcess(
+                processID: surface.foregroundProcessID
+            )?.processID
+            ?? surface.foregroundProcessID
+        return TerminalAgentProcessDetector.invocation(processID: processID)
     }
 
     /// Closes a pane on behalf of `mytty-ctl close-pane`, skipping the

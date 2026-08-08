@@ -17,12 +17,15 @@ struct AgentProcessProviderCacheTests {
     private func makeCache(
         startTime: @escaping (pid_t) -> StartTime? = { _ in (1, 0) },
         executablePath: @escaping (pid_t) -> String? = { _ in "/usr/bin/env" },
+        classifyDescendants: @escaping (pid_t)
+            -> TerminalAgentProcessDetector.AgentProcess? = { _ in nil },
         classify: @escaping (pid_t) -> AgentProvider?
     ) -> AgentProcessProviderCache {
         AgentProcessProviderCache(
             startTime: startTime,
             executablePath: executablePath,
-            classify: classify
+            classify: classify,
+            classifyDescendants: classifyDescendants
         )
     }
 
@@ -35,8 +38,8 @@ struct AgentProcessProviderCacheTests {
         }
         let surfaceID = TerminalSurfaceID()
 
-        let first = cache.provider(surfaceID: surfaceID, processID: 100)
-        let second = cache.provider(surfaceID: surfaceID, processID: 100)
+        let first = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
+        let second = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
 
         #expect(first == .codex)
         #expect(second == .codex)
@@ -52,8 +55,8 @@ struct AgentProcessProviderCacheTests {
         }
         let surfaceID = TerminalSurfaceID()
 
-        _ = cache.provider(surfaceID: surfaceID, processID: 100)
-        _ = cache.provider(surfaceID: surfaceID, processID: 200)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 200)
 
         #expect(classifyCount == 2)
     }
@@ -72,9 +75,9 @@ struct AgentProcessProviderCacheTests {
         )
         let surfaceID = TerminalSurfaceID()
 
-        _ = cache.provider(surfaceID: surfaceID, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 100)
         currentStartTime = (2, 0)
-        _ = cache.provider(surfaceID: surfaceID, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 100)
 
         #expect(classifyCount == 2)
     }
@@ -93,9 +96,9 @@ struct AgentProcessProviderCacheTests {
         )
         let surfaceID = TerminalSurfaceID()
 
-        _ = cache.provider(surfaceID: surfaceID, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 100)
         currentPath = "/usr/bin/codex"
-        _ = cache.provider(surfaceID: surfaceID, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceID, processID: 100)
 
         #expect(classifyCount == 2)
     }
@@ -109,8 +112,8 @@ struct AgentProcessProviderCacheTests {
         }
         let surfaceID = TerminalSurfaceID()
 
-        let first = cache.provider(surfaceID: surfaceID, processID: 100)
-        let second = cache.provider(surfaceID: surfaceID, processID: 100)
+        let first = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
+        let second = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
 
         #expect(first == nil)
         #expect(second == nil)
@@ -130,8 +133,8 @@ struct AgentProcessProviderCacheTests {
         )
         let surfaceID = TerminalSurfaceID()
 
-        let first = cache.provider(surfaceID: surfaceID, processID: 100)
-        let second = cache.provider(surfaceID: surfaceID, processID: 100)
+        let first = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
+        let second = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
 
         #expect(first == .codex)
         #expect(second == .codex)
@@ -151,8 +154,8 @@ struct AgentProcessProviderCacheTests {
         )
         let surfaceID = TerminalSurfaceID()
 
-        let first = cache.provider(surfaceID: surfaceID, processID: 100)
-        let second = cache.provider(surfaceID: surfaceID, processID: 100)
+        let first = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
+        let second = cache.agentProcess(surfaceID: surfaceID, processID: 100)?.provider
 
         #expect(first == .codex)
         #expect(second == .codex)
@@ -168,8 +171,8 @@ struct AgentProcessProviderCacheTests {
         }
         let surfaceID = TerminalSurfaceID()
 
-        #expect(cache.provider(surfaceID: surfaceID, processID: 0) == nil)
-        #expect(cache.provider(surfaceID: surfaceID, processID: -1) == nil)
+        #expect(cache.agentProcess(surfaceID: surfaceID, processID: 0) == nil)
+        #expect(cache.agentProcess(surfaceID: surfaceID, processID: -1) == nil)
         #expect(classifyCount == 0)
     }
 
@@ -183,19 +186,74 @@ struct AgentProcessProviderCacheTests {
         let keptSurface = TerminalSurfaceID()
         let droppedSurface = TerminalSurfaceID()
 
-        _ = cache.provider(surfaceID: keptSurface, processID: 100)
-        _ = cache.provider(surfaceID: droppedSurface, processID: 100)
+        _ = cache.agentProcess(surfaceID: keptSurface, processID: 100)
+        _ = cache.agentProcess(surfaceID: droppedSurface, processID: 100)
         #expect(classifyCount == 2)
 
         cache.purge(activeSurfaceIDs: [keptSurface])
 
-        _ = cache.provider(surfaceID: keptSurface, processID: 100)
+        _ = cache.agentProcess(surfaceID: keptSurface, processID: 100)
         // Still cached (same key, surface kept): no re-classification.
         #expect(classifyCount == 2)
 
-        _ = cache.provider(surfaceID: droppedSurface, processID: 100)
+        _ = cache.agentProcess(surfaceID: droppedSurface, processID: 100)
         // Purged: same key, but the entry is gone.
         #expect(classifyCount == 3)
+    }
+
+    /// A wrapper script keeps the same pid, start time and executable path
+    /// whether or not it currently has an agent under it, so the descendant
+    /// scan must not ride on the cached negative.
+    @Test("re-runs the descendant scan on every call while nothing is in front")
+    func descendantScanIsNotCached() {
+        var classifyCount = 0
+        var descendantCount = 0
+        var descendant: TerminalAgentProcessDetector.AgentProcess?
+        let cache = makeCache(
+            classifyDescendants: { _ in
+                descendantCount += 1
+                return descendant
+            },
+            classify: { _ in
+                classifyCount += 1
+                return nil
+            }
+        )
+        let surfaceID = TerminalSurfaceID()
+
+        #expect(cache.agentProcess(surfaceID: surfaceID, processID: 100) == nil)
+        // The agent starts under the wrapper without the wrapper changing.
+        descendant = TerminalAgentProcessDetector.AgentProcess(
+            processID: 101,
+            provider: .claudeCode
+        )
+        let resolved = cache.agentProcess(surfaceID: surfaceID, processID: 100)
+
+        #expect(resolved?.provider == .claudeCode)
+        #expect(resolved?.processID == 101)
+        // The wrapper itself was only classified once; the scan below it ran
+        // on both calls.
+        #expect(classifyCount == 1)
+        #expect(descendantCount == 2)
+    }
+
+    @Test("does not scan below a foreground process that is itself an agent")
+    func agentInFrontSkipsDescendantScan() {
+        var descendantCount = 0
+        let cache = makeCache(
+            classifyDescendants: { _ in
+                descendantCount += 1
+                return nil
+            },
+            classify: { _ in .codex }
+        )
+        let surfaceID = TerminalSurfaceID()
+
+        let resolved = cache.agentProcess(surfaceID: surfaceID, processID: 100)
+
+        #expect(resolved?.provider == .codex)
+        #expect(resolved?.processID == 100)
+        #expect(descendantCount == 0)
     }
 
     @Test("keeps caches independent per surface")
@@ -208,8 +266,8 @@ struct AgentProcessProviderCacheTests {
         let surfaceA = TerminalSurfaceID()
         let surfaceB = TerminalSurfaceID()
 
-        _ = cache.provider(surfaceID: surfaceA, processID: 100)
-        _ = cache.provider(surfaceID: surfaceB, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceA, processID: 100)
+        _ = cache.agentProcess(surfaceID: surfaceB, processID: 100)
 
         #expect(classifyCount == 2)
     }

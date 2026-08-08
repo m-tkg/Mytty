@@ -109,6 +109,112 @@ enum TerminalAgentProcessDetector {
         )
     }
 
+    /// An agent and the process actually running it.
+    ///
+    /// The pane's foreground process is the process *group leader*, which is
+    /// not always the agent: launching one through a wrapper script
+    /// (`sh ~/bin/ask-claude`) leaves the shell in front with the agent as
+    /// its child. Everything downstream — the session inspectors, the resume
+    /// flags, the displayed name — has to follow the agent, not the wrapper.
+    struct AgentProcess: Equatable {
+        let processID: pid_t
+        let provider: AgentProvider
+    }
+
+    /// How deep below the foreground process an agent is still recognized,
+    /// and how many processes may be examined getting there. Both are small
+    /// on purpose: this runs on the 0.5s poll for every pane.
+    private static let agentSearchDepth = 2
+    private static let agentSearchVisitLimit = 8
+    /// Reading argv costs a `KERN_PROCARGS2` copy, so descendants are
+    /// classified by executable path first and only a few of the leftovers
+    /// are examined that way.
+    private static let agentSearchArgumentReadLimit = 4
+
+    /// The agent running in `processID` itself, or in a descendant of it
+    /// when `processID` is a shell running a wrapper script.
+    ///
+    /// The descendant search is deliberately gated on the foreground process
+    /// being a shell: a pane sitting at its prompt has no foreground
+    /// children, so the scan costs one `proc_listchildpids` returning
+    /// nothing, and a pane running some other program (`vim`, `make`) is
+    /// never walked at all.
+    static func agentProcess(processID: pid_t) -> AgentProcess? {
+        guard processID > 0 else { return nil }
+        if let provider = provider(processID: processID) {
+            return AgentProcess(processID: processID, provider: provider)
+        }
+        return descendantAgentProcess(of: processID)
+    }
+
+    /// The agent below a foreground process that is not one itself.
+    /// Separate from `agentProcess(processID:)` so `AgentProcessProviderCache`
+    /// can cache the direct classification — whose inputs only change when
+    /// the foreground process does — while still re-running this scan every
+    /// tick, since a wrapper keeps its identity while its child comes and
+    /// goes.
+    static func descendantAgentProcess(of processID: pid_t) -> AgentProcess? {
+        guard processID > 0,
+              let name = commandName(processID: processID),
+              isShellCommandName(name)
+        else { return nil }
+        var frontier = [processID]
+        var visited = 0
+        var argumentReads = 0
+        for _ in 0..<agentSearchDepth {
+            var next: [pid_t] = []
+            for parent in frontier {
+                for child in childProcessIDs(of: parent) {
+                    guard visited < agentSearchVisitLimit else { return nil }
+                    visited += 1
+                    guard let path = executablePath(processID: child) else {
+                        continue
+                    }
+                    if let provider = provider(
+                        executablePath: path,
+                        arguments: []
+                    ) {
+                        return AgentProcess(processID: child, provider: provider)
+                    }
+                    // The binary's own name said nothing — an agent invoked
+                    // through an interpreter (`node …/claude`) is named by
+                    // its argv instead.
+                    if argumentReads < agentSearchArgumentReadLimit {
+                        argumentReads += 1
+                        if let provider = provider(
+                            executablePath: path,
+                            arguments: arguments(processID: child)
+                        ) {
+                            return AgentProcess(
+                                processID: child,
+                                provider: provider
+                            )
+                        }
+                    }
+                    next.append(child)
+                }
+            }
+            if next.isEmpty { return nil }
+            frontier = next
+        }
+        return nil
+    }
+
+    /// Direct children of `processID`, via `proc_listchildpids`. Empty when
+    /// the process has none or the call fails.
+    static func childProcessIDs(of processID: pid_t) -> [pid_t] {
+        let count = proc_listchildpids(processID, nil, 0)
+        guard count > 0 else { return [] }
+        var buffer = [pid_t](repeating: 0, count: Int(count))
+        let written = proc_listchildpids(
+            processID,
+            &buffer,
+            Int32(MemoryLayout<pid_t>.size * buffer.count)
+        )
+        guard written > 0 else { return [] }
+        return Array(buffer.prefix(Int(written))).filter { $0 > 0 }
+    }
+
     static func resumeKind(processID: pid_t) -> AgentResumeKind? {
         guard processID > 0,
               let executablePath = executablePath(processID: processID)

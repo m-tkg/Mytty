@@ -41,6 +41,12 @@ final class AgentStatusPollingCoordinator: NSObject {
     /// foreground process, agent or not — the per-pane status bar names the
     /// running program even when no agent is involved.
     private(set) var commandNamesBySurface: [TerminalSurfaceID: String] = [:]
+    /// The process actually running each pane's agent. Usually the pane's
+    /// foreground process, but a pane whose agent was started by a wrapper
+    /// script (`sh ~/bin/ask-claude`) has the shell in front and the agent
+    /// beneath it — session inspection and resume flags have to follow the
+    /// agent, not the wrapper.
+    private(set) var agentProcessIDsBySurface: [TerminalSurfaceID: pid_t] = [:]
 
     private let throttle = AgentSessionThrottleCache()
     private let processProviderCache = AgentProcessProviderCache()
@@ -203,8 +209,9 @@ final class AgentStatusPollingCoordinator: NSObject {
         var providers: [TerminalSurfaceID: AgentProvider] = [:]
         var workingDirectories: [TerminalSurfaceID: URL] = [:]
         var commandNames: [TerminalSurfaceID: String] = [:]
+        var agentProcessIDs: [TerminalSurfaceID: pid_t] = [:]
         for (surfaceID, surface) in currentSurfaces {
-            let resolvedProvider = processProviderCache.provider(
+            let agent = processProviderCache.agentProcess(
                 surfaceID: surfaceID,
                 processID: surface.foregroundProcessID
             )
@@ -218,10 +225,11 @@ final class AgentStatusPollingCoordinator: NSObject {
                ) {
                 commandNames[surfaceID] = name
             }
-            guard let provider = resolvedProvider else { continue }
-            providers[surfaceID] = provider
+            guard let agent else { continue }
+            providers[surfaceID] = agent.provider
+            agentProcessIDs[surfaceID] = agent.processID
             if let agentDirectory = TerminalAgentProcessDetector.workingDirectory(
-                processID: surface.foregroundProcessID
+                processID: agent.processID
             ) {
                 workingDirectories[surfaceID] = agentDirectory.standardizedFileURL
             }
@@ -237,7 +245,7 @@ final class AgentStatusPollingCoordinator: NSObject {
             for surfaceID in Set(providers.keys).union(providersBySurface.keys)
             where providers[surfaceID] != providersBySurface[surfaceID] {
                 let processID = providers[surfaceID] != nil
-                    ? currentSurfaces[surfaceID]?.foregroundProcessID
+                    ? agentProcessIDs[surfaceID]
                     : nil
                 onProviderTransition(surfaceID, providers[surfaceID], processID)
             }
@@ -245,11 +253,14 @@ final class AgentStatusPollingCoordinator: NSObject {
 
         let workingDirectoriesChanged = workingDirectories != workingDirectoriesBySurface
         let commandNamesChanged = commandNames != commandNamesBySurface
-        guard providersChanged || workingDirectoriesChanged || commandNamesChanged
+        let agentProcessIDsChanged = agentProcessIDs != agentProcessIDsBySurface
+        guard providersChanged || workingDirectoriesChanged
+            || commandNamesChanged || agentProcessIDsChanged
         else { return false }
         providersBySurface = providers
         workingDirectoriesBySurface = workingDirectories
         commandNamesBySurface = commandNames
+        agentProcessIDsBySurface = agentProcessIDs
         return true
     }
 
@@ -277,7 +288,9 @@ final class AgentStatusPollingCoordinator: NSObject {
                 context: queryContext(
                     surfaceID: surfaceID,
                     surface: surface,
-                    provider: provider
+                    provider: provider,
+                    agentProcessID: agentProcessIDsBySurface[surfaceID]
+                        ?? surface.foregroundProcessID
                 ),
                 throttle: throttle
             )
@@ -318,11 +331,13 @@ final class AgentStatusPollingCoordinator: NSObject {
     private func queryContext(
         surfaceID: TerminalSurfaceID,
         surface: GhosttySurfaceView,
-        provider: AgentProvider
+        provider: AgentProvider,
+        agentProcessID: pid_t
     ) -> AgentSessionQueryContext {
         AgentSessionQueryContext(
             surfaceID: surfaceID,
             surface: surface,
+            agentProcessID: agentProcessID,
             hookSessionID: { [hookSessionID] in
                 hookSessionID(surfaceID, provider)
             },
