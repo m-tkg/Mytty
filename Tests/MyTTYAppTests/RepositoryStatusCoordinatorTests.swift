@@ -6,11 +6,14 @@ import Testing
 
 /// Characterization tests for `RepositoryStatusCoordinator`: pin down the
 /// behavior extracted from `TerminalWindowController.refreshRepositoryIfNeeded`
-/// / `clearRepositoryStatus` — only refetching when the focused directory
-/// changes (or `force` is set), never starting a second load for a
+/// / `clearRepositoryStatus` — only refetching a directory when its
+/// fingerprint changes (or `force` is set), never starting a second load for a
 /// directory that already has one in flight even when forced, discarding a
-/// load whose directory is no longer focused by the time it completes, and
-/// clearing state once no directory is focused.
+/// load whose directory is no longer requested by the time it completes, and
+/// clearing state once no directory is requested. The later tests cover the
+/// per-directory bookkeeping that lets a split tab show a branch per pane:
+/// deduplication, independent repositories, dropped entries, and the
+/// per-tick load budget.
 ///
 /// A `GatedGitCommandRunner` stands in for the real `git` process runner so
 /// tests can suspend a load mid-flight (per directory) and control exactly
@@ -55,7 +58,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: { changeCount += 1 }
         )
 
@@ -78,7 +81,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { nil },
+            directories: { [] },
             onStatusChanged: { changeCount += 1 }
         )
 
@@ -97,7 +100,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -118,7 +121,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -144,7 +147,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -168,7 +171,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { focused },
+            directories: { [focused] },
             onStatusChanged: { changeCount += 1 }
         )
 
@@ -206,7 +209,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: neutralFingerprint,
-            focusedDirectory: { focused },
+            directories: { [focused].compactMap { $0 } },
             onStatusChanged: { changeCount += 1 }
         )
 
@@ -234,7 +237,7 @@ struct RepositoryStatusCoordinatorTests {
             fingerprint: { _ in
                 .repository(head: .present(mtime: .distantPast, size: 1), config: .absent)
             },
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -259,7 +262,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: { _ in .repository(head: head, config: .absent) },
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -286,7 +289,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: { _ in .notARepository },
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: { changeCount += 1 }
         )
 
@@ -309,7 +312,7 @@ struct RepositoryStatusCoordinatorTests {
         let coordinator = RepositoryStatusCoordinator(
             loader: loader(runner),
             fingerprint: { _ in fingerprint },
-            focusedDirectory: { self.directoryA },
+            directories: { [self.directoryA] },
             onStatusChanged: {}
         )
 
@@ -323,6 +326,110 @@ struct RepositoryStatusCoordinatorTests {
 
         #expect(coordinator.status(for: directoryA) == nil)
         #expect(await runner.callCount(for: directoryA) == callsBeforeLosingRepo)
+    }
+
+    @Test("two panes in the same repository spawn git once")
+    @MainActor
+    func duplicateDirectoriesLoadOnce() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        // The second pane reports the same working tree by an unnormalized
+        // path, the way a `cd sub/..` leaves it.
+        let unnormalized = URL(fileURLWithPath: "/repo-a/sub/..", isDirectory: true)
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: neutralFingerprint,
+            directories: { [self.directoryA, unnormalized] },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { coordinator.status(for: self.directoryA) != nil }
+        await pause()
+
+        #expect(await runner.callCount(for: directoryA) == 1)
+        #expect(coordinator.status(for: unnormalized)?.branchName == "main")
+    }
+
+    @Test("resolves two different repositories independently")
+    @MainActor
+    func resolvesTwoRepositories() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        await runner.setStatus(directoryB, branch: "feature")
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: neutralFingerprint,
+            directories: { [self.directoryA, self.directoryB] },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle {
+            coordinator.status(for: self.directoryA) != nil
+                && coordinator.status(for: self.directoryB) != nil
+        }
+
+        #expect(coordinator.status(for: directoryA)?.branchName == "main")
+        #expect(coordinator.status(for: directoryB)?.branchName == "feature")
+    }
+
+    @Test("drops the entry for a directory that is no longer requested")
+    @MainActor
+    func dropsUnrequestedDirectory() async {
+        let runner = GatedGitCommandRunner()
+        await runner.setStatus(directoryA, branch: "main")
+        await runner.setStatus(directoryB, branch: "feature")
+        var requested = [directoryA, directoryB]
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: neutralFingerprint,
+            directories: { requested },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { coordinator.status(for: self.directoryB) != nil }
+
+        // Closing the pane that showed repository B.
+        requested = [directoryA]
+        coordinator.refreshIfNeeded()
+        await pause()
+
+        #expect(coordinator.status(for: directoryB) == nil)
+        #expect(coordinator.loadedDirectories == [directoryA])
+    }
+
+    @Test("caps how many loads start in one tick")
+    @MainActor
+    func capsLoadsPerTick() async {
+        let runner = GatedGitCommandRunner()
+        let directories = (0..<6).map {
+            URL(fileURLWithPath: "/repo-\($0)", isDirectory: true)
+        }
+        for directory in directories {
+            await runner.setStatus(directory, branch: "main")
+            await runner.hold(directory)
+        }
+        let coordinator = RepositoryStatusCoordinator(
+            loader: loader(runner),
+            fingerprint: neutralFingerprint,
+            directories: { directories },
+            onStatusChanged: {}
+        )
+
+        coordinator.refreshIfNeeded(force: true)
+        await settle { await runner.totalCallCount() == 4 }
+        await pause()
+
+        #expect(await runner.totalCallCount() == 4)
+
+        // The next tick picks up the ones that didn't fit, without
+        // restarting the four still in flight.
+        coordinator.refreshIfNeeded()
+        await settle { await runner.totalCallCount() == 6 }
+
+        #expect(await runner.totalCallCount() == 6)
     }
 }
 
@@ -356,6 +463,10 @@ private actor GatedGitCommandRunner: GitCommandRunning {
 
     func callCount(for directory: URL) -> Int {
         callCounts[directory] ?? 0
+    }
+
+    func totalCallCount() -> Int {
+        callCounts.values.reduce(0, +)
     }
 
     func output(in directory: URL, arguments: [String]) async -> String? {

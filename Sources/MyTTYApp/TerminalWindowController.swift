@@ -258,7 +258,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     )
     private lazy var repositoryStatus = RepositoryStatusCoordinator(
-        focusedDirectory: { [weak self] in self?.focusedTerminalDirectory },
+        directories: { [weak self] in self?.visibleTerminalDirectories ?? [] },
         onStatusChanged: { [weak self] in self?.updateStatusBar() }
     )
     private lazy var recording = TerminalRecordingCoordinator(
@@ -3557,6 +3557,17 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var focusedTerminalDirectory: URL? {
         guard let tab = session.selectedTab else { return nil }
         return effectiveWorkingDirectory(for: tab.focusedSurfaceID, in: tab)
+    }
+
+    /// Working directories the repository poll should keep status for: every
+    /// terminal pane of the selected tab, focused one first so it wins the
+    /// coordinator's per-tick load budget.
+    private var visibleTerminalDirectories: [URL] {
+        guard let tab = session.selectedTab else { return [] }
+        let others = tab.root.surfaceIDs.compactMap {
+            effectiveWorkingDirectory(for: $0, in: tab)
+        }
+        return [focusedTerminalDirectory].compactMap { $0 } + others
     }
 
     private func openFocusedRepository() {
