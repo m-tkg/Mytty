@@ -56,6 +56,12 @@ When an AI agent is running, the status bar shows the agent name, model, and con
 
 Clicking the moon icon lets you toggle whether Mytty prevents sleep while an AI agent is running.
 
+Once a tab is split, each terminal pane also gets a thin bar of its own along
+its top edge: the repository mark, the branch, the agent, and either the
+agent's session ID or the name of the program running in the pane. The model
+and the remaining context are in its tooltip. Turn it off under Settings ›
+Shell › Appearance.
+
 ## Quit and relaunch
 
 Quit Mytty while you still have tabs and panes open, then launch it again: tab state, pane layout, and any AI agent sessions are all restored.

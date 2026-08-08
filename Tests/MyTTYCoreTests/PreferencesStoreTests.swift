@@ -592,6 +592,43 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test("round trips the per-pane status bar and rejects malformed values")
+    func paneStatusBarPreference() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        #expect(ApplicationPreferences().showPaneStatusBar)
+
+        try """
+        pane.status-bar = "false"
+        """.appending("\n").write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = ApplicationPreferencesStore()
+
+        var preferences = try store.load(from: harness.appConfiguration)
+        #expect(!preferences.showPaneStatusBar)
+
+        preferences.showPaneStatusBar = true
+        try store.save(preferences, to: harness.appConfiguration)
+        let contents = try String(
+            contentsOf: harness.appConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("pane.status-bar = \"true\""))
+        #expect(try store.load(from: harness.appConfiguration).showPaneStatusBar)
+
+        try "pane.status-bar = \"sometimes\"\n".write(
+            to: harness.appConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        #expect(throws: PreferencesStoreError.self) {
+            try store.load(from: harness.appConfiguration)
+        }
+    }
+
     @Test("round trips the recording fade-out and rejects malformed values")
     func recordingFadeOutPreferences() throws {
         let harness = try Harness()

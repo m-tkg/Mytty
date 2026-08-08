@@ -152,6 +152,11 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var activePaneBorderWidth: Double
     /// `RRGGBB`, or empty to follow the system accent color.
     public var activePaneBorderColorHex: String
+    /// Whether each pane carries its own status bar (repository, branch,
+    /// agent, foreground program). Like the focus outline, it only appears
+    /// in tabs that are actually split — a lone pane is already described by
+    /// the window's status bar.
+    public var showPaneStatusBar: Bool
     /// Whether GIF recordings end with extra frames fading to
     /// `recordingFadeOutColorHex`, marking where the loop restarts.
     public var recordingFadeOutEnabled: Bool
@@ -201,6 +206,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         activePaneBorderEnabled: Bool = true,
         activePaneBorderWidth: Double = 2,
         activePaneBorderColorHex: String = "",
+        showPaneStatusBar: Bool = true,
         recordingFadeOutEnabled: Bool = true,
         recordingFadeOutDuration: Double = 0.5,
         recordingFadeOutColorHex: String = "000000",
@@ -239,6 +245,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.activePaneBorderEnabled = activePaneBorderEnabled
         self.activePaneBorderWidth = activePaneBorderWidth
         self.activePaneBorderColorHex = activePaneBorderColorHex
+        self.showPaneStatusBar = showPaneStatusBar
         self.recordingFadeOutEnabled = recordingFadeOutEnabled
         self.recordingFadeOutDuration = recordingFadeOutDuration
         self.recordingFadeOutColorHex = recordingFadeOutColorHex
@@ -387,6 +394,7 @@ public struct ApplicationPreferencesStore {
             "pane.active-border",
             "pane.active-border-width",
             "pane.active-border-color",
+            "pane.status-bar",
             "recording.fade-out",
             "recording.fade-out-duration",
             "recording.fade-out-color",
@@ -640,6 +648,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.activePaneBorderColorHex = hex
         }
+        if let value = document.lastValue(for: "pane.status-bar") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "pane.status-bar", value: value)
+            }
+            preferences.showPaneStatusBar = enabled
+        }
         if let value = document.lastValue(for: "recording.fade-out") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "recording.fade-out", value: value)
@@ -790,6 +804,7 @@ public struct ApplicationPreferencesStore {
             "pane.active-border = \(quoted(String(preferences.activePaneBorderEnabled)))",
             "pane.active-border-width = \(quoted(decimal(preferences.activePaneBorderWidth)))",
             "pane.active-border-color = \(quoted(borderColorHex))",
+            "pane.status-bar = \(quoted(String(preferences.showPaneStatusBar)))",
             "recording.fade-out = \(quoted(String(preferences.recordingFadeOutEnabled)))",
             "recording.fade-out-duration = \(quoted(decimal(preferences.recordingFadeOutDuration)))",
             "recording.fade-out-color = \(quoted(fadeOutColorHex))",

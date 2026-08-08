@@ -160,4 +160,99 @@ struct PaneHostViewTests {
         pane.isOrchestrated = false
         #expect(!pane.isOrchestrationTintVisible)
     }
+
+    @Test("shows the status bar above the pane content")
+    @MainActor
+    func statusBarSitsAboveContent() {
+        let content = NSView()
+        let pane = PaneHostView(content: content)
+        pane.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+
+        pane.layoutSubtreeIfNeeded()
+        #expect(!pane.isPaneStatusBarVisible)
+        #expect(content.frame.height == 200)
+
+        pane.setStatusBar(
+            visible: true,
+            content: statusBarContent,
+            labels: labels
+        )
+        pane.layoutSubtreeIfNeeded()
+
+        #expect(pane.isPaneStatusBarVisible)
+        #expect(content.frame.height == 200 - PaneStatusBarView.height)
+        #expect(content.frame.maxY == pane.bounds.maxY - PaneStatusBarView.height)
+        #expect(pane.paneStatusBarText == "main Claude Code 0199aa11")
+        #expect(pane.isPaneRepositoryMarkVisible)
+    }
+
+    @Test("restores full-height content once the status bar is hidden")
+    @MainActor
+    func hidingStatusBarRestoresContentHeight() {
+        let content = NSView()
+        let pane = PaneHostView(content: content)
+        pane.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+        pane.setStatusBar(
+            visible: true,
+            content: statusBarContent,
+            labels: labels
+        )
+        pane.layoutSubtreeIfNeeded()
+
+        pane.setStatusBar(
+            visible: false,
+            content: PaneStatusBarContent(),
+            labels: labels
+        )
+        pane.layoutSubtreeIfNeeded()
+
+        #expect(!pane.isPaneStatusBarVisible)
+        #expect(content.frame.height == 200)
+    }
+
+    @Test("reports a status bar change only when the visibility changed")
+    @MainActor
+    func statusBarReportsVisibilityChangesOnly() {
+        let pane = PaneHostView(content: NSView())
+
+        #expect(pane.setStatusBar(
+            visible: true,
+            content: statusBarContent,
+            labels: labels
+        ))
+        // Same visibility, different content: the terminal keeps its rows,
+        // so the caller must not be told to re-measure.
+        #expect(!pane.setStatusBar(
+            visible: true,
+            content: PaneStatusBarContent(agentName: "Codex"),
+            labels: labels
+        ))
+        #expect(pane.paneStatusBarText == "Codex")
+        #expect(!pane.isPaneRepositoryMarkVisible)
+        #expect(pane.setStatusBar(
+            visible: false,
+            content: PaneStatusBarContent(),
+            labels: labels
+        ))
+    }
+
+    @MainActor
+    private var statusBarContent: PaneStatusBarContent {
+        PaneStatusBarContent(
+            repositoryURL: URL(string: "https://github.com/m-tkg/Mytty"),
+            branchName: "main",
+            agentName: "Claude Code",
+            trailingText: "0199aa11",
+            tooltip: "Opus 5 · Context 64% left"
+        )
+    }
+
+    @MainActor
+    private var labels: PaneStatusBarLabels {
+        PaneStatusBarLabels(
+            openOnGitHub: "Open on GitHub",
+            branch: "Branch",
+            sessionID: "Session ID"
+        )
+    }
 }
