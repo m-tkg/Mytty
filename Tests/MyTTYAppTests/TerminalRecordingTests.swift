@@ -75,7 +75,10 @@ struct TerminalRecordingTests {
         #expect(recorded.midX == 285)
     }
 
-    @Test("captures a large pane at native backing resolution")
+    /// Recordings are written at one pixel per point rather than at the
+    /// Retina backing resolution: GIF pays for resolution twice over, and
+    /// the pane above would otherwise be captured at 3000x1400.
+    @Test("captures a pane at one pixel per point")
     @MainActor
     func captureResolution() throws {
         let window = NSWindow(
@@ -97,8 +100,11 @@ struct TerminalRecordingTests {
             keyLabel: nil
         )
 
-        #expect(image.width == Int(backingBounds.width))
-        #expect(image.height == Int(backingBounds.height))
+        #expect(image.width == 1_500)
+        #expect(image.height == 700)
+        // The pane really is drawn at a higher resolution on this display;
+        // the capture is what steps down.
+        #expect(Int(backingBounds.width) >= image.width)
     }
 
     @Test("chooses the GIF destination after capture stops")

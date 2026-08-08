@@ -414,6 +414,16 @@ enum TerminalFrameCapture {
         )
     }
 
+    /// The size a captured frame is written at.
+    ///
+    /// One point per pixel, rather than the Retina backing resolution the
+    /// pane draws at. GIF pays for resolution twice over — every changed
+    /// pixel is encoded, and a 256-color palette compresses antialiased
+    /// text poorly — so a 2x recording of a scrolling colored log measured
+    /// 4.0MB against 1.8MB for the same five seconds at 1x. Nothing else
+    /// came close: ImageIO already writes unchanged frames as inter-frame
+    /// diffs, and a shared 256-color palette without dithering was worth
+    /// under 10%.
     private static func targetPixelSize(
         source: CGImage,
         pointSize: CGSize
@@ -431,7 +441,8 @@ enum TerminalFrameCapture {
             CGFloat(source.width) / pointSize.width,
             CGFloat(source.height) / pointSize.height
         )
-        let targetScale = min(sourceScale, maximumIntegralScale)
+        // A pane wider than the 4096px ceiling is still clamped below 1x.
+        let targetScale = min(sourceScale, maximumIntegralScale, 1)
         guard targetScale < sourceScale else {
             return (source.width, source.height)
         }
