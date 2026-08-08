@@ -237,9 +237,14 @@ struct AnimatedGIFEncoder: Sendable {
 
     /// Per-frame delays, in hundredths of a second: a frame that stood in
     /// for several identical samples carries all of their time.
+    ///
+    /// `palette`, when present, is applied to every frame on the way in so
+    /// they share one set of colors — see `RecordingPalette`.
     func encode(
         frameURLs: [URL],
         delaysCentiseconds: [Int],
+        palette: RecordingPalette? = nil,
+        paletteFrameCount: Int? = nil,
         to outputURL: URL
     ) throws {
         precondition(frameURLs.count == delaysCentiseconds.count)
@@ -258,7 +263,10 @@ struct AnimatedGIFEncoder: Sendable {
                 ) else {
                     throw TerminalRecordingError.unableToEncode
                 }
-                return image
+                guard let palette,
+                      index < (paletteFrameCount ?? frameURLs.count)
+                else { return image }
+                return RecordingPixelBuffer.mapped(image, through: palette)
             }
         )
     }
@@ -671,6 +679,12 @@ final class TerminalGIFRecorder: NSObject {
                         count: fadeFrames?.count ?? 0
                     ))
                 }
+                // Built from the captured frames only: the fade blends
+                // toward a color that appears nowhere else, and letting it
+                // pull the palette would cost the recording itself.
+                let palette = RecordingPaletteBuilder.build(
+                    samplingFramesAt: recorded.map(\.url)
+                )
                 let encoded = directory.appendingPathComponent("recording.gif")
                 do {
                     try AnimatedGIFEncoder().encode(
@@ -681,6 +695,13 @@ final class TerminalGIFRecorder: NSObject {
                                 frameDelay: TerminalRecordingConfiguration
                                     .frameDelay
                             ),
+                        palette: palette,
+                        // Fade frames keep their own colors: they are
+                        // blends toward a color the captured frames never
+                        // contain, and a palette built from those frames
+                        // would band the one part of the recording whose
+                        // whole point is a smooth ramp.
+                        paletteFrameCount: recorded.count,
                         to: encoded
                     )
                     let data = try Data(contentsOf: encoded, options: .mappedIfSafe)
