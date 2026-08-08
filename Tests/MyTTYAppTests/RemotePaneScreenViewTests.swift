@@ -38,18 +38,31 @@ struct RemotePaneScreenViewTests {
     /// Regression test for the bug: closing a sibling pane widens the
     /// scroll view but, with no new host snapshot, nothing used to tell
     /// `documentView` to widen along with it.
-    @Test("widens the document view when the viewport grows with no new content")
+    @Test(
+        "widens the document view when the viewport grows with no new content",
+        arguments: [NSScroller.Style.overlay, .legacy]
+    )
     @MainActor
-    func widensWithViewportGrowth() {
+    func widensWithViewportGrowth(scrollerStyle: NSScroller.Style) {
         let (scrollView, screenView) = Self.makeScreenView()
+        // Pinned rather than inherited from the machine: a legacy
+        // (always-visible) scroller takes 17pt off the viewport, so the
+        // document view is narrower than the scroll view it sits in. A
+        // release CI run failed a hardcoded `>= 599` with exactly that 583.
+        scrollView.scrollerStyle = scrollerStyle
         scrollView.frame = NSRect(x: 0, y: 0, width: 200, height: 100)
         scrollView.layoutSubtreeIfNeeded()
-        #expect(screenView.frame.width <= 200)
+        let narrowWidth = screenView.frame.width
+        #expect(narrowWidth <= 200)
 
         scrollView.frame = NSRect(x: 0, y: 0, width: 600, height: 100)
         scrollView.layoutSubtreeIfNeeded()
 
-        #expect(screenView.frame.width >= 599)
+        // The document view tracks the clip view, which is what
+        // `invalidateContentSize()` measures — never the scroll view's own
+        // frame.
+        #expect(screenView.frame.width >= scrollView.contentView.bounds.width)
+        #expect(screenView.frame.width > narrowWidth)
     }
 
     /// `max(width, viewport.width)` in `invalidateContentSize()` means
