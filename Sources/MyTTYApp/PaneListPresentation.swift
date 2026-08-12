@@ -117,6 +117,7 @@ enum PaneListPresentation {
         let isActive = snapshot.session.selectedTabID == tab.id
             && tab.focusedSurfaceID == paneID
         let tabTitle = tab.pinnedTitle
+            ?? tab.autoTitle
             ?? TerminalTabTitle.defaultTitle(for: tab, localizer: localizer)
 
         if let terminal = terminalState(in: tab.root, id: paneID) {

@@ -79,6 +79,50 @@ struct PaneListPresentationTests {
         #expect(!items[2].isActive)
     }
 
+    @Test("shows the agent-derived auto title when no pinned title exists")
+    func autoTitle() throws {
+        let terminal = TerminalSurfaceState(
+            workingDirectory: URL(
+                fileURLWithPath: "/Users/example/project",
+                isDirectory: true
+            )
+        )
+        let autoNamedTab = TabSession(
+            initialSurface: terminal,
+            autoTitle: "Fix login bug"
+        )
+        let secondTerminal = TerminalSurfaceState(
+            workingDirectory: URL(
+                fileURLWithPath: "/Users/example/notes",
+                isDirectory: true
+            )
+        )
+        let pinnedTab = TabSession(
+            initialSurface: secondTerminal,
+            pinnedTitle: "Notes",
+            autoTitle: "Ignored"
+        )
+        let session = WindowSession(
+            id: WindowID(),
+            frame: WindowFrame(x: 0, y: 0, width: 900, height: 600),
+            tabs: [autoNamedTab, pinnedTab],
+            selectedTabID: autoNamedTab.id
+        )
+
+        let items = PaneListPresentation.items(
+            snapshots: [
+                PaneListWindowSnapshot(session: session, commandsByPane: [:]),
+            ],
+            terminalTitle: "Terminal",
+            browserTitle: "Browser",
+            remoteTitle: "Remote",
+            localizer: MyTTYLocalizer(language: .english)
+        )
+
+        #expect(items[0].tabTitle == "Fix login bug")
+        #expect(items[1].tabTitle == "Notes")
+    }
+
     @Test("lists only the requested tab's panes for the sidebar popover")
     func itemsForTab() throws {
         let terminal = TerminalSurfaceState(
