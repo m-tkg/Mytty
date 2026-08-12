@@ -137,6 +137,19 @@ public struct WindowSession: Codable, Equatable, Sendable {
         tabs[index].pinnedTitle = title?.isEmpty == false ? title : nil
     }
 
+    /// Sets the agent-derived automatic tab name. Unlike `rename(tab:title:)`
+    /// this never throws for an unknown tab: the caller is a background
+    /// suggestion task that races ordinary tab lifecycle (the tab may have
+    /// closed by the time the model responds), and that race is routine,
+    /// not an error worth surfacing.
+    public mutating func setAutoTitle(tab id: TabID, title: String?) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let title = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        tabs[index].autoTitle = title?.isEmpty == false ? title : nil
+    }
+
     public mutating func updateWorkingDirectory(
         _ workingDirectory: URL,
         for surfaceID: TerminalSurfaceID

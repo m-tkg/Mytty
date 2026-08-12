@@ -443,6 +443,49 @@ struct TabSessionTests {
         #expect(tab.createdAt <= after)
     }
 
+    @Test("round-trips autoTitle through encode/decode")
+    func roundTripsAutoTitle() throws {
+        let tab = TabSession(
+            id: makeTabID(1),
+            initialSurface: makeSurface(id: 2, path: "/repo"),
+            autoTitle: "Rails server"
+        )
+
+        let encoded = try JSONEncoder().encode(tab)
+        let decoded = try JSONDecoder().decode(
+            TabSession.self,
+            from: encoded
+        )
+
+        #expect(decoded.autoTitle == "Rails server")
+        #expect(decoded == tab)
+    }
+
+    @Test("decodes autoTitle as nil when the key is absent")
+    func decodesMissingAutoTitleAsNil() throws {
+        let json = """
+        {
+            "id": { "rawValue": "\(makeUUID(1).uuidString)" },
+            "root": {
+                "surface": {
+                    "_0": {
+                        "id": { "rawValue": "\(makeUUID(2).uuidString)" },
+                        "workingDirectory": "file:///repo/",
+                        "isOrchestrated": false
+                    }
+                }
+            },
+            "focusedSurfaceID": { "rawValue": "\(makeUUID(2).uuidString)" }
+        }
+        """
+        let tab = try JSONDecoder().decode(
+            TabSession.self,
+            from: Data(json.utf8)
+        )
+
+        #expect(tab.autoTitle == nil)
+    }
+
     @Test("outer split wraps the whole tab layout, not the focused pane")
     func splitOuterWrapsRoot() throws {
         let top = makeSurface(id: 1, path: "/top")

@@ -255,6 +255,11 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         },
         onTurnObservation: { [weak self] surfaceID, provider, turn in
             self?.onNativeTurnObserved(surfaceID, provider, turn)
+            self?.autoNameTabIfNeeded(
+                surfaceID: surfaceID,
+                provider: provider,
+                turn: turn
+            )
         }
     )
     private lazy var repositoryStatus = RepositoryStatusCoordinator(
@@ -3124,6 +3129,58 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    /// Tabs currently awaiting an on-device auto-name suggestion, so a
+    /// second completed turn for the same tab (or overlapping polls) never
+    /// starts a second in-flight suggestion task.
+    private var autoNamingTabs: Set<TabID> = []
+
+    /// Renames the tab hosting `surfaceID` from its agent conversation, the
+    /// same on-device suggestion the manual "Auto-Name" button uses --
+    /// triggered automatically after each completed turn instead of a user
+    /// click. See `AutoTabNaming.shouldName` for the gating conditions.
+    private func autoNameTabIfNeeded(
+        surfaceID: TerminalSurfaceID,
+        provider: AgentProvider,
+        turn: AgentTurnObservation
+    ) {
+        guard applicationPreferences.autoNameAgentTabs,
+              #available(macOS 26, *), TabNameSuggester.isAvailable,
+              let tab = session.tabs.first(where: {
+                  $0.surfaceIDs.contains(surfaceID)
+              }),
+              let surface = surfaces[surfaceID]
+        else { return }
+        guard AutoTabNaming.shouldName(
+            phase: turn.phase,
+            provider: provider,
+            pinnedTitle: tab.pinnedTitle,
+            preferenceEnabled: applicationPreferences.autoNameAgentTabs
+        ), !autoNamingTabs.contains(tab.id) else { return }
+
+        let tabID = tab.id
+        let language = applicationPreferences.language.resolved()
+        let loadUserPrompts = agentUserPromptLoader(
+            for: surfaceID,
+            surface: surface
+        )
+        let buffer = surface.screenText()
+
+        autoNamingTabs.insert(tabID)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.autoNamingTabs.remove(tabID) }
+            let name = await TabNameSuggester.suggest(
+                buffer: buffer,
+                userPrompts: loadUserPrompts?() ?? [],
+                language: language
+            )
+            guard let name else { return }
+            self.session.setAutoTitle(tab: tabID, title: name)
+            self.sessionDidChange()
+            self.refreshSidebarRows()
+        }
+    }
+
     static func makeRenameTabAlert(
         currentTitle: String,
         localizer: MyTTYLocalizer,
@@ -3330,6 +3387,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     private func displayTitle(for tab: TabSession) -> String {
         return tab.pinnedTitle
+            ?? tab.autoTitle
             ?? TerminalTabTitle.defaultTitle(
                 for: tab,
                 localizer: localizer

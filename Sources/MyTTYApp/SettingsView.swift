@@ -349,6 +349,17 @@ private struct GeneralSettingsView: View {
                     isOn: applicationBinding(\.showTabUptime)
                 )
                 .toggleStyle(.switch)
+
+                // On-device tab naming needs Foundation Models (macOS 26+)
+                // and an available system model; the toggle must not
+                // appear where a suggestion could never be produced.
+                if #available(macOS 26, *), TabNameSuggester.isAvailable {
+                    Toggle(
+                        localizer[.autoNameAgentTabs],
+                        isOn: applicationBinding(\.autoNameAgentTabs)
+                    )
+                    .toggleStyle(.switch)
+                }
             }
 
             Section(localizer[.input]) {

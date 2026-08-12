@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import MyTTYApp
+@testable import MyTTYCore
 
 @Suite("Tab name suggestion")
 struct TabNameSuggestionTests {
@@ -123,5 +124,79 @@ struct TabNameSuggestionTests {
         #expect(TabNameSuggestionPrompt.sanitize("") == nil)
         #expect(TabNameSuggestionPrompt.sanitize("  \n\n  ") == nil)
         #expect(TabNameSuggestionPrompt.sanitize("\"\"") == nil)
+    }
+
+    @Test("names a completed turn for a supported provider")
+    func shouldNameCompletedTurnForSupportedProvider() {
+        #expect(AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .claudeCode,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+        #expect(AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .codex,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+    }
+
+    @Test("skips turns that are not completed")
+    func shouldNameSkipsUnfinishedTurns() {
+        #expect(!AutoTabNaming.shouldName(
+            phase: .active,
+            provider: .claudeCode,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+        #expect(!AutoTabNaming.shouldName(
+            phase: .interrupted,
+            provider: .claudeCode,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+    }
+
+    @Test("skips providers without a prompt-source loader")
+    func shouldNameSkipsUnsupportedProviders() {
+        #expect(!AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .openCode,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+        #expect(!AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .cursor,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+        #expect(!AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .antigravity,
+            pinnedTitle: nil,
+            preferenceEnabled: true
+        ))
+    }
+
+    @Test("skips a tab that already has a pinned title")
+    func shouldNameSkipsPinnedTitle() {
+        #expect(!AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .claudeCode,
+            pinnedTitle: "Build logs",
+            preferenceEnabled: true
+        ))
+    }
+
+    @Test("skips when the preference is disabled")
+    func shouldNameSkipsDisabledPreference() {
+        #expect(!AutoTabNaming.shouldName(
+            phase: .completed,
+            provider: .claudeCode,
+            pinnedTitle: nil,
+            preferenceEnabled: false
+        ))
     }
 }

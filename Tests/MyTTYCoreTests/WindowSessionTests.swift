@@ -50,6 +50,35 @@ struct WindowSessionTests {
         }
     }
 
+    @Test("sets the automatic tab title, trimming and treating blank as clearing it")
+    func setAutoTitleTrimsAndClears() throws {
+        let first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        var window = makeWindow(tab: first)
+
+        window.setAutoTitle(tab: first.id, title: "  Rails server  ")
+        #expect(window.tabs[0].autoTitle == "Rails server")
+
+        window.setAutoTitle(tab: first.id, title: "   ")
+        #expect(window.tabs[0].autoTitle == nil)
+
+        window.setAutoTitle(tab: first.id, title: "Build logs")
+        #expect(window.tabs[0].autoTitle == "Build logs")
+        window.setAutoTitle(tab: first.id, title: nil)
+        #expect(window.tabs[0].autoTitle == nil)
+    }
+
+    @Test("silently ignores setAutoTitle for a tab that no longer exists")
+    func setAutoTitleIgnoresMissingTab() throws {
+        let first = makeTab(id: 1, surfaceID: 11, path: "/first")
+        var window = makeWindow(tab: first)
+        let missingTab = TabID()
+
+        // Must not throw: the caller is a background suggestion task that
+        // can race the tab closing before the model responds.
+        window.setAutoTitle(tab: missingTab, title: "Should be ignored")
+        #expect(window.tabs[0].autoTitle == nil)
+    }
+
     @Test("selects the neighboring tab after close")
     func closeSelectedTab() throws {
         let first = makeTab(id: 1, surfaceID: 11, path: "/first")
