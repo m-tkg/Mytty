@@ -46,6 +46,34 @@ enum AgentTabNamePromptSource {
     }
 }
 
+/// Whether a completed agent turn should trigger an automatic tab rename.
+/// Pure decision logic, kept separate from `TerminalWindowController` so it
+/// is testable without a running app.
+enum AutoTabNaming {
+    /// - `phase == .completed`: only a finished turn has a settled
+    ///   conversation worth summarizing; `.active`/`.interrupted` turns
+    ///   would name the tab off a mid-thought buffer.
+    /// - `provider`: only Claude Code and Codex have a working
+    ///   `AgentTabNamePromptSource.loader` (see that type); other
+    ///   providers fall through to `false` rather than naming from
+    ///   terminal output alone.
+    /// - `pinnedTitle == nil`: this is the same condition that keeps a
+    ///   manually renamed tab untouched *and* keeps an orchestration
+    ///   "done" tab untouched -- `OrchestrationDoneTab` stores its label
+    ///   in `pinnedTitle` with a prefix, so excluding any pinned title
+    ///   here excludes both cases with one check.
+    static func shouldName(
+        phase: AgentTurnObservation.Phase,
+        provider: AgentProvider,
+        pinnedTitle: String?,
+        preferenceEnabled: Bool
+    ) -> Bool {
+        guard preferenceEnabled, phase == .completed, pinnedTitle == nil
+        else { return false }
+        return provider == .claudeCode || provider == .codex
+    }
+}
+
 /// Prompt construction and output cleanup for the on-device tab-name
 /// suggestion. Kept separate from the model call so the text handling is
 /// testable without Foundation Models.

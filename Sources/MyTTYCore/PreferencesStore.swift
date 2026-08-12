@@ -121,6 +121,11 @@ public struct ApplicationPreferences: Equatable, Sendable {
     public var attentionUnreadOnly: Bool
     /// Whether tab rows show how long each tab has been open.
     public var showTabUptime: Bool
+    /// Whether a tab running Claude Code or Codex is renamed automatically
+    /// after each completed turn, from an on-device summary of the
+    /// conversation (Foundation Models, macOS 26+ only). A manual rename
+    /// (`pinnedTitle`) always takes priority and is never overwritten.
+    public var autoNameAgentTabs: Bool
     /// Whether Mytty writes a "pane-team pointer" (a short note telling the
     /// agent to run `mytty-ctl guide`) into a supported provider's global
     /// configuration whenever that provider's hook integration is
@@ -196,6 +201,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         agentMeterDisplay: AgentMeterDisplay = .remaining,
         attentionUnreadOnly: Bool = false,
         showTabUptime: Bool = false,
+        autoNameAgentTabs: Bool = true,
         paneTeamPointersEnabled: Bool = true,
         remoteAccessEnabled: Bool = false,
         remotePushNotificationsEnabled: Bool = true,
@@ -235,6 +241,7 @@ public struct ApplicationPreferences: Equatable, Sendable {
         self.agentMeterDisplay = agentMeterDisplay
         self.attentionUnreadOnly = attentionUnreadOnly
         self.showTabUptime = showTabUptime
+        self.autoNameAgentTabs = autoNameAgentTabs
         self.paneTeamPointersEnabled = paneTeamPointersEnabled
         self.remoteAccessEnabled = remoteAccessEnabled
         self.remotePushNotificationsEnabled = remotePushNotificationsEnabled
@@ -583,6 +590,12 @@ public struct ApplicationPreferencesStore {
             }
             preferences.showTabUptime = enabled
         }
+        if let value = document.lastValue(for: "tab.auto-name-agent-tabs") {
+            guard let enabled = Bool(value) else {
+                throw invalid(key: "tab.auto-name-agent-tabs", value: value)
+            }
+            preferences.autoNameAgentTabs = enabled
+        }
         if let value = document.lastValue(for: "agents.pane-team-pointers") {
             guard let enabled = Bool(value) else {
                 throw invalid(key: "agents.pane-team-pointers", value: value)
@@ -794,6 +807,7 @@ public struct ApplicationPreferencesStore {
             "agents.meter-display = \(quoted(preferences.agentMeterDisplay.rawValue))",
             "attention.unread-only = \(quoted(String(preferences.attentionUnreadOnly)))",
             "tab.show-uptime = \(quoted(String(preferences.showTabUptime)))",
+            "tab.auto-name-agent-tabs = \(quoted(String(preferences.autoNameAgentTabs)))",
             "agents.pane-team-pointers = \(quoted(String(preferences.paneTeamPointersEnabled)))",
             "remote.access-enabled = \(quoted(String(preferences.remoteAccessEnabled)))",
             "remote.push-notifications = \(quoted(String(preferences.remotePushNotificationsEnabled)))",

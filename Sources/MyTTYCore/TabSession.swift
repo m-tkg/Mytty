@@ -835,6 +835,11 @@ public struct TabSession: Codable, Equatable, Sendable {
     public private(set) var root: SplitNode
     public private(set) var focusedSurfaceID: TerminalSurfaceID
     public var pinnedTitle: String?
+    /// A name derived from the agent conversation running in this tab
+    /// (`AutoTabNaming` in `MyTTYApp`), refreshed after each completed
+    /// turn. Shown only when `pinnedTitle` is nil, so a manual rename is
+    /// never overwritten by a later automatic one.
+    public var autoTitle: String?
     /// When the tab was first opened. Survives session restoration and
     /// moving the tab between windows.
     public let createdAt: Date
@@ -851,12 +856,14 @@ public struct TabSession: Codable, Equatable, Sendable {
         id: TabID = TabID(),
         initialSurface: TerminalSurfaceState,
         pinnedTitle: String? = nil,
+        autoTitle: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.root = .surface(initialSurface)
         self.focusedSurfaceID = initialSurface.id
         self.pinnedTitle = pinnedTitle
+        self.autoTitle = autoTitle
         self.createdAt = createdAt
     }
 
@@ -864,12 +871,14 @@ public struct TabSession: Codable, Equatable, Sendable {
         id: TabID = TabID(),
         initialBrowser: BrowserPaneState,
         pinnedTitle: String? = nil,
+        autoTitle: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.root = .browser(initialBrowser)
         self.focusedSurfaceID = initialBrowser.id
         self.pinnedTitle = pinnedTitle
+        self.autoTitle = autoTitle
         self.createdAt = createdAt
     }
 
@@ -877,12 +886,14 @@ public struct TabSession: Codable, Equatable, Sendable {
         id: TabID = TabID(),
         initialRemote: RemotePaneState,
         pinnedTitle: String? = nil,
+        autoTitle: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.root = .remote(initialRemote)
         self.focusedSurfaceID = initialRemote.id
         self.pinnedTitle = pinnedTitle
+        self.autoTitle = autoTitle
         self.createdAt = createdAt
     }
 
@@ -891,12 +902,14 @@ public struct TabSession: Codable, Equatable, Sendable {
         root: SplitNode,
         focusedSurfaceID: TerminalSurfaceID,
         pinnedTitle: String? = nil,
+        autoTitle: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.root = root
         self.focusedSurfaceID = focusedSurfaceID
         self.pinnedTitle = pinnedTitle
+        self.autoTitle = autoTitle
         self.createdAt = createdAt
     }
 
@@ -905,6 +918,7 @@ public struct TabSession: Codable, Equatable, Sendable {
         case root
         case focusedSurfaceID
         case pinnedTitle
+        case autoTitle
         case createdAt
     }
 
@@ -919,6 +933,11 @@ public struct TabSession: Codable, Equatable, Sendable {
         pinnedTitle = try container.decodeIfPresent(
             String.self,
             forKey: .pinnedTitle
+        )
+        // Snapshots written before auto-naming have no autoTitle key.
+        autoTitle = try container.decodeIfPresent(
+            String.self,
+            forKey: .autoTitle
         )
         // Snapshots written before uptime tracking have no createdAt;
         // counting from restore is the closest available origin.

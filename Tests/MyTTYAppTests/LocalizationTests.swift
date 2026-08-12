@@ -129,6 +129,13 @@ struct LocalizationTests {
         #expect(japanese[.branch] == "ブランチ")
         #expect(english[.showTabUptime] == "Show Elapsed Time in Tabs")
         #expect(japanese[.showTabUptime] == "タブに経過時間を表示")
+        #expect(
+            english[.autoNameAgentTabs]
+                == "Auto-Name Tabs From Agent Conversations"
+        )
+        #expect(
+            japanese[.autoNameAgentTabs] == "エージェントの会話からタブを自動命名"
+        )
         #expect(english[.tabUptime] == "Elapsed Time")
         #expect(japanese[.tabUptime] == "経過時間")
         #expect(english[.autoNameTab] == "Auto-Name")
