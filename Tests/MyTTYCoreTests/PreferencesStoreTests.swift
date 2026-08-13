@@ -856,6 +856,83 @@ struct PreferencesStoreTests {
         #expect(try store.load(from: harness.terminalConfiguration) == preferences)
     }
 
+    @Test("save writes adjust-cell-width for a proportional font, preserving unrelated hand-written settings")
+    func adjustCellWidthOnSave() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        # Keep this custom setting.
+        keybind = ctrl+shift+r=reload_config
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = TerminalPreferencesStore()
+        var preferences = TerminalPreferences()
+        preferences.fontFamily = "Helvetica"
+
+        try store.save(
+            preferences,
+            to: harness.terminalConfiguration,
+            adjustCellWidth: "-38%"
+        )
+        let contents = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("adjust-cell-width = -38%"))
+        #expect(contents.contains("# Keep this custom setting."))
+        #expect(contents.contains("keybind = ctrl+shift+r=reload_config"))
+
+        // Saving again with nil (e.g. after switching to a monospace font)
+        // drops the key entirely rather than leaving a stale value.
+        try store.save(preferences, to: harness.terminalConfiguration)
+        let rewritten = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(!rewritten.contains("adjust-cell-width"))
+        #expect(rewritten.contains("# Keep this custom setting."))
+        #expect(rewritten.contains("keybind = ctrl+shift+r=reload_config"))
+    }
+
+    @Test("prepareForLaunch writes and removes adjust-cell-width the same way")
+    func adjustCellWidthOnLaunch() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        try """
+        font-family = "Helvetica"
+        """.appending("\n").write(
+            to: harness.terminalConfiguration,
+            atomically: true,
+            encoding: .utf8
+        )
+        let store = TerminalPreferencesStore()
+
+        try store.prepareForLaunch(
+            at: harness.terminalConfiguration,
+            adjustCellWidth: "-38%"
+        )
+        var contents = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(contents.contains("adjust-cell-width = -38%"))
+
+        // A later launch with a monospace font (nil compensation) removes
+        // the previously-written value.
+        try store.prepareForLaunch(
+            at: harness.terminalConfiguration,
+            adjustCellWidth: nil
+        )
+        contents = try String(
+            contentsOf: harness.terminalConfiguration,
+            encoding: .utf8
+        )
+        #expect(!contents.contains("adjust-cell-width"))
+    }
+
     private static let japaneseCodepointMapLine =
         "font-codepoint-map = U+3000-U+303F,U+3040-U+309F,U+30A0-U+30FF,"
             + "U+31F0-U+31FF,U+3400-U+4DBF,U+4E00-U+9FFF,U+F900-U+FAFF,"
