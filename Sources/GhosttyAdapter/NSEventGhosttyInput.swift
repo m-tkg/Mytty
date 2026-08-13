@@ -10,10 +10,24 @@ extension NSEvent {
             .subtracting([.control, .command])
             .ghosttyMods
         input.keycode = UInt32(keyCode)
-        input.unshifted_codepoint = charactersIgnoringModifiers?
-            .unicodeScalars
-            .first?
-            .value ?? 0
+        // The kitty keyboard protocol reports the codepoint the key produces
+        // with *no* modifiers at all, so Ctrl+Shift+E has to encode as
+        // `CSI 101;6u` ("e"), not `CSI 69;6u` ("E"). AppKit's
+        // `charactersIgnoringModifiers` keeps shift applied, which would
+        // encode the shifted letter and leave apps unable to match their
+        // `ctrl+shift+<letter>` bindings. `characters(byApplyingModifiers:)`
+        // re-translates from the keycode instead, so shift is dropped too.
+        // Synthesized events (`sendKeyPress`) carry no layout to translate
+        // from, hence the fallback.
+        input.unshifted_codepoint = 0
+        if type == .keyDown || type == .keyUp {
+            let unshifted = characters(byApplyingModifiers: [])
+                ?? charactersIgnoringModifiers
+            input.unshifted_codepoint = unshifted?
+                .unicodeScalars
+                .first?
+                .value ?? 0
+        }
         return input
     }
 
