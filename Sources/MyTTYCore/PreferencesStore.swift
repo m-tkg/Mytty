@@ -896,6 +896,13 @@ public struct TerminalPreferencesStore {
         "\(fontCodepointMapKey) = \(japaneseCodepointRanges)="
             + japaneseFallbackFontFamily
     private static let marker = "# Managed by mytty Settings: terminal"
+    /// Ghostty's own correction for proportional fonts: it otherwise sizes
+    /// every cell to the widest ASCII glyph advance in the primary font
+    /// (typically M or W), which leaves visible gaps between characters for
+    /// non-monospace families. `ProportionalFontCompensation` (MyTTYApp)
+    /// derives this value from the font; the store itself stays
+    /// Foundation-only and just persists whatever string it's given.
+    private static let adjustCellWidthKey = "adjust-cell-width"
     private static let managedKeys = Set([
         "font-family",
         "font-size",
@@ -907,6 +914,7 @@ public struct TerminalPreferencesStore {
         "background",
         "background-opacity",
         "command",
+        adjustCellWidthKey,
     ])
 
     private let fileManager: FileManager
@@ -915,7 +923,10 @@ public struct TerminalPreferencesStore {
         self.fileManager = fileManager
     }
 
-    public func prepareForLaunch(at url: URL) throws {
+    public func prepareForLaunch(
+        at url: URL,
+        adjustCellWidth: String? = nil
+    ) throws {
         let document = try ConfigurationDocument(
             url: url,
             fileManager: fileManager
@@ -948,11 +959,17 @@ public struct TerminalPreferencesStore {
         let needsCodepointMap = !codepointMaps.contains {
             $0.contains(Self.japaneseFallbackFontFamily)
         }
+        let currentAdjustCellWidth = document.lastValue(
+            for: Self.adjustCellWidthKey
+        )
+        let needsAdjustCellWidthUpdate =
+            currentAdjustCellWidth != adjustCellWidth
 
         guard !Self.shellCursorIsDisabled(in: current)
             || needsLigatureDefault
             || needsFontFamilyMigration
             || needsCodepointMap
+            || needsAdjustCellWidthUpdate
         else { return }
 
         var replacements: [String] = []
@@ -969,6 +986,17 @@ public struct TerminalPreferencesStore {
             replacements.append(
                 "\(Self.fontFeatureKey) = \(Self.ligatureOffFeatures)"
             )
+        }
+        if needsAdjustCellWidthUpdate {
+            keys.insert(Self.adjustCellWidthKey)
+            // A nil value only removes the key (from `keys`, above) --
+            // there's nothing to append when there's no compensation to
+            // apply, e.g. the family resolved to a monospace font.
+            if let adjustCellWidth {
+                replacements.append(
+                    "\(Self.adjustCellWidthKey) = \(adjustCellWidth)"
+                )
+            }
         }
 
         var lines = document.replacingAssignments(
@@ -1067,7 +1095,11 @@ public struct TerminalPreferencesStore {
         return preferences
     }
 
-    public func save(_ preferences: TerminalPreferences, to url: URL) throws {
+    public func save(
+        _ preferences: TerminalPreferences,
+        to url: URL,
+        adjustCellWidth: String? = nil
+    ) throws {
         guard preferences.fontSize > 0, preferences.fontSize.isFinite else {
             throw invalid("font-size", String(preferences.fontSize))
         }
@@ -1115,6 +1147,11 @@ public struct TerminalPreferencesStore {
         )
         if !preferences.shell.isEmpty {
             managed.append("command = \(quoted(preferences.shell))")
+        }
+        if let adjustCellWidth {
+            managed.append(
+                "\(Self.adjustCellWidthKey) = \(adjustCellWidth)"
+            )
         }
 
         let document = try ConfigurationDocument(

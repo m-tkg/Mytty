@@ -668,8 +668,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             profile: .release
         )
         try ApplicationFileSystem().prepare(paths)
+        // Best effort: an unreadable/malformed terminal.conf just means no
+        // compensation gets computed this launch, not a failed startup --
+        // `prepareForLaunch` below still runs its other fixups either way.
+        let currentTerminalPreferences = try? TerminalPreferencesStore()
+            .load(from: paths.terminalConfiguration)
         try TerminalPreferencesStore().prepareForLaunch(
-            at: paths.terminalConfiguration
+            at: paths.terminalConfiguration,
+            adjustCellWidth: ProportionalFontCompensation.adjustCellWidthValue(
+                forFamily: currentTerminalPreferences?.fontFamily ?? "",
+                size: CGFloat(currentTerminalPreferences?.fontSize ?? 13)
+            )
         )
         let agentIntegrationInstaller = AgentIntegrationInstaller(
             homeDirectory: fileManager.homeDirectoryForCurrentUser,

@@ -1,4 +1,5 @@
 import Combine
+import CoreGraphics
 import Foundation
 import MyTTYCore
 
@@ -163,7 +164,16 @@ final class SettingsModel: ObservableObject {
             let previousData = try Data(
                 contentsOf: paths.terminalConfiguration
             )
-            try terminalStore.save(updated, to: paths.terminalConfiguration)
+            let adjustCellWidth = ProportionalFontCompensation
+                .adjustCellWidthValue(
+                    forFamily: updated.fontFamily,
+                    size: CGFloat(updated.fontSize)
+                )
+            try terminalStore.save(
+                updated,
+                to: paths.terminalConfiguration,
+                adjustCellWidth: adjustCellWidth
+            )
             do {
                 try onTerminalConfigurationChanged(updated)
             } catch {
