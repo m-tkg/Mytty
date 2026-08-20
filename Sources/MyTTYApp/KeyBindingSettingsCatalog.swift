@@ -29,6 +29,7 @@ enum KeyBindingSettingsCatalog {
         var applicationCommands: [MyTTYCommand] = [
             .settings, .quit, .newWindow, .nextWindow, .previousWindow,
             .openHTML, .openURL, .commandPalette, .toggleFloatingPane,
+            .togglePressedKeyToast,
         ]
         // The on-device model commands only exist as UI on macOS 26+
         // (Foundation Models), so their binding rows are hidden below

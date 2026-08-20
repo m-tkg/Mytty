@@ -600,6 +600,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windowSessionCoordinator.activeController?.toggleRecording()
     }
 
+    @objc func togglePressedKeyToast(_ sender: Any?) {
+        settingsModel?.updateApplication {
+            $0.showPressedKeyToast.toggle()
+        }
+    }
+
     @objc func showCommandPalette(_ sender: Any?) {
         // Rebuilt per show so the entries and chrome always reflect the
         // current menu (language, macOS-26-gated items, key bindings).

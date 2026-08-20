@@ -60,6 +60,10 @@ struct KeyBindingTests {
             bindings[.toggleRecording]?.serialized == "shift+command+g"
         )
         #expect(
+            bindings[.togglePressedKeyToast]?.serialized
+                == "shift+command+k"
+        )
+        #expect(
             bindings[.equalizePanes]?.serialized
                 == "control+command+e"
         )
