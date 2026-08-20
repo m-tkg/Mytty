@@ -437,6 +437,14 @@ enum MainMenuBuilder {
             keyEquivalent: ""
         )
         attentionItem.target = target
+        addCommandItem(
+            to: viewMenu,
+            title: localizer.commandTitle(.togglePressedKeyToast),
+            action: #selector(AppDelegate.togglePressedKeyToast(_:)),
+            command: .togglePressedKeyToast,
+            keyBindings: keyBindings,
+            target: target
+        )
         viewMenu.addItem(.separator())
         addCommandItem(
             to: viewMenu,

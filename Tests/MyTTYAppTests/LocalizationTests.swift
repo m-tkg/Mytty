@@ -90,6 +90,10 @@ struct LocalizationTests {
         #expect(english[.terminalRecording] == "Recording")
         #expect(english.commandTitle(.toggleRecording) == "Start/Stop Recording")
         #expect(
+            english.commandTitle(.togglePressedKeyToast)
+                == "Show/Hide Pressed Keys"
+        )
+        #expect(
             english[.showPressedKeysInPane]
                 == "Show pressed keys below cursor"
         )
@@ -485,6 +489,10 @@ struct LocalizationTests {
         #expect(japanese[.moveToTab] == "別のタブへ移動")
         #expect(japanese[.terminalRecording] == "録画")
         #expect(japanese.commandTitle(.toggleRecording) == "録画を開始／停止")
+        #expect(
+            japanese.commandTitle(.togglePressedKeyToast)
+                == "押したキーを表示／非表示"
+        )
         #expect(
             japanese[.showPressedKeysInPane]
                 == "押したキーをカーソルの下に表示"

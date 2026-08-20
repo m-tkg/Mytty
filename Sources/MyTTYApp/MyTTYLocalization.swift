@@ -273,6 +273,7 @@ enum MyTTYText: String {
     case openOnGitHub = "Open on GitHub"
     case terminalRecording = "Recording"
     case toggleRecording = "Start/Stop Recording"
+    case togglePressedKeyToast = "Show/Hide Pressed Keys"
     case commandPalette = "Command Palette"
     case sleepClamshellApprovalPromptTitle =
         "Keep the Mac awake with the lid closed?"
@@ -845,6 +846,7 @@ struct MyTTYLocalizer: Equatable {
         case .openOnGitHub: "GitHub で開く"
         case .terminalRecording: "録画"
         case .toggleRecording: "録画を開始／停止"
+        case .togglePressedKeyToast: "押したキーを表示／非表示"
         case .commandPalette: "コマンドパレット"
         case .sleepClamshellApprovalPromptTitle:
             "モニタを閉じてもスリープしないようにしますか？"
@@ -1055,6 +1057,7 @@ private extension MyTTYCommand {
         case .closePane: .closePane
         case .toggleTabPanel: .toggleTabPanel
         case .toggleRecording: .toggleRecording
+        case .togglePressedKeyToast: .togglePressedKeyToast
         case .commandPalette: .commandPalette
         case .composeInput: .composeInput
         case .toggleFloatingPane: .toggleFloatingPane

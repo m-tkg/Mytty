@@ -42,6 +42,9 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
     case closePane = "close-pane"
     case toggleTabPanel = "toggle-tab-panel"
     case toggleRecording = "toggle-recording"
+    /// Flips the "show pressed keys below cursor" preference; the same
+    /// setting lives in Settings > Input.
+    case togglePressedKeyToast = "toggle-key-toast"
     case commandPalette = "command-palette"
     /// Opens the floating text box that sends its contents to the focused
     /// terminal pane in one paste-like delivery.
@@ -133,6 +136,7 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
         case .closePane: "Close Pane"
         case .toggleTabPanel: "Toggle Tab Panels"
         case .toggleRecording: "Start/Stop Recording"
+        case .togglePressedKeyToast: "Show/Hide Pressed Keys"
         case .commandPalette: "Command Palette"
         case .composeInput: "Compose Input"
         case .toggleFloatingPane: "Toggle Floating Terminal"
@@ -208,6 +212,10 @@ public enum MyTTYCommand: String, CaseIterable, Sendable {
             .toggleTabPanel: .init(key: "b", modifiers: [.command]),
             .toggleRecording: .init(
                 key: "g",
+                modifiers: [.command, .shift]
+            ),
+            .togglePressedKeyToast: .init(
+                key: "k",
                 modifiers: [.command, .shift]
             ),
             .commandPalette: .init(
