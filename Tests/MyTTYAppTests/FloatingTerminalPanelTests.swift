@@ -89,6 +89,17 @@ struct FloatingTerminalPanelTests {
     }
 
     @MainActor
+    @Test("the panel takes focus without activating the app")
+    func panelIsNonActivating() {
+        let controller = Self.makeController(runtime: nil)
+
+        // Activating the app would raise every other Mytty window over
+        // whatever app the user summoned the panel from, so the panel is
+        // non-activating and claims key status by itself.
+        #expect(controller.panelStyleMask.contains(.nonactivatingPanel))
+    }
+
+    @MainActor
     @Test("toggling off slides the panel out and hides it")
     func toggleOffHidesPanel() throws {
         let runtime = try Self.makeRuntime()

@@ -134,9 +134,20 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         // title bar band between them -- a drop-down console, not a
         // document window. There is no close button to lose: the hot key
         // both summons and dismisses the panel.
+        //
+        // `.nonactivatingPanel` is what keeps the hot key from disturbing
+        // whatever the user was looking at: activating the app would drag
+        // every other Mytty window up over the frontmost app along with the
+        // panel, because macOS raises windows a whole application at a
+        // time. A non-activating panel takes key status on its own, so the
+        // panel appears over the browser and the browser stays right
+        // behind it. The cost is that the app stays inactive while the
+        // panel is up, so the main menu belongs to the other app and its
+        // shortcuts don't fire here -- keys handled by the surface itself
+        // still work, which is what this panel is for.
         panel = FloatingTerminalPanel(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: true
         )
@@ -201,7 +212,6 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         // the window's current (still visible) frame, not reset first.
         if !panel.isVisible {
             panel.setFrame(frames.offscreen, display: false)
-            NSApplication.shared.activate(ignoringOtherApps: true)
         }
         forceASCIIInputIfNeeded(shellIsFresh: shellIsFresh)
         // Key status is taken before the slide, not in its completion
@@ -210,12 +220,9 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         // sits there looking focused while every keystroke goes to whatever
         // window actually holds focus.
         //
-        // Activating the app is asynchronous and hands key status back to
-        // the window that last held it, so the panel has to claim it again
-        // once that has settled. Doing it twice -- now and on the next turn
-        // of the run loop -- covers both the already-active case (where
-        // there is nothing to wait for) and the summoned-from-another-app
-        // case.
+        // Claimed again on the next turn of the run loop as well: when the
+        // panel is summoned from another app, that app is still giving up
+        // key status as this runs, and the panel can lose the race.
         takeKeyFocus()
         DispatchQueue.main.async { [weak self] in
             self?.takeKeyFocus()
@@ -223,9 +230,13 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
         animate(to: frames.onscreen) {}
     }
 
+    /// `orderFrontRegardless` rather than `makeKeyAndOrderFront`: the
+    /// latter's ordering half is a no-op while the app is inactive, which
+    /// for a non-activating panel is the normal case, not the exception.
     private func takeKeyFocus() {
         guard !isSlidingOut else { return }
-        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        panel.makeKey()
         if let surface {
             panel.makeFirstResponder(surface)
         }
@@ -435,13 +446,17 @@ final class FloatingTerminalPanelController: NSObject, NSWindowDelegate {
     /// `FloatingPaneCommandAvailability`) so they don't reach a real
     /// terminal window sitting behind this one.
     var isKeyWindow: Bool {
-        panel === NSApplication.shared.keyWindow
+        // Asked of the panel, not of `NSApp.keyWindow`: a non-activating
+        // panel holds key status while the app itself is inactive, and an
+        // inactive app has no `keyWindow`.
+        panel.isKeyWindow
     }
 
     // MARK: - Test seams
 
     var isPanelVisible: Bool { panel.isVisible }
     var hasLiveSurface: Bool { surface != nil }
+    var panelStyleMask: NSWindow.StyleMask { panel.styleMask }
 
     /// Hides the panel the way something other than `toggle()` would -- the
     /// shell exiting, AppKit ordering it out -- so a test can check that the
