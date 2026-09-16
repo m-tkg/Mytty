@@ -8,6 +8,9 @@
 #     a GitHub pre-release instead of a stable release
 #   make ios              iOS Simulator build
 #   make ios-device       iOS device build (signed with the registered team)
+#   make ota              build MyttyRemote ipa/manifest.plist/index.html for
+#                          OTA install and deploy them to ota.mtkg
+#     OTA_URL may override the deploy base URL (e.g. OTA_URL=https://example.com)
 #   make test             run the SwiftPM test suite
 #   make clean            remove build products
 
@@ -18,7 +21,7 @@ IOS_SIMULATOR ?= iPhone 17 Pro Max
 VERSION ?= 0.1.0
 BUILD_NUMBER ?= 1
 
-.PHONY: all mac mac-app mac-release release ios ios-device ios-project test clean
+.PHONY: all mac mac-app mac-release release ios ios-device ios-project ota test clean
 
 all: mac ios
 
@@ -57,6 +60,9 @@ ios-device: ios-project
 		-destination 'generic/platform=iOS' \
 		-allowProvisioningUpdates \
 		build
+
+ota:
+	scripts/ota.sh $(OTA_URL)
 
 test:
 	swift test

@@ -15,6 +15,7 @@ swift test --filter "Codex session inspection"   # one suite/test by name
 swift run Mytty             # run the dev app
 scripts/bundle.sh debug     # packaged "Mytty Dev.app" in dist/ (make mac-app)
 make ios                    # iOS Simulator build (regenerates Xcode project via xcodegen)
+make ota                    # build MyttyRemote ipa/manifest.plist and deploy for OTA install (ad-hoc)
 make release VERSION=x.y.z  # test, push main, tag vx.y.z -> CI builds/notarizes Mytty.zip
 make release VERSION=x.y.z-beta.1   # same, but publishes a GitHub *pre-release*
 ```
