@@ -51,6 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `attentionCenter`, since it needs no on-disk state to start from.
     private let controlEventLedger = ControlEventLedger()
     private var agentEventServer: AgentEventServer?
+    /// One router for the whole app: Codex sessions are matched to panes
+    /// across every window.
+    private lazy var codexSessionRouting = CodexSessionRoutingCoordinator(
+        panes: { [weak self] in
+            self?.windowSessionCoordinator.controllers
+                .flatMap { $0.currentCodexAgentPanes() } ?? []
+        }
+    )
     private var controlCoordinator: ControlCoordinator?
     private var remoteAccessCoordinator: RemoteAccessCoordinator?
     /// The client half of remote access: the Macs *this* Mac opens remote
@@ -883,6 +891,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             socketURL: paths.controlSocket,
             aiControlSocketURL: paths.aiControlSocket,
             aiControlExecutableURL: installedControlExecutable,
+            resolveCodexSurface: { [weak self] event in
+                self?.codexSessionRouting.surface(for: event)
+            },
             onEvent: { [weak self] event in
                 guard let self else { return false }
                 return try self.receiveAgentEvent(event)

@@ -352,6 +352,37 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    /// Panes whose foreground process is Codex, for
+    /// `CodexSessionRoutingCoordinator`. Re-reads the foreground processes
+    /// first rather than trusting the last 0.5s poll: a hook can arrive
+    /// before the poll has seen a Codex that just started, and routing on
+    /// a list missing that pane could hand its session to a neighbour.
+    func currentCodexAgentPanes() -> [CodexAgentPane] {
+        if agentStatusPolling.refreshProviders() {
+            handleAgentStatusPoll(
+                providersChanged: true,
+                sessionIDsChanged: false
+            )
+        }
+        return codexAgentPanes
+    }
+
+    private var codexAgentPanes: [CodexAgentPane] {
+        agentStatusPolling.providersBySurface.compactMap { surfaceID, provider in
+            guard provider == .codex,
+                  let processID = agentStatusPolling
+                      .agentProcessIDsBySurface[surfaceID]
+            else { return nil }
+            return CodexAgentPane(
+                surfaceID: surfaceID,
+                processID: processID,
+                workingDirectory: agentStatusPolling.workingDirectory(
+                    for: surfaceID
+                )
+            )
+        }
+    }
+
     private let tabDragCoordinator: TabDragCoordinator
     private let closedPaneHistory: ClosedPaneHistory
     private let onSessionChanged: (WindowSession) -> Void

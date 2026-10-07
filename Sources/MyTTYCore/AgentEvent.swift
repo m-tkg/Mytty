@@ -92,6 +92,23 @@ public struct AgentEvent: Codable, Equatable, Sendable {
         self.toolUseID = toolUseID
         self.toolName = toolName
     }
+
+    public func with(surfaceID: TerminalSurfaceID) -> AgentEvent {
+        AgentEvent(
+            schemaVersion: schemaVersion,
+            id: id,
+            runID: runID,
+            sessionID: sessionID,
+            surfaceID: surfaceID,
+            provider: provider,
+            kind: kind,
+            occurredAt: occurredAt,
+            message: message,
+            hookName: hookName,
+            toolUseID: toolUseID,
+            toolName: toolName
+        )
+    }
 }
 
 public enum AgentRunState: String, Codable, Equatable, Sendable {

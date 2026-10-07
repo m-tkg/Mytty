@@ -14,6 +14,8 @@ MYTTY_EVENT_CAPABILITY
 
 `MYTTY_EVENT_CAPABILITY` authorizes event emission for that surface only. It does not authorize terminal input, screen capture, or events for another surface. Mytty revokes it when the surface closes.
 
+Codex is the exception. Codex runs sessions inside a shared background process, so a Codex hook inherits the variables of whichever pane started that process, not those of the pane its session runs in. Mytty therefore ignores `capability` and `event.surfaceID` on Codex events and works out the pane from `event.sessionID` instead, see [Codex routing](#codex-routing). `mytty-agent-hook codex` still sends the variables when it has them, and also works when they are missing.
+
 ## Transport
 
 Connect to `MYTTY_EVENT_SOCKET`, a user-only Unix stream socket with mode `0600`. Send one UTF-8 JSON envelope, terminated by a newline, per connection. Maximum request size is 64 KiB. Dates are ISO 8601.
@@ -49,12 +51,12 @@ An idempotent retry returns `inserted: false`. Invalid JSON, authorization failu
 | Field | Type | Notes |
 | --- | --- | --- |
 | `schemaVersion` (outer) | Int | Envelope schema version, currently `1` |
-| `capability` | String | Must equal `MYTTY_EVENT_CAPABILITY` for this surface |
+| `capability` | String | Must equal `MYTTY_EVENT_CAPABILITY` for this surface. Ignored for `codex` |
 | `event.schemaVersion` | Int | Event schema version, currently `1` |
 | `event.id` | `{rawValue: UUID}` | Must stay stable across a hook's retried delivery of the same event |
 | `event.runID` | `{rawValue: UUID}` | Stable for the lifetime of one agent run (one prompt/turn) |
 | `event.sessionID` | String? | Provider's own session/conversation identifier; shown only while that provider is the foreground agent |
-| `event.surfaceID` | `{rawValue: <MYTTY_SURFACE_ID>}` | Must equal `MYTTY_SURFACE_ID` for this pane |
+| `event.surfaceID` | `{rawValue: <MYTTY_SURFACE_ID>}` | Must equal `MYTTY_SURFACE_ID` for this pane. Ignored for `codex`, where Mytty fills it in |
 | `event.provider` | String | One of `codex`, `claude-code`, `opencode`, `antigravity`, `cursor` |
 | `event.kind` | String | See event kinds below |
 | `event.occurredAt` | String | ISO 8601 timestamp |
@@ -102,9 +104,21 @@ Acknowledged or otherwise resolved items remain visible in the drawer for 24 hou
 | `{"ok": true, "inserted": true}` | Event accepted and newly recorded |
 | `{"ok": true, "inserted": false}` | Idempotent retry of an already-recorded event (same `event.id`) |
 | `{"ok": false, "error": "request-too-large"}` | Envelope exceeded the 64 KiB limit |
-| `{"ok": false, "error": "unauthorized"}` | `capability` did not match this surface's `MYTTY_EVENT_CAPABILITY` |
+| `{"ok": false, "error": "unauthorized"}` | `capability` did not match this surface's `MYTTY_EVENT_CAPABILITY`. For `codex`: the session could not be matched to exactly one pane, or the event has no `sessionID` |
 | `{"ok": false, "error": "invalid-request"}` | Envelope could not be decoded as the expected JSON shape |
 | `{"ok": false, "error": "internal-error"}` | Event storage failed on Mytty's side |
+
+## Codex routing
+
+For `codex` events Mytty decides the pane from `event.sessionID` alone, using the Codex panes of all windows. In order:
+
+1. A pane whose own Codex process has that session's transcript open.
+2. A pane this session was bound to by an earlier event.
+3. A pane that was started with `codex resume <session-id>`.
+4. The only Codex pane without a binding whose working directory equals the working directory recorded in the session's transcript. Only transcripts of interactive Codex sessions (`codex-tui` started by the user) qualify, so sub-agent, `codex exec` and desktop app threads are never bound to a pane.
+5. On a `SessionStart` or `UserPromptSubmit` event only: the only pane in that working directory that is still held by a binding that may be out of date, for example after `/new` or a resume inside the Codex screen.
+
+A binding ends when the pane closes or its Codex process is replaced. Whenever no pane matches, or more than one does, the event is answered with `unauthorized` instead of being guessed. In particular, when two Codex panes in the same working directory are both still without a binding, events for a new session in that directory are rejected until one of them is bound. Codex writes a session's transcript only when its first prompt is submitted, so events that arrive before that (the `SessionStart` of a freshly started session) are rejected too.
 
 ## Native run estimation
 

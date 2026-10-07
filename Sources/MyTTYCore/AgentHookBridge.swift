@@ -75,24 +75,44 @@ public enum AgentHookBridge {
         guard socketPath.hasPrefix("/") else {
             throw AgentHookBridgeError.invalidSocketPath
         }
-        let surfaceValue = try requiredValue(
-            surfaceEnvironmentKey,
-            in: environment
-        )
-        guard let surfaceUUID = UUID(uuidString: surfaceValue) else {
-            throw AgentHookBridgeError.invalidSurfaceIdentifier
+        let surfaceID: TerminalSurfaceID
+        let capability: String
+        if provider == .codex {
+            // Codex hooks run in a shared background daemon, so whatever
+            // pane credentials they inherited belong to the pane that
+            // started the daemon, not to this session. The server routes
+            // Codex events by session id and ignores both fields; they are
+            // passed along only when present.
+            surfaceID = environment[surfaceEnvironmentKey]
+                .flatMap { UUID(uuidString: $0) }
+                .map { TerminalSurfaceID(rawValue: $0) }
+                ?? TerminalSurfaceID(rawValue: UUID(uuid: (
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                )))
+            capability = environment[capabilityEnvironmentKey] ?? ""
+        } else {
+            let surfaceValue = try requiredValue(
+                surfaceEnvironmentKey,
+                in: environment
+            )
+            guard let surfaceUUID = UUID(uuidString: surfaceValue) else {
+                throw AgentHookBridgeError.invalidSurfaceIdentifier
+            }
+            surfaceID = TerminalSurfaceID(rawValue: surfaceUUID)
+            capability = try requiredValue(
+                capabilityEnvironmentKey,
+                in: environment
+            )
         }
-        let capability = try requiredValue(
-            capabilityEnvironmentKey,
-            in: environment
-        )
 
         guard let event = try AgentHookEventAdapter.makeEvent(
             provider: provider,
             payload: payload,
-            surfaceID: TerminalSurfaceID(rawValue: surfaceUUID),
+            surfaceID: surfaceID,
             occurredAt: occurredAt
         ) else { return nil }
+        // A Codex event that names no session cannot be routed.
+        if provider == .codex, event.sessionID == nil { return nil }
 
         return AgentHookDelivery(
             socketURL: URL(fileURLWithPath: socketPath),

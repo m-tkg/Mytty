@@ -88,8 +88,7 @@ struct AgentHookBridgeTests {
         let payload = Data(
             """
             {
-              "session_id": "codex-session",
-              "turn_id": "codex-turn",
+              "session_id": "claude-session",
               "hook_event_name": "Stop"
             }
             """.utf8
@@ -108,7 +107,7 @@ struct AgentHookBridgeTests {
             "MYTTY_EVENT_CAPABILITY"
         )) {
             try AgentHookBridge.makeDelivery(
-                provider: .codex,
+                provider: .claudeCode,
                 payload: payload,
                 environment: missingCapability,
                 occurredAt: Date()
@@ -116,11 +115,93 @@ struct AgentHookBridgeTests {
         }
         #expect(throws: AgentHookBridgeError.invalidSurfaceIdentifier) {
             try AgentHookBridge.makeDelivery(
-                provider: .codex,
+                provider: .claudeCode,
                 payload: payload,
                 environment: invalidSurface,
                 occurredAt: Date()
             )
         }
+    }
+
+    @Test("rejects missing or malformed credentials for every non-Codex provider")
+    func invalidEnvironmentForOtherProviders() {
+        let payload = Data(#"{"session_id":"s","hook_event_name":"Stop"}"#.utf8)
+        let socket = ["MYTTY_EVENT_SOCKET": "/private/tmp/mytty.sock"]
+
+        for provider in AgentProvider.allCases where provider != .codex {
+            #expect(throws: AgentHookBridgeError.missingEnvironment(
+                "MYTTY_SURFACE_ID"
+            )) {
+                try AgentHookBridge.makeDelivery(
+                    provider: provider,
+                    payload: payload,
+                    environment: socket,
+                    occurredAt: Date()
+                )
+            }
+        }
+    }
+
+    @Test("delivers a Codex event without surface credentials")
+    func codexWithoutSurfaceCredentials() throws {
+        let payload = Data(
+            """
+            {
+              "session_id": "codex-session",
+              "turn_id": "codex-turn",
+              "hook_event_name": "Stop"
+            }
+            """.utf8
+        )
+
+        let optionalDelivery = try AgentHookBridge.makeDelivery(
+            provider: .codex,
+            payload: payload,
+            environment: ["MYTTY_EVENT_SOCKET": "/private/tmp/mytty.sock"],
+            occurredAt: Date(timeIntervalSince1970: 1_721_113_200)
+        )
+        let delivery = try #require(optionalDelivery)
+
+        #expect(delivery.socketURL.path == "/private/tmp/mytty.sock")
+        #expect(delivery.envelope.capability.isEmpty)
+        #expect(delivery.envelope.event.surfaceID.rawValue == UUID(
+            uuidString: "00000000-0000-0000-0000-000000000000"
+        ))
+        #expect(delivery.envelope.event.sessionID == "codex-session")
+    }
+
+    @Test("passes along the Codex surface credentials when they exist")
+    func codexWithSurfaceCredentials() throws {
+        let surfaceID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000203"
+        )!
+        let optionalDelivery = try AgentHookBridge.makeDelivery(
+            provider: .codex,
+            payload: Data(
+                #"{"session_id":"s","hook_event_name":"Stop"}"#.utf8
+            ),
+            environment: [
+                "MYTTY_EVENT_SOCKET": "/private/tmp/mytty.sock",
+                "MYTTY_SURFACE_ID": surfaceID.uuidString,
+                "MYTTY_EVENT_CAPABILITY": "stale-capability",
+            ],
+            occurredAt: Date()
+        )
+        let delivery = try #require(optionalDelivery)
+
+        #expect(delivery.envelope.capability == "stale-capability")
+        #expect(delivery.envelope.event.surfaceID.rawValue == surfaceID)
+    }
+
+    @Test("sends nothing for a Codex payload without a session id")
+    func codexWithoutSessionID() throws {
+        let delivery = try AgentHookBridge.makeDelivery(
+            provider: .codex,
+            payload: Data(#"{"hook_event_name":"Stop","turn_id":"t"}"#.utf8),
+            environment: ["MYTTY_EVENT_SOCKET": "/private/tmp/mytty.sock"],
+            occurredAt: Date()
+        )
+
+        #expect(delivery == nil)
     }
 }

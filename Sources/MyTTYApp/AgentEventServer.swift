@@ -19,6 +19,7 @@ final class AgentEventServer {
     private let inheritedSearchPath: String?
     private let onEvent: (AgentEvent) throws -> Bool
     private let onError: (Error) -> Void
+    private let resolveCodexSurface: (AgentEvent) -> TerminalSurfaceID?
 
     private var transport: UnixSocketTransport?
     private var authorizer = AgentEventAuthorizer()
@@ -35,9 +36,13 @@ final class AgentEventServer {
         // developer machine's real PATH.
         inheritedSearchPath: String? =
             ProcessInfo.processInfo.environment["PATH"],
+        resolveCodexSurface: @escaping (AgentEvent) -> TerminalSurfaceID? = {
+            _ in nil
+        },
         onEvent: @escaping (AgentEvent) throws -> Bool,
         onError: @escaping (Error) -> Void
     ) {
+        self.resolveCodexSurface = resolveCodexSurface
         self.socketURL = socketURL
         self.aiControlSocketURL = aiControlSocketURL
         self.aiControlExecutableURL = aiControlExecutableURL
@@ -112,7 +117,12 @@ final class AgentEventServer {
                 AgentEventEnvelope.self,
                 from: request
             )
-            let event = try authorizer.authorize(envelope)
+            let event: AgentEvent
+            if envelope.event.provider == .codex {
+                event = try routedCodexEvent(envelope)
+            } else {
+                event = try authorizer.authorize(envelope)
+            }
             response = .success(inserted: try onEvent(event))
         } catch is AgentEventAuthorizationError {
             response = .failure(code: "unauthorized")
@@ -123,6 +133,19 @@ final class AgentEventServer {
             response = .failure(code: "internal-error")
         }
         return encode(response)
+    }
+
+    /// Codex hooks run in a shared daemon whose environment names whichever
+    /// pane started it, so the capability and surface they carry say nothing
+    /// about the session. The pane comes from the session id alone.
+    private func routedCodexEvent(
+        _ envelope: AgentEventEnvelope
+    ) throws -> AgentEvent {
+        try AgentEventAuthorizer.validateSchemaVersions(envelope)
+        guard envelope.event.sessionID != nil,
+              let surfaceID = resolveCodexSurface(envelope.event)
+        else { throw AgentEventAuthorizationError.unresolvedSession }
+        return envelope.event.with(surfaceID: surfaceID)
     }
 
     private func encode(_ response: AgentEventServerResponse) -> Data {

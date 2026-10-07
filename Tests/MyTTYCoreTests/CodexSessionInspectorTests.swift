@@ -226,4 +226,262 @@ struct CodexSessionInspectorTests {
             ) == "hook-session"
         )
     }
+
+    // MARK: - Resume argument
+
+    private static let sampleID = "01a113a2-d263-7b13-b24e-eec340025374"
+
+    @Test("reads the session id from a codex resume command line")
+    func resumedSessionID() {
+        let id = Self.sampleID
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", id]
+            ) == id
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "-m", "gpt-5", "resume", "--no-daemon", id]
+            ) == id
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", id, "--yolo"]
+            ) == id
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", id.uppercased()]
+            ) == id
+        )
+    }
+
+    @Test("ignores resume arguments that are not a session id")
+    func resumedSessionIDRejections() {
+        let id = Self.sampleID
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", "--last"]
+            ) == nil
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", "my-session-name"]
+            ) == nil
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume"]
+            ) == nil
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "resume", "--last", id]
+            ) == nil
+        )
+        // The id has to follow the subcommand, not merely appear.
+        #expect(
+            CodexSessionInspector.resumedSessionID(arguments: ["codex", id])
+                == nil
+        )
+        #expect(
+            CodexSessionInspector.resumedSessionID(
+                arguments: ["codex", "exec", "resume", "x", id]
+            ) == nil
+        )
+        #expect(CodexSessionInspector.resumedSessionID(arguments: []) == nil)
+    }
+
+    // MARK: - Metadata lookup by session id
+
+    private func uuidV7(at date: Date, variant: String = "a00") -> String {
+        let milliseconds = UInt64(date.timeIntervalSince1970 * 1000)
+        let hex = String(format: "%012llx", milliseconds)
+        return "\(hex.prefix(8))-\(hex.suffix(4))-7\(variant)-8000-0123456789ab"
+    }
+
+    private func firstLine(
+        id: String,
+        cwd: String = "/work/repo",
+        originator: String = "codex-tui",
+        source: String = "\"vscode\"",
+        threadSource: String? = "\"user\""
+    ) -> String {
+        let thread = threadSource.map { ",\"thread_source\":\($0)" } ?? ""
+        return """
+        {"type":"session_meta","payload":{"session_id":"\(id)","id":"\(id)","cwd":"\(cwd)","originator":"\(originator)","source":\(source)\(thread)}}
+        """
+    }
+
+    private func makeHome(
+        id: String,
+        createdAt: Date,
+        fileDayOffset: Int = 0,
+        contents: String?
+    ) throws -> URL {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        guard let contents else { return home }
+        let calendar = Calendar.current
+        let day = calendar.date(
+            byAdding: .day, value: fileDayOffset, to: createdAt
+        )!
+        let parts = calendar.dateComponents([.year, .month, .day], from: day)
+        let directory = home
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(String(format: "%04d", parts.year!))
+            .appendingPathComponent(String(format: "%02d", parts.month!))
+            .appendingPathComponent(String(format: "%02d", parts.day!))
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        try (contents + "\n{\"type\":\"event_msg\",\"payload\":{}}\n").write(
+            to: directory.appendingPathComponent(
+                "rollout-2026-01-01T00-00-00-\(id).jsonl"
+            ),
+            atomically: true,
+            encoding: .utf8
+        )
+        return home
+    }
+
+    @Test("finds a user TUI thread's metadata by session id")
+    func metadataLookup() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        let home = try makeHome(
+            id: id, createdAt: created, contents: firstLine(id: id)
+        )
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let metadata = try #require(
+            CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+        )
+        #expect(metadata.sessionID == id)
+        #expect(metadata.workingDirectory.path == "/work/repo")
+    }
+
+    @Test("accepts a rollout filed under the adjacent day")
+    func metadataLookupAdjacentDay() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        for offset in [-1, 1] {
+            let home = try makeHome(
+                id: id, createdAt: created, fileDayOffset: offset,
+                contents: firstLine(id: id)
+            )
+            defer { try? FileManager.default.removeItem(at: home) }
+
+            #expect(
+                CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+                    != nil
+            )
+        }
+    }
+
+    @Test("does not look further than the adjacent days")
+    func metadataLookupFarDay() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        let home = try makeHome(
+            id: id, createdAt: created, fileDayOffset: 3,
+            contents: firstLine(id: id)
+        )
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        #expect(
+            CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+                == nil
+        )
+    }
+
+    @Test("returns nil for a missing rollout or a non-UUIDv7 id")
+    func metadataLookupMissing() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        let home = try makeHome(id: id, createdAt: created, contents: nil)
+
+        #expect(
+            CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+                == nil
+        )
+        let v4 = "9f1b6a5e-1c2d-4e3f-8a4b-5c6d7e8f9a0b"
+        let v4Home = try makeHome(
+            id: v4, createdAt: created, contents: firstLine(id: v4)
+        )
+        defer { try? FileManager.default.removeItem(at: v4Home) }
+        #expect(
+            CodexSessionInspector.metadata(sessionID: v4, codexHome: v4Home)
+                == nil
+        )
+        #expect(
+            CodexSessionInspector.metadata(
+                sessionID: "../../etc/passwd", codexHome: home
+            ) == nil
+        )
+    }
+
+    @Test("rejects a rollout whose first line does not match the session")
+    func metadataLookupMismatch() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        let otherID = uuidV7(at: created, variant: "b00")
+        let cases: [String] = [
+            firstLine(id: otherID),
+            "not json at all",
+            "",
+            "{\"type\":\"event_msg\",\"payload\":{}}",
+            firstLine(id: id, cwd: "relative/path"),
+            firstLine(id: id, cwd: "/work/\\u0007bell"),
+        ]
+        for contents in cases {
+            let home = try makeHome(
+                id: id, createdAt: created, contents: contents
+            )
+            defer { try? FileManager.default.removeItem(at: home) }
+
+            #expect(
+                CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+                    == nil
+            )
+        }
+    }
+
+    @Test("rejects threads that are not user-facing TUI threads")
+    func metadataLookupThreadKinds() throws {
+        let created = Date(timeIntervalSince1970: 1_790_000_000)
+        let id = uuidV7(at: created)
+        let cases: [String] = [
+            firstLine(id: id, originator: "codex_exec", source: "\"exec\"",
+                      threadSource: nil),
+            firstLine(id: id, originator: "Codex Desktop"),
+            firstLine(id: id, threadSource: "\"subagent\""),
+            firstLine(id: id, threadSource: nil),
+            firstLine(
+                id: id,
+                source: "{\"subagent\":{\"thread_spawn\":{}}}",
+                threadSource: "\"user\""
+            ),
+        ]
+        for contents in cases {
+            let home = try makeHome(
+                id: id, createdAt: created, contents: contents
+            )
+            defer { try? FileManager.default.removeItem(at: home) }
+
+            #expect(
+                CodexSessionInspector.metadata(sessionID: id, codexHome: home)
+                    == nil
+            )
+        }
+        let cliHome = try makeHome(
+            id: id, createdAt: created,
+            contents: firstLine(id: id, source: "\"cli\"")
+        )
+        defer { try? FileManager.default.removeItem(at: cliHome) }
+        #expect(
+            CodexSessionInspector.metadata(sessionID: id, codexHome: cliHome)
+                != nil
+        )
+    }
 }
