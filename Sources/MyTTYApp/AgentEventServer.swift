@@ -19,6 +19,7 @@ final class AgentEventServer {
     private let inheritedSearchPath: String?
     private let onEvent: (AgentEvent) throws -> Bool
     private let onError: (Error) -> Void
+    private let resolveCodexSurface: (AgentEvent) -> TerminalSurfaceID?
 
     private var transport: UnixSocketTransport?
     private var authorizer = AgentEventAuthorizer()
@@ -35,9 +36,13 @@ final class AgentEventServer {
         // developer machine's real PATH.
         inheritedSearchPath: String? =
             ProcessInfo.processInfo.environment["PATH"],
+        resolveCodexSurface: @escaping (AgentEvent) -> TerminalSurfaceID? = {
+            _ in nil
+        },
         onEvent: @escaping (AgentEvent) throws -> Bool,
         onError: @escaping (Error) -> Void
     ) {
+        self.resolveCodexSurface = resolveCodexSurface
         self.socketURL = socketURL
         self.aiControlSocketURL = aiControlSocketURL
         self.aiControlExecutableURL = aiControlExecutableURL

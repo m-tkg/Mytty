@@ -316,6 +316,17 @@ public enum CodexSessionInspector {
             )
     }
 
+    public static func resumedSessionID(arguments: [String]) -> String? {
+        nil
+    }
+
+    public static func metadata(
+        sessionID: String,
+        codexHome: URL = defaultCodexHome
+    ) -> CodexSessionMetadata? {
+        nil
+    }
+
     public static var defaultCodexHome: URL {
         if let configured = ProcessInfo.processInfo.environment["CODEX_HOME"],
            !configured.isEmpty {
