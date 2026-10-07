@@ -316,15 +316,137 @@ public enum CodexSessionInspector {
             )
     }
 
+    /// The session a pane's Codex TUI was started on, from its argv
+    /// (`codex ... resume <uuid>`). Session names and `--last` are not ids
+    /// and yield `nil`. Only an initial binding: `/new` inside the TUI
+    /// leaves the argv unchanged.
     public static func resumedSessionID(arguments: [String]) -> String? {
-        nil
+        guard let resume = arguments.dropFirst().firstIndex(of: "resume")
+        else { return nil }
+        // `codex exec resume` continues a non-interactive run, not a TUI.
+        guard !arguments[..<resume].contains("exec") else { return nil }
+        let rest = arguments[(resume + 1)...]
+        guard !rest.contains("--last") else { return nil }
+        return rest.lazy
+            .filter { !$0.hasPrefix("-") }
+            .compactMap { uuid in
+                UUID(uuidString: uuid)?.uuidString.lowercased()
+            }
+            .first
     }
 
+    /// Reads the first line of the rollout for `sessionID` and returns its
+    /// working directory, but only for a thread positively identified as a
+    /// user-facing TUI thread. Codex ids are UUIDv7, so the rollout's day
+    /// directory (local time) follows from the id; the adjacent days cover
+    /// a session that straddles midnight or a clock-zone difference.
     public static func metadata(
         sessionID: String,
         codexHome: URL = defaultCodexHome
     ) -> CodexSessionMetadata? {
-        nil
+        guard let created = creationDate(ofUUIDv7: sessionID) else {
+            return nil
+        }
+        let suffix = "-\(sessionID).jsonl"
+        let calendar = Calendar.current
+        let sessions = codexHome
+            .appendingPathComponent("sessions", isDirectory: true)
+        for offset in [0, -1, 1] {
+            guard let day = calendar.date(
+                byAdding: .day, value: offset, to: created
+            ) else { continue }
+            let parts = calendar.dateComponents(
+                [.year, .month, .day], from: day
+            )
+            guard let year = parts.year, let month = parts.month,
+                  let dayOfMonth = parts.day
+            else { continue }
+            let directory = sessions
+                .appendingPathComponent(String(format: "%04d", year))
+                .appendingPathComponent(String(format: "%02d", month))
+                .appendingPathComponent(String(format: "%02d", dayOfMonth))
+            guard let names = try? FileManager.default.contentsOfDirectory(
+                atPath: directory.path
+            ) else { continue }
+            for name in names
+            where name.hasPrefix("rollout-") && name.hasSuffix(suffix) {
+                let url = directory.appendingPathComponent(name)
+                if let metadata = readClaimableMetadata(
+                    from: url,
+                    sessionID: sessionID
+                ) {
+                    return metadata
+                }
+            }
+        }
+        return nil
+    }
+
+    static func claimableMetadata(
+        from data: Data,
+        sessionID: String
+    ) -> CodexSessionMetadata? {
+        let line: Data
+        if let newline = data.firstIndex(of: 0x0A) {
+            line = data.prefix(upTo: newline)
+        } else {
+            line = data
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: line)
+            as? [String: Any],
+              object["type"] as? String == "session_meta",
+              let payload = object["payload"] as? [String: Any]
+        else { return nil }
+
+        let identifiers = ["session_id", "id"].compactMap {
+            payload[$0].map { AgentSessionValidation.identifier($0 as? String) }
+        }
+        guard !identifiers.isEmpty,
+              identifiers.allSatisfy({ $0 == sessionID })
+        else { return nil }
+
+        // The TUI's own thread: sub-agent threads carry an object `source`,
+        // exec and desktop-app threads use another originator.
+        guard payload["originator"] as? String == "codex-tui",
+              payload["thread_source"] as? String == "user",
+              payload["source"] is String,
+              let cwd = payload["cwd"] as? String,
+              cwd.hasPrefix("/"),
+              cwd.utf8.count <= 4096,
+              cwd.unicodeScalars.allSatisfy({
+                  !CharacterSet.controlCharacters.contains($0)
+              })
+        else { return nil }
+        return CodexSessionMetadata(
+            sessionID: sessionID,
+            workingDirectory: URL(fileURLWithPath: cwd, isDirectory: true)
+        )
+    }
+
+    private static func readClaimableMetadata(
+        from url: URL,
+        sessionID: String
+    ) -> CodexSessionMetadata? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return nil
+        }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maximumMetadataBytes)
+        else { return nil }
+        return claimableMetadata(from: data, sessionID: sessionID)
+    }
+
+    /// The millisecond timestamp in the first 48 bits of a UUIDv7.
+    static func creationDate(ofUUIDv7 value: String) -> Date? {
+        guard let uuid = UUID(uuidString: value),
+              uuid.uuidString.lowercased() == value,
+              uuid.uuid.6 >> 4 == 7
+        else { return nil }
+        let bytes = uuid.uuid
+        let milliseconds = [
+            bytes.0, bytes.1, bytes.2, bytes.3, bytes.4, bytes.5,
+        ].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        return Date(timeIntervalSince1970: Double(milliseconds) / 1000)
     }
 
     public static var defaultCodexHome: URL {

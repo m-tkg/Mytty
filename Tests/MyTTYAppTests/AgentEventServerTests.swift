@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Agent event server", .serialized)
 struct AgentEventServerTests {
-    @Test("accepts authorized events and rejects revoked capabilities")
+    @Test("accepts authorized events and rejects revoked capabilities for providers other than Codex")
     @MainActor
     func authorizationOverUnixSocket() async throws {
         let directory = FileManager.default.temporaryDirectory
@@ -54,12 +54,12 @@ struct AgentEventServerTests {
                 == "/usr/bin:/bin:\(directory.path)"
         )
         let optionalStartedDelivery = try AgentHookBridge.makeDelivery(
-            provider: .codex,
+            provider: .claudeCode,
             payload: Data(
                 """
                 {
-                  "session_id": "codex-session",
-                  "turn_id": "codex-turn",
+                  "session_id": "claude-session",
+                  "prompt_id": "claude-prompt",
                   "hook_event_name": "UserPromptSubmit"
                 }
                 """.utf8
@@ -69,12 +69,12 @@ struct AgentEventServerTests {
         )
         let startedDelivery = try #require(optionalStartedDelivery)
         let optionalApprovalDelivery = try AgentHookBridge.makeDelivery(
-            provider: .codex,
+            provider: .claudeCode,
             payload: Data(
                 """
                 {
-                  "session_id": "codex-session",
-                  "turn_id": "codex-turn",
+                  "session_id": "claude-session",
+                  "prompt_id": "claude-prompt",
                   "hook_event_name": "PermissionRequest",
                   "tool_name": "Bash"
                 }
@@ -85,13 +85,13 @@ struct AgentEventServerTests {
         )
         let approvalDelivery = try #require(optionalApprovalDelivery)
         let optionalRunningDelivery = try AgentHookBridge.makeDelivery(
-            provider: .codex,
+            provider: .claudeCode,
             payload: Data(
                 """
                 {
-                  "session_id": "codex-session",
-                  "turn_id": "codex-turn",
-                  "hook_event_name": "PostToolUse",
+                  "session_id": "claude-session",
+                  "prompt_id": "claude-prompt",
+                  "hook_event_name": "PostToolBatch",
                   "tool_name": "Bash"
                 }
                 """.utf8
@@ -481,7 +481,7 @@ struct AgentEventServerTests {
         AgentEvent(
             runID: runID,
             surfaceID: surfaceID,
-            provider: .codex,
+            provider: .claudeCode,
             kind: kind,
             occurredAt: Date()
         )

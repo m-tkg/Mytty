@@ -117,7 +117,12 @@ final class AgentEventServer {
                 AgentEventEnvelope.self,
                 from: request
             )
-            let event = try authorizer.authorize(envelope)
+            let event: AgentEvent
+            if envelope.event.provider == .codex {
+                event = try routedCodexEvent(envelope)
+            } else {
+                event = try authorizer.authorize(envelope)
+            }
             response = .success(inserted: try onEvent(event))
         } catch is AgentEventAuthorizationError {
             response = .failure(code: "unauthorized")
@@ -128,6 +133,19 @@ final class AgentEventServer {
             response = .failure(code: "internal-error")
         }
         return encode(response)
+    }
+
+    /// Codex hooks run in a shared daemon whose environment names whichever
+    /// pane started it, so the capability and surface they carry say nothing
+    /// about the session. The pane comes from the session id alone.
+    private func routedCodexEvent(
+        _ envelope: AgentEventEnvelope
+    ) throws -> AgentEvent {
+        try AgentEventAuthorizer.validateSchemaVersions(envelope)
+        guard envelope.event.sessionID != nil,
+              let surfaceID = resolveCodexSurface(envelope.event)
+        else { throw AgentEventAuthorizationError.unresolvedSession }
+        return envelope.event.with(surfaceID: surfaceID)
     }
 
     private func encode(_ response: AgentEventServerResponse) -> Data {

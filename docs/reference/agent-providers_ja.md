@@ -75,7 +75,7 @@ status bar が表示するセッション識別子は、provider ごとに別の
 
 | Provider | 情報源 |
 | --- | --- |
-| Codex | フォアグラウンド PID に紐づく transcript。取得できなければ hook event の値にフォールバック |
+| Codex | フォアグラウンド PID に紐づく transcript。取得できなければ hook event の値にフォールバック(Codex のバックグラウンドプロセスが transcript を開いていて、ペインのプロセスが開いていない場合は、hook event の値だけが頼り) |
 | Claude Code | hook の `session_id` |
 | OpenCode | hook の `sessionID` |
 | Antigravity | hook の `conversationId` |
@@ -89,7 +89,7 @@ status bar のモデル名と(取得できる場合の)残りコンテキスト�
 
 | Provider | Inspector | 情報源 | コンテキストウィンドウ |
 | --- | --- | --- | --- |
-| Codex | `CodexSessionInspector` | フォアグラウンド PID に紐づく transcript の `turn_context.model` と最新の `token_count.info` | transcript が報告する値 |
+| Codex | `CodexSessionInspector` | フォアグラウンド PID に紐づく transcript の `turn_context.model` と最新の `token_count.info`。Codex のバックグラウンドプロセスが transcript を開いている間は取得できない | transcript が報告する値 |
 | Claude Code | `ClaudeCodeSessionInspector` | `~/.claude/projects/<session-id>.jsonl`(複数の project ディレクトリを横断検索)、hook session ID が無い場合は `~/.claude/projects/<slug>/` 配下で最も新しく更新された transcript。最後の `assistant` 行の `message.model`、トークン数は `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` の合計 | `[1m]` モデルは 1,000,000、それ以外は 200,000 |
 | OpenCode | `OpenCodeSessionInspector` | `opencode.db` の `message` テーブル、hook session ID に対応する最新の assistant 行の `modelID` | ローカルでは取得不可 |
 | Cursor | `CursorSessionInspector` | `~/.cursor/chats/<workspace-hash>/<session-id>/` 配下の chat ディレクトリ(hook session ID、または `cwd` がペインと一致する最新の `meta.json`)。`store.db` の `blobs` テーブルを新しい順に、`providerOptions.cursor.modelName` をテキストスキャン | 最新の "root" blob の protobuf レコード: トップレベルのフィールド 5 に使用済み/合計トークン数が入っている。そのブロブを一切書き込まない古い Cursor CLI では `nil` |

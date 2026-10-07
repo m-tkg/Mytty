@@ -23,6 +23,7 @@ public enum AgentEventAuthorizationError: Error, Equatable, Sendable {
     case duplicateCapability
     case invalidCapability
     case surfaceMismatch
+    case unresolvedSession
     case unsupportedEnvelopeVersion(Int)
     case unsupportedEventVersion(Int)
 }
@@ -52,7 +53,11 @@ public struct AgentEventAuthorizer: Sendable {
         }
     }
 
-    public func authorize(_ envelope: AgentEventEnvelope) throws -> AgentEvent {
+    /// The schema checks every envelope has to pass, whichever way its
+    /// surface is later decided.
+    public static func validateSchemaVersions(
+        _ envelope: AgentEventEnvelope
+    ) throws {
         guard envelope.schemaVersion
                 == AgentEventEnvelope.currentSchemaVersion
         else {
@@ -67,6 +72,10 @@ public struct AgentEventAuthorizer: Sendable {
                 envelope.event.schemaVersion
             )
         }
+    }
+
+    public func authorize(_ envelope: AgentEventEnvelope) throws -> AgentEvent {
+        try Self.validateSchemaVersions(envelope)
         guard let surfaceID = surfaceByCapability[envelope.capability] else {
             throw AgentEventAuthorizationError.invalidCapability
         }

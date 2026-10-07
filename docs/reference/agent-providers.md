@@ -77,7 +77,7 @@ The status bar's session identifier comes from a separate, provider-specific sou
 
 | Provider | Source |
 | --- | --- |
-| Codex | The transcript bound to the foreground PID; falls back to the hook event's value |
+| Codex | The transcript bound to the foreground PID; falls back to the hook event's value, which is the only source while Codex's background process holds the transcript instead of the pane's process |
 | Claude Code | Hook `session_id` |
 | OpenCode | Hook `sessionID` |
 | Antigravity | Hook `conversationId` |
@@ -91,7 +91,7 @@ The status bar's model name and, where available, remaining-context meter come f
 
 | Provider | Inspector | Source | Context window |
 | --- | --- | --- | --- |
-| Codex | `CodexSessionInspector` | Transcript bound to the foreground PID: `turn_context.model` and the latest `token_count.info` | Reported by the transcript |
+| Codex | `CodexSessionInspector` | Transcript bound to the foreground PID: `turn_context.model` and the latest `token_count.info`. Empty while Codex's background process holds the transcript | Reported by the transcript |
 | Claude Code | `ClaudeCodeSessionInspector` | `~/.claude/projects/<session-id>.jsonl` (searched across project dirs), or without a hook session ID, the most recently modified transcript under `~/.claude/projects/<slug>/`; last `assistant` line's `message.model`, tokens summed as `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` | 1,000,000 for `[1m]` models, 200,000 otherwise |
 | OpenCode | `OpenCodeSessionInspector` | `message` table in `opencode.db`, newest assistant row's `modelID` for the hook session ID | not exposed locally |
 | Cursor | `CursorSessionInspector` | Chat directory under `~/.cursor/chats/<workspace-hash>/<session-id>/` (by hook session ID, or newest `meta.json` whose `cwd` matches the pane); `store.db`'s `blobs` table, newest row first, text-scanned for `providerOptions.cursor.modelName` | Newest "root" blob's protobuf record: top-level field 5 holds used/total token counts; `nil` on older Cursor CLI versions that never write that blob |

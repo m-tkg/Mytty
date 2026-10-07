@@ -47,19 +47,19 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: panes, metadata: metadata(table)
             ) == a
         )
         #expect(
             router.resolve(
-                sessionID: "s2", isSessionStart: true,
+                sessionID: "s2", opensSession: true,
                 candidates: panes, metadata: metadata(table)
             ) == b
         )
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: { _ in nil }
             ) == a
         )
@@ -71,13 +71,13 @@ struct CodexSessionRouterTests {
         let a = TerminalSurfaceID()
         let panes = [pane(a, pid: 10, cwd: repo)]
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: panes, metadata: metadata(["s1": repo])
         )
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: { _ in nil }
             ) == a
         )
@@ -89,13 +89,13 @@ struct CodexSessionRouterTests {
         let a = TerminalSurfaceID()
         let table = metadata(["s1": repo])
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: [pane(a, pid: 10, cwd: repo)], metadata: table
         )
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: [], metadata: table
             ) == nil
         )
@@ -103,7 +103,7 @@ struct CodexSessionRouterTests {
         // inherit it without a fresh claim from metadata.
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: [pane(TerminalSurfaceID(), pid: 12, cwd: repo)],
                 metadata: { _ in nil }
             ) == nil
@@ -115,14 +115,14 @@ struct CodexSessionRouterTests {
         var router = CodexSessionRouter()
         let a = TerminalSurfaceID()
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: [pane(a, pid: 10, cwd: repo)],
             metadata: metadata(["s1": repo])
         )
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: [pane(a, pid: 99, cwd: repo)],
                 metadata: { _ in nil }
             ) == nil
@@ -139,7 +139,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: panes, metadata: metadata(["s1": repo])
             ) == nil
         )
@@ -151,13 +151,13 @@ struct CodexSessionRouterTests {
         let a = TerminalSurfaceID()
         let b = TerminalSurfaceID()
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: [pane(a, pid: 10, cwd: repo)],
             metadata: metadata(["s1": repo])
         )
 
         let resolved = router.resolve(
-            sessionID: "s1", isSessionStart: false,
+            sessionID: "s1", opensSession: false,
             candidates: [
                 pane(a, pid: 10, bound: "s2", cwd: repo),
                 pane(b, pid: 11, bound: "s1", cwd: repo),
@@ -172,14 +172,14 @@ struct CodexSessionRouterTests {
         var router = CodexSessionRouter()
         let a = TerminalSurfaceID()
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: [pane(a, pid: 10, cwd: repo)],
             metadata: metadata(["s1": repo])
         )
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: [pane(a, pid: 10, bound: "s2", cwd: repo)],
                 metadata: { _ in nil }
             ) == nil
@@ -196,7 +196,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: metadata(["s1": repo])
             ) == nil
         )
@@ -213,7 +213,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: { _ in nil }
             ) == a
         )
@@ -227,65 +227,65 @@ struct CodexSessionRouterTests {
         // /new inside the TUI: the new session replaces the stale binding.
         #expect(
             router.resolve(
-                sessionID: "new", isSessionStart: true,
+                sessionID: "new", opensSession: true,
                 candidates: panes, metadata: metadata(["new": repo])
             ) == a
         )
 
         #expect(
             router.resolve(
-                sessionID: "old", isSessionStart: false,
+                sessionID: "old", opensSession: false,
                 candidates: panes, metadata: metadata(["old": repo])
             ) == nil
         )
         #expect(
             router.resolve(
-                sessionID: "new", isSessionStart: false,
+                sessionID: "new", opensSession: false,
                 candidates: panes, metadata: { _ in nil }
             ) == a
         )
     }
 
-    @Test("a new session in the same pane replaces a stale claim only on SessionStart")
+    @Test("a new session in the same pane replaces a stale claim only on a session-opening event")
     func sessionStartReclaims() {
         var router = CodexSessionRouter()
         let a = TerminalSurfaceID()
         let panes = [pane(a, pid: 10, cwd: repo)]
         let table = metadata(["s1": repo, "s2": repo])
         _ = router.resolve(
-            sessionID: "s1", isSessionStart: true,
+            sessionID: "s1", opensSession: true,
             candidates: panes, metadata: table
         )
 
         #expect(
             router.resolve(
-                sessionID: "s2", isSessionStart: false,
+                sessionID: "s2", opensSession: false,
                 candidates: panes, metadata: table
             ) == nil
         )
         #expect(
             router.resolve(
-                sessionID: "s2", isSessionStart: true,
+                sessionID: "s2", opensSession: true,
                 candidates: panes, metadata: table
             ) == a
         )
         // The pane now belongs to s2; s1 no longer resolves.
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: table
             ) == nil
         )
     }
 
-    @Test("SessionStart does not take over a process-bound pane")
+    @Test("a session-opening event does not take over a process-bound pane")
     func sessionStartLeavesProcessBoundPane() {
         var router = CodexSessionRouter()
         let panes = [pane(TerminalSurfaceID(), pid: 10, bound: "s1", cwd: repo)]
 
         #expect(
             router.resolve(
-                sessionID: "s2", isSessionStart: true,
+                sessionID: "s2", opensSession: true,
                 candidates: panes, metadata: metadata(["s2": repo])
             ) == nil
         )
@@ -303,7 +303,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: false,
+                sessionID: "s1", opensSession: false,
                 candidates: panes, metadata: metadata(["s1": repo])
             ) == free
         )
@@ -316,7 +316,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: panes, metadata: { _ in nil }
             ) == nil
         )
@@ -329,7 +329,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: panes,
                 metadata: { _ in
                     CodexSessionMetadata(sessionID: "s2", workingDirectory: repo)
@@ -348,7 +348,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: panes, metadata: metadata(["s1": repo])
             ) == nil
         )
@@ -372,7 +372,7 @@ struct CodexSessionRouterTests {
 
         #expect(
             router.resolve(
-                sessionID: "s1", isSessionStart: true,
+                sessionID: "s1", opensSession: true,
                 candidates: [pane(a, pid: 10, cwd: real)],
                 metadata: metadata(["s1": link])
             ) == a
@@ -396,7 +396,7 @@ struct CodexSessionRouterTests {
         for index in [4, 1, 5, 0, 3, 2] {
             #expect(
                 router.resolve(
-                    sessionID: "s\(index)", isSessionStart: true,
+                    sessionID: "s\(index)", opensSession: true,
                     candidates: panes, metadata: metadata(table)
                 ) == surfaces[index]
             )

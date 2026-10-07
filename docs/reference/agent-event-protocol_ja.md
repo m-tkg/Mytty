@@ -14,6 +14,8 @@ MYTTY_EVENT_CAPABILITY
 
 `MYTTY_EVENT_CAPABILITY` はその surface に限定して event 送信を許可するものです。ターミナル入力、画面キャプチャ、他 surface の event を許可するものではありません。surface が閉じられると Mytty はこれを失効させます。
 
+Codex だけは例外です。Codex はセッションを共有のバックグラウンドプロセスの中で動かすため、Codex の hook には、そのセッションのペインではなく、このプロセスを最初に起動したペインの環境変数が引き継がれます。そのため Mytty は Codex の event では `capability` と `event.surfaceID` を見ず、`event.sessionID` からペインを決めます。詳しくは [Codex のペイン判定](#codex-のペイン判定) を参照してください。`mytty-agent-hook codex` は環境変数があればそのまま送り、なくても動作します。
+
 ## トランスポート
 
 `MYTTY_EVENT_SOCKET` に接続します。パーミッション `0600` のユーザー専用 Unix stream socket です。1接続につき UTF-8 の JSON エンベロープを1つ、改行終端で送ります。リクエストの最大サイズは 64 KiB です。日時は ISO 8601 です。
@@ -49,12 +51,12 @@ MYTTY_EVENT_CAPABILITY
 | フィールド | 型 | 備考 |
 | --- | --- | --- |
 | `schemaVersion`(外側) | Int | エンベロープのスキーマバージョン、現在は `1` |
-| `capability` | String | その surface の `MYTTY_EVENT_CAPABILITY` と一致していること |
+| `capability` | String | その surface の `MYTTY_EVENT_CAPABILITY` と一致していること。`codex` では見ない |
 | `event.schemaVersion` | Int | event のスキーマバージョン、現在は `1` |
 | `event.id` | `{rawValue: UUID}` | hook が同じイベントを再送するときも変わらないこと |
 | `event.runID` | `{rawValue: UUID}` | 1回の agent run(1プロンプト/1ターン)の間は変わらない |
 | `event.sessionID` | String? | provider 自身のセッション/会話識別子。その provider がフォアグラウンドのエージェントである間だけ表示される |
-| `event.surfaceID` | `{rawValue: <MYTTY_SURFACE_ID>}` | そのペインの `MYTTY_SURFACE_ID` と一致していること |
+| `event.surfaceID` | `{rawValue: <MYTTY_SURFACE_ID>}` | そのペインの `MYTTY_SURFACE_ID` と一致していること。`codex` では見ず、Mytty が決めた値に置き換える |
 | `event.provider` | String | `codex`、`claude-code`、`opencode`、`antigravity`、`cursor` のいずれか |
 | `event.kind` | String | 下記の event kind 一覧を参照 |
 | `event.occurredAt` | String | ISO 8601 タイムスタンプ |
@@ -102,9 +104,21 @@ Mytty が通知(Attention)パネルの item を作るのは次の場合のみで
 | `{"ok": true, "inserted": true}` | event を受理し、新規に記録した |
 | `{"ok": true, "inserted": false}` | すでに記録済みの event(同じ `event.id`)の冪等なリトライ |
 | `{"ok": false, "error": "request-too-large"}` | エンベロープが 64 KiB 上限を超えた |
-| `{"ok": false, "error": "unauthorized"}` | `capability` がその surface の `MYTTY_EVENT_CAPABILITY` と一致しなかった |
+| `{"ok": false, "error": "unauthorized"}` | `capability` がその surface の `MYTTY_EVENT_CAPABILITY` と一致しなかった。`codex` の場合は、セッションを 1 つのペインに特定できなかった、または `sessionID` がなかった |
 | `{"ok": false, "error": "invalid-request"}` | エンベロープを期待する JSON 形式としてデコードできなかった |
 | `{"ok": false, "error": "internal-error"}` | Mytty 側で event の保存に失敗した |
+
+## Codex のペイン判定
+
+`codex` の event では、Mytty はすべてのウィンドウにある Codex のペインを対象に、`event.sessionID` だけでペインを決めます。次の順に調べます。
+
+1. そのセッションの transcript を、ペイン自身の Codex プロセスが開いているペイン。
+2. 以前の event で、このセッションに結びつけたペイン。
+3. `codex resume <session-id>` で起動されたペイン。
+4. まだ何にも結びついていない Codex ペインのうち、作業ディレクトリがセッションの transcript に記録された作業ディレクトリと同じものが 1 つだけある場合、そのペイン。対象になるのは、ユーザーが対話で使っている Codex(`codex-tui`)の transcript だけです。サブエージェント、`codex exec`、デスクトップアプリのスレッドがペインに結びつくことはありません。
+5. `SessionStart` か `UserPromptSubmit` の event に限り、同じ作業ディレクトリにあるペインのうち、古くなっている可能性のある結びつきが残ったままのものが 1 つだけある場合、そのペイン。Codex の画面で `/new` や再開をした場合がこれにあたります。
+
+結びつきは、ペインを閉じるか、ペインの Codex プロセスが入れ替わると消えます。どのペインにも当てはまらない場合や、複数に当てはまる場合は、推測せずに `unauthorized` を返します。特に、同じ作業ディレクトリに、まだどのセッションとも結びついていない Codex のペインが 2 つあると区別できず、どちらかが結びつくまで、その作業ディレクトリでの新しいセッションの event は拒否されます。また Codex がセッションの transcript を書くのは最初のプロンプトを送ったときなので、それより前に届く event(起動直後のセッションの `SessionStart`)も拒否されます。
 
 ## ネイティブ推定による run 検出
 

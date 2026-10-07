@@ -54,12 +54,97 @@ public struct CodexSessionRouter: Sendable {
 
     public init() {}
 
+    /// Resolution order, each step failing closed:
+    /// 1. drop claims whose pane is gone or whose process was replaced;
+    /// 2. the pane whose own process holds the session's rollout open;
+    /// 3. a pane this session already claimed;
+    /// 4. the pane launched with `codex resume <session>`;
+    /// 5. the one unbound pane in the session's working directory;
+    /// 6. only for an event that opens a session or a turn
+    ///    (`opensSession`), the one pane in that directory still held by a
+    ///    binding that cannot be authoritative (`/new` or a resume inside
+    ///    the TUI), which the new session takes over.
     public mutating func resolve(
         sessionID: String,
-        isSessionStart: Bool,
+        opensSession: Bool,
         candidates: [CodexPaneCandidate],
         metadata: (String) -> CodexSessionMetadata?
     ) -> TerminalSurfaceID? {
-        nil
+        var panes: [TerminalSurfaceID: CodexPaneCandidate] = [:]
+        for candidate in candidates where panes[candidate.surfaceID] == nil {
+            panes[candidate.surfaceID] = candidate
+        }
+        claims = claims.filter {
+            panes[$0.value.surfaceID]?.processID == $0.value.processID
+        }
+
+        let processBound = candidates.filter {
+            $0.processBoundSessionID == sessionID
+        }
+        guard processBound.count <= 1 else { return nil }
+        if let pane = processBound.first { return pane.surfaceID }
+
+        if let claim = claims[sessionID],
+           let pane = panes[claim.surfaceID] {
+            if pane.processBoundSessionID == nil {
+                return pane.surfaceID
+            }
+            claims[sessionID] = nil
+        }
+
+        let launched = candidates.filter {
+            $0.launchSessionID == sessionID
+                && $0.processBoundSessionID == nil
+                && claimedSession(of: $0.surfaceID) == nil
+        }
+        guard launched.count <= 1 else { return nil }
+        if let pane = launched.first { return bind(sessionID, to: pane) }
+
+        guard let metadata = metadata(sessionID),
+              metadata.sessionID == sessionID
+        else { return nil }
+        let directory = Self.comparableDirectory(metadata.workingDirectory)
+        let inDirectory = candidates.filter {
+            $0.workingDirectory.map(Self.comparableDirectory) == directory
+                && $0.processBoundSessionID == nil
+        }
+
+        let eligible = inDirectory.filter {
+            $0.launchSessionID == nil
+                && claimedSession(of: $0.surfaceID) == nil
+        }
+        guard eligible.count <= 1 else { return nil }
+        if let pane = eligible.first { return bind(sessionID, to: pane) }
+
+        guard opensSession else { return nil }
+        // Anything in `inDirectory` is held by a claim (necessarily another
+        // session's: this session's was handled above) or a stale resume
+        // argument, since the eligible set is empty.
+        guard inDirectory.count == 1, let pane = inDirectory.first else {
+            return nil
+        }
+        return bind(sessionID, to: pane)
+    }
+
+    private func claimedSession(of surfaceID: TerminalSurfaceID) -> String? {
+        claims.first { $0.value.surfaceID == surfaceID }?.key
+    }
+
+    private mutating func bind(
+        _ sessionID: String,
+        to pane: CodexPaneCandidate
+    ) -> TerminalSurfaceID {
+        claims = claims.filter {
+            $0.key != sessionID && $0.value.surfaceID != pane.surfaceID
+        }
+        claims[sessionID] = Claim(
+            surfaceID: pane.surfaceID,
+            processID: pane.processID
+        )
+        return pane.surfaceID
+    }
+
+    private static func comparableDirectory(_ url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
     }
 }
