@@ -1790,14 +1790,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         guard let native,
               let string = pasteboard(for: location).string(forType: .string)
         else { return false }
-        string.withCString { pointer in
-            ghostty_surface_complete_clipboard_request(
-                native,
-                pointer,
-                state,
-                false
-            )
-        }
+        completeClipboardRequest(native: native, state: state, value: string, approved: false)
         return true
     }
 
@@ -1805,9 +1798,8 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     /// libghostty's clipboard-paste-protection flagged the clipboard
     /// contents as unsafe and wants explicit user confirmation before the
     /// paste is completed. Only `GHOSTTY_CLIPBOARD_REQUEST_PASTE` is a
-    /// paste the user can approve; other request kinds (OSC 52 read/write)
-    /// are always completed without a prompt, matching the pre-existing
-    /// non-approved path.
+    /// paste the user can approve. Other request kinds are denied without
+    /// a prompt; a denial must not be reported as a successful empty read.
     nonisolated static func requiresPasteConfirmation(
         for request: ghostty_clipboard_request_e
     ) -> Bool {
@@ -1815,28 +1807,23 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     }
 
     func confirmClipboardRead(
-        _ string: String,
+        _ string: String?,
         state: UnsafeMutableRawPointer?,
         request: ghostty_clipboard_request_e
     ) {
         guard let native else { return }
 
-        guard Self.requiresPasteConfirmation(for: request) else {
-            completeClipboardRequest(
-                native: native,
-                state: state,
-                value: "",
-                approved: false
-            )
+        guard Self.requiresPasteConfirmation(for: request), let string,
+              presentPasteConfirmationAlert() else {
+            ghostty_surface_deny_clipboard_request(native, state)
             return
         }
 
-        let approved = presentPasteConfirmationAlert()
         completeClipboardRequest(
             native: native,
             state: state,
-            value: approved ? string : "",
-            approved: approved
+            value: string,
+            approved: true
         )
     }
 
@@ -1847,12 +1834,16 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         approved: Bool
     ) {
         value.withCString { pointer in
-            ghostty_surface_complete_clipboard_request(
-                native,
-                pointer,
-                state,
-                approved
-            )
+            "text/plain".withCString { mime in
+                var content = ghostty_clipboard_content_s(mime: mime, data: pointer, len: value.utf8.count)
+                withUnsafePointer(to: &content) { contents in
+                    var complete = ghostty_clipboard_complete_s()
+                    complete.contents = contents
+                    complete.contents_len = 1
+                    complete.confirmed = approved
+                    ghostty_surface_complete_clipboard_request(native, &complete, state)
+                }
+            }
         }
     }
 

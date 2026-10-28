@@ -128,7 +128,7 @@ grep -F 'cp -R "$GHOSTTY_RESOURCES/." "$APP/Contents/Resources/ghostty/"' \
     "$bundle_script" >/dev/null
 grep -F 'cp -R "$GHOSTTY_TERMINFO" "$APP/Contents/Resources/terminfo"' \
     "$bundle_script" >/dev/null
-grep -F 'macos-arm64/libghostty-internal-fat.a' \
+grep -F 'macos-arm64/libghostty-internal.a' \
     "$root/scripts/build-ghostty.sh" >/dev/null
 if grep -F -- 'verify_arch x86_64' \
     "$root/scripts/build-ghostty.sh" >/dev/null; then

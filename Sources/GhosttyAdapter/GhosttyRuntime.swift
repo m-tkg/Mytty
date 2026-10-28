@@ -40,12 +40,16 @@ public final class GhosttyRuntime {
         runtimeConfiguration.action_cb = { app, target, action in
             GhosttyRuntime.handleAction(app, target: target, action: action)
         }
-        runtimeConfiguration.read_clipboard_cb = { userdata, location, state in
-            GhosttyRuntime.readClipboard(
+        runtimeConfiguration.read_clipboard_cb = { userdata, location, state, mimes, count, list in
+            guard !list, count == 1, let mime = mimes?[0],
+                  String(cString: mime) == "text/plain" else {
+                return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED
+            }
+            return GhosttyRuntime.readClipboard(
                 userdata,
                 location: location,
                 state: state
-            )
+            ) ? GHOSTTY_CLIPBOARD_READ_STARTED : GHOSTTY_CLIPBOARD_READ_UNAVAILABLE
         }
         runtimeConfiguration.confirm_read_clipboard_cb = {
             userdata, string, state, request in
@@ -300,14 +304,27 @@ public final class GhosttyRuntime {
         }
     }
 
+    nonisolated static func confirmationText(
+        _ confirmation: ghostty_clipboard_confirm_s
+    ) -> String? {
+        guard confirmation.contents_len > 0, let contents = confirmation.contents else { return nil }
+        for content in UnsafeBufferPointer(start: contents, count: confirmation.contents_len) {
+            guard let mime = content.mime, String(cString: mime) == "text/plain" else { continue }
+            if content.len == 0 { return "" }
+            guard let data = content.data else { return nil }
+            return String(decoding: UnsafeRawBufferPointer(start: data, count: content.len), as: UTF8.self)
+        }
+        return nil
+    }
+
     nonisolated private static func confirmClipboardRead(
         _ userdata: UnsafeMutableRawPointer?,
-        string: UnsafePointer<CChar>?,
+        string: UnsafePointer<ghostty_clipboard_confirm_s>?,
         state: UnsafeMutableRawPointer?,
         request: ghostty_clipboard_request_e
     ) {
         guard let view = surfaceView(from: userdata) else { return }
-        let value = string.map(String.init(cString:)) ?? ""
+        let value = string.flatMap { confirmationText($0.pointee) }
         let stateAddress = state.map(UInt.init(bitPattern:))
         MainActor.assumeIsolated {
             view.confirmClipboardRead(

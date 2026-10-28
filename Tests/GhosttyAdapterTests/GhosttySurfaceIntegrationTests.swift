@@ -870,7 +870,7 @@ struct GhosttySurfaceIntegrationTests {
             promptLine = surface.screenVTText()
                 .replacingOccurrences(of: "\r\n", with: "\n")
                 .split(separator: "\n", omittingEmptySubsequences: false)
-                .last
+                .last(where: { !$0.isEmpty && $0 != "\u{1B}[0m" })
                 .map(String.init) ?? ""
             if promptLine.contains("aaa") { break }
             try await Task.sleep(for: .milliseconds(50))
@@ -881,7 +881,7 @@ struct GhosttySurfaceIntegrationTests {
         promptLine = surface.screenVTText()
             .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .last
+            .last(where: { !$0.isEmpty && $0 != "\u{1B}[0m" })
             .map(String.init) ?? ""
 
         #expect(surface.visibleText().hasSuffix("aaa"))

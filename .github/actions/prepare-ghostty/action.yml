@@ -42,7 +42,7 @@ runs:
     - name: Install Zig
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: brew install zig@0.15
+      run: brew install zig@0.17
 
     - name: Build libghostty
       if: steps.cache.outputs.cache-hit != 'true'
@@ -53,7 +53,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        LIBRARY="Vendor/ghostty/macos/GhosttyKit.xcframework/macos-arm64/libghostty-internal-fat.a"
+        LIBRARY="Vendor/ghostty/macos/GhosttyKit.xcframework/macos-arm64/libghostty-internal.a"
         test -f "$LIBRARY"
         lipo "$LIBRARY" -verify_arch arm64
         test -d Vendor/ghostty/zig-out/share/ghostty/themes

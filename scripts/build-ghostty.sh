@@ -17,8 +17,8 @@ find_zig() {
     fi
 
     for candidate in \
-        /opt/homebrew/opt/zig@0.15/bin/zig \
-        /usr/local/opt/zig@0.15/bin/zig \
+        /opt/homebrew/opt/zig@0.17/bin/zig \
+        /usr/local/opt/zig@0.17/bin/zig \
         "$(command -v zig 2>/dev/null || true)"
     do
         if [ -n "$candidate" ] && [ -x "$candidate" ]; then
@@ -35,7 +35,7 @@ find_zig() {
 zig=$(find_zig || true)
 if [ -z "$zig" ]; then
     printf 'error: Ghostty requires Zig %s\n' "$required_version" >&2
-    printf 'install it with: brew install zig@0.15\n' >&2
+    printf 'install it with: brew install zig@0.17 (or set ZIG to Zig %s)\n' "$required_version" >&2
     exit 1
 fi
 
@@ -68,7 +68,7 @@ simd=${MYTTY_GHOSTTY_SIMD:-false}
         -Demit-docs=false
 )
 
-library="$ghostty_dir/macos/GhosttyKit.xcframework/macos-arm64/libghostty-internal-fat.a"
+library="$ghostty_dir/macos/GhosttyKit.xcframework/macos-arm64/libghostty-internal.a"
 if [ ! -f "$library" ]; then
     printf 'error: GhosttyKit library was not produced\n' >&2
     exit 1
