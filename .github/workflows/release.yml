@@ -52,7 +52,7 @@ jobs:
       - name: Test
         if: steps.existing.outputs.exists == 'false'
         run: |
-          swift test
+          swift test --no-parallel
           Tests/ReleasePackagingTests.sh
 
       - name: Check signing and notarization secrets
