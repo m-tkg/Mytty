@@ -1,4 +1,5 @@
 import Foundation
+import GhosttyKit
 import Testing
 
 @testable import GhosttyAdapter
@@ -26,6 +27,33 @@ struct GhosttyRuntimeTests {
         runtime.updateConfiguration(updated)
 
         #expect(runtime.isRunning)
+    }
+
+    @Test("clipboard confirmation selects text by MIME and respects byte length")
+    func confirmationText() {
+        let bytes: [CChar] = [65, 0, 66, 67]
+        bytes.withUnsafeBufferPointer { buffer in
+            "text/plain".withCString { mime in
+                var content = ghostty_clipboard_content_s(mime: mime, data: buffer.baseAddress, len: 3)
+                withUnsafePointer(to: &content) { pointer in
+                    var confirm = ghostty_clipboard_confirm_s()
+                    confirm.contents = pointer
+                    confirm.contents_len = 0
+                    #expect(GhosttyRuntime.confirmationText(confirm) == nil)
+                    confirm.contents_len = 1
+                    #expect(GhosttyRuntime.confirmationText(confirm) == "A\0B")
+                }
+            }
+            "image/png".withCString { mime in
+                var content = ghostty_clipboard_content_s(mime: mime, data: buffer.baseAddress, len: 3)
+                withUnsafePointer(to: &content) { pointer in
+                    var confirm = ghostty_clipboard_confirm_s()
+                    confirm.contents = pointer
+                    confirm.contents_len = 1
+                    #expect(GhosttyRuntime.confirmationText(confirm) == nil)
+                }
+            }
+        }
     }
 
     private func temporaryConfiguration() throws -> URL {

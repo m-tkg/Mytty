@@ -1,8 +1,8 @@
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 72bbb57..1236374 100644
+index 9a12b9cad..f7478bf4b 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
-@@ -440,6 +440,16 @@ typedef struct {
+@@ -481,6 +481,16 @@ typedef struct {
    bool rectangle;
  } ghostty_selection_s;
  
@@ -19,7 +19,7 @@ index 72bbb57..1236374 100644
  typedef struct {
    const char* key;
    const char* value;
-@@ -475,6 +485,7 @@ typedef struct {
+@@ -516,6 +526,7 @@ typedef struct {
    ghostty_env_var_s* env_vars;
    size_t env_var_count;
    const char* initial_input;
@@ -27,7 +27,7 @@ index 72bbb57..1236374 100644
    bool wait_after_command;
    ghostty_surface_context_e context;
  } ghostty_surface_config_s;
-@@ -1143,6 +1154,33 @@ GHOSTTY_API void ghostty_surface_mouse_scroll(ghostty_surface_t,
+@@ -1219,6 +1230,33 @@ GHOSTTY_API void ghostty_surface_mouse_scroll(ghostty_surface_t,
                                                   ghostty_input_scroll_mods_t);
  GHOSTTY_API void ghostty_surface_mouse_pressure(ghostty_surface_t, uint32_t, double);
  GHOSTTY_API void ghostty_surface_ime_point(ghostty_surface_t, double*, double*, double*, double*);
@@ -61,7 +61,7 @@ index 72bbb57..1236374 100644
  GHOSTTY_API void ghostty_surface_request_close(ghostty_surface_t);
  GHOSTTY_API void ghostty_surface_split(ghostty_surface_t, ghostty_action_split_direction_e);
  GHOSTTY_API void ghostty_surface_split_focus(ghostty_surface_t,
-@@ -1161,6 +1199,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
+@@ -1239,6 +1277,9 @@ GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_
  GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
                                                ghostty_selection_s,
                                                ghostty_text_s*);
@@ -72,10 +72,10 @@ index 72bbb57..1236374 100644
  
  #ifdef __APPLE__
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 7310159..236ddde 100644
+index 697f0a786..f9c6fca59 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
-@@ -457,6 +457,11 @@ pub const Surface = struct {
+@@ -494,6 +494,11 @@ pub const Surface = struct {
          /// Input to send to the command after it is started.
          initial_input: ?[*:0]const u8 = null,
  
@@ -87,7 +87,7 @@ index 7310159..236ddde 100644
          /// Wait after the command exits
          wait_after_command: bool = false,
  
-@@ -555,13 +560,24 @@ pub const Surface = struct {
+@@ -592,13 +597,24 @@ pub const Surface = struct {
              const alloc = config.arenaAlloc();
  
              // We need to escape the string because the "raw" field
@@ -117,7 +117,7 @@ index 7310159..236ddde 100644
  
              config.input.list.clearRetainingCapacity();
              try config.input.list.append(
-@@ -570,6 +586,15 @@ pub const Surface = struct {
+@@ -607,6 +623,15 @@ pub const Surface = struct {
              );
          }
  
@@ -126,14 +126,14 @@ index 7310159..236ddde 100644
 +            const output = std.mem.sliceTo(c_output, 0);
 +            if (output.len > 0) {
 +                config.@"initial-output" =
-+                    try config.arenaAlloc().dupeZ(u8, output);
++                    try config.arenaAlloc().dupeSentinel(u8, output, 0);
 +            }
 +        }
 +
          // Wait after command
          if (opts.wait_after_command) {
              config.@"wait-after-command" = true;
-@@ -1387,6 +1412,13 @@ pub const CAPI = struct {
+@@ -1692,6 +1717,13 @@ pub const CAPI = struct {
          }
      };
  
@@ -147,7 +147,7 @@ index 7310159..236ddde 100644
      // Reference the conditional exports based on target platform
      // so they're included in the C API.
      comptime {
-@@ -1642,6 +1674,62 @@ pub const CAPI = struct {
+@@ -1941,6 +1973,62 @@ pub const CAPI = struct {
          return readTextLocked(surface, core_sel, result);
      }
  
@@ -158,15 +158,15 @@ index 7310159..236ddde 100644
 +        sel: Selection,
 +        result: *Text,
 +    ) bool {
-+        surface.core_surface.renderer_state.mutex.lock();
-+        defer surface.core_surface.renderer_state.mutex.unlock();
++        surface.core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer surface.core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const core_sel = sel.core(
 +            surface.core_surface.renderer_state.terminal.screens.active,
 +        ) orelse return false;
 +        const terminal_ptr = &surface.core_surface.io.terminal;
 +
-+        var buf: std.Io.Writer.Allocating = .init(global.alloc);
++        var buf: std.Io.Writer.Allocating = .init(global.alloc());
 +        defer buf.deinit();
 +        var formatter: terminal.formatter.TerminalFormatter = .init(
 +            terminal_ptr,
@@ -210,7 +210,7 @@ index 7310159..236ddde 100644
      fn readTextLocked(
          surface: *Surface,
          core_sel: terminal.Selection,
-@@ -1919,6 +2007,172 @@ pub const CAPI = struct {
+@@ -2214,6 +2302,172 @@ pub const CAPI = struct {
          height.* = pos.height;
      }
  
@@ -224,8 +224,8 @@ index 7310159..236ddde 100644
 +        y: *u32,
 +    ) void {
 +        const core_surface = &surface.core_surface;
-+        core_surface.renderer_state.mutex.lock();
-+        defer core_surface.renderer_state.mutex.unlock();
++        core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer core_surface.renderer_state.mutex.unlock(global.io());
 +        const cursor = core_surface.renderer_state.terminal.screens.active.cursor;
 +        x.* = @intCast(cursor.x);
 +        y.* = @intCast(cursor.y);
@@ -257,8 +257,8 @@ index 7310159..236ddde 100644
 +        };
 +
 +        const core_surface = &surface.core_surface;
-+        core_surface.renderer_state.mutex.lock();
-+        defer core_surface.renderer_state.mutex.unlock();
++        core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const t = core_surface.renderer_state.terminal;
 +        if (t.screens.active_key != .primary) return null;
@@ -287,8 +287,8 @@ index 7310159..236ddde 100644
 +        out: *BookmarkInfo,
 +    ) bool {
 +        const core_surface = &surface.core_surface;
-+        core_surface.renderer_state.mutex.lock();
-+        defer core_surface.renderer_state.mutex.unlock();
++        core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const t = core_surface.renderer_state.terminal;
 +        const primary = t.screens.get(.primary).?;
@@ -314,8 +314,8 @@ index 7310159..236ddde 100644
 +    ) void {
 +        {
 +            const core_surface = &surface.core_surface;
-+            core_surface.renderer_state.mutex.lock();
-+            defer core_surface.renderer_state.mutex.unlock();
++            core_surface.renderer_state.mutex.lockUncancelable(global.io());
++            defer core_surface.renderer_state.mutex.unlock(global.io());
 +
 +            const t = core_surface.renderer_state.terminal;
 +            if (t.screens.active_key != .primary) return;
@@ -338,8 +338,8 @@ index 7310159..236ddde 100644
 +        pin_ptr: *anyopaque,
 +        result: *Text,
 +    ) bool {
-+        surface.core_surface.renderer_state.mutex.lock();
-+        defer surface.core_surface.renderer_state.mutex.unlock();
++        surface.core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer surface.core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
 +        var start = pin.*;
@@ -359,8 +359,8 @@ index 7310159..236ddde 100644
 +    /// while a fullscreen TUI is running.
 +    export fn ghostty_surface_alt_screen_active(surface: *Surface) bool {
 +        const core_surface = &surface.core_surface;
-+        core_surface.renderer_state.mutex.lock();
-+        defer core_surface.renderer_state.mutex.unlock();
++        core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const t = core_surface.renderer_state.terminal;
 +        return t.screens.active_key != .primary;
@@ -372,8 +372,8 @@ index 7310159..236ddde 100644
 +        pin_ptr: *anyopaque,
 +    ) void {
 +        const core_surface = &surface.core_surface;
-+        core_surface.renderer_state.mutex.lock();
-+        defer core_surface.renderer_state.mutex.unlock();
++        core_surface.renderer_state.mutex.lockUncancelable(global.io());
++        defer core_surface.renderer_state.mutex.unlock(global.io());
 +
 +        const primary = core_surface.renderer_state.terminal.screens.get(.primary).?;
 +        const pin: *terminal.Pin = @ptrCast(@alignCast(pin_ptr));
@@ -384,10 +384,10 @@ index 7310159..236ddde 100644
      /// normal trigger process that a close surface input binding would.
      export fn ghostty_surface_request_close(ptr: *Surface) void {
 diff --git a/src/config/Config.zig b/src/config/Config.zig
-index d6a038d..f81d9ad 100644
+index 19667ab70..23676c1cc 100644
 --- a/src/config/Config.zig
 +++ b/src/config/Config.zig
-@@ -1348,6 +1348,13 @@ env: RepeatableStringMap = .{},
+@@ -1345,6 +1345,13 @@ env: RepeatableStringMap = .{},
  /// Available since: 1.2.0
  input: RepeatableReadableIO = .{},
  
@@ -402,10 +402,10 @@ index d6a038d..f81d9ad 100644
  /// terminal window closes when the running command (such as a shell) exits.
  /// With this true, the terminal window will stay open until any keypress is
 diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
-index 1b08c5e..21c9c56 100644
+index 49bd6e0cd..89ec23ba7 100644
 --- a/src/termio/Termio.zig
 +++ b/src/termio/Termio.zig
-@@ -81,12 +81,18 @@ const ThreadEnterState = struct {
+@@ -83,12 +83,18 @@ const ThreadEnterState = struct {
      /// if it fails, because Exec only starts once.
      input: configpkg.io.RepeatableReadableIO,
  
@@ -426,7 +426,7 @@ index 1b08c5e..21c9c56 100644
  
          // Create our arena allocator
          var arena = ArenaAllocator.init(alloc);
-@@ -99,10 +105,17 @@ const ThreadEnterState = struct {
+@@ -101,10 +107,17 @@ const ThreadEnterState = struct {
          // Copy the input from the config
          const input = try config.input.cloneParsed(arena_alloc);
  
@@ -444,7 +444,7 @@ index 1b08c5e..21c9c56 100644
          };
          return ptr;
      }
-@@ -352,6 +365,13 @@ pub fn threadEnter(
+@@ -395,6 +408,13 @@ pub fn threadEnter(
          .backend = undefined, // Backend must replace this on threadEnter
      };
  
