@@ -210,80 +210,29 @@ public struct SQLiteAgentEventRepository: Sendable {
     private func withDatabase<T>(
         _ body: (OpaquePointer) throws -> T
     ) throws -> T {
-        try FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        try withConnection { database in
+            try execute(
+                """
+                CREATE TABLE IF NOT EXISTS agent_event (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT NOT NULL UNIQUE,
+                    payload BLOB NOT NULL
+                ) STRICT
+                """,
+                in: database
+            )
+            try execute(
+                """
+                CREATE TABLE IF NOT EXISTS attention_acknowledgement (
+                    event_id TEXT PRIMARY KEY,
+                    acknowledged_at REAL NOT NULL
+                ) STRICT
+                """,
+                in: database
+            )
 
-        var database: OpaquePointer?
-        let flags = SQLITE_OPEN_CREATE
-            | SQLITE_OPEN_READWRITE
-            | SQLITE_OPEN_FULLMUTEX
-        let openResult = sqlite3_open_v2(
-            databaseURL.path,
-            &database,
-            flags,
-            nil
-        )
-        guard openResult == SQLITE_OK, let database else {
-            let message = database.map(databaseMessage)
-                ?? "Unable to open database"
-            if let database {
-                sqlite3_close(database)
-            }
-            throw AgentEventRepositoryError.database(message)
+            return try body(database)
         }
-        defer { sqlite3_close(database) }
-
-        sqlite3_busy_timeout(database, 1_000)
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS agent_event (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id TEXT NOT NULL UNIQUE,
-                payload BLOB NOT NULL
-            ) STRICT
-            """,
-            in: database
-        )
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS attention_acknowledgement (
-                event_id TEXT PRIMARY KEY,
-                acknowledged_at REAL NOT NULL
-            ) STRICT
-            """,
-            in: database
-        )
-
-        return try body(database)
-    }
-
-    private func execute(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws {
-        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
-            throw databaseError(database)
-        }
-    }
-
-    private func prepare(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws -> OpaquePointer {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            sql,
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK,
-        let statement else {
-            throw databaseError(database)
-        }
-        return statement
     }
 
     private func bind(
@@ -340,14 +289,10 @@ public struct SQLiteAgentEventRepository: Sendable {
     private var transientDestructor: sqlite3_destructor_type {
         unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     }
+}
 
-    private func databaseError(
-        _ database: OpaquePointer
-    ) -> AgentEventRepositoryError {
-        .database(databaseMessage(database))
-    }
-
-    private func databaseMessage(_ database: OpaquePointer) -> String {
-        String(cString: sqlite3_errmsg(database))
+extension SQLiteAgentEventRepository: SQLiteRepository {
+    static func makeDatabaseError(_ message: String) -> AgentEventRepositoryError {
+        .database(message)
     }
 }
