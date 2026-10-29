@@ -66,6 +66,27 @@ struct TabNameSuggestionTests {
         )
     }
 
+    @Test("latest request is explicit and terminal noise is limited")
+    func conversationFocus() {
+        let prompt = TabNameSuggestionPrompt.prompt(
+            buffer: "OLD BUILD NOISE" + String(repeating: "x", count: 1500) + "recent context",
+            userPrompts: ["Improve automatic tab naming", "fix it"]
+        )
+        #expect(prompt.contains("Latest user request:\n\nfix it"))
+        #expect(prompt.contains("Improve automatic tab naming"))
+        #expect(!prompt.contains("OLD BUILD NOISE"))
+        #expect(prompt.contains("recent context"))
+    }
+
+    @Test("blank requests do not hide the latest meaningful request")
+    func blankRequests() {
+        let prompt = TabNameSuggestionPrompt.prompt(
+            buffer: "output",
+            userPrompts: ["Fix tab naming", "  \n"]
+        )
+        #expect(prompt.contains("Latest user request:\n\nFix tab naming"))
+    }
+
     @Test("instructions pin the answer language")
     func instructionsLanguage() {
         #expect(
