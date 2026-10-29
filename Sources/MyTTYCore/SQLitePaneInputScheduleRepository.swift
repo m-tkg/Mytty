@@ -176,72 +176,21 @@ public struct SQLitePaneInputScheduleRepository: Sendable {
     private func withDatabase<T>(
         _ body: (OpaquePointer) throws -> T
     ) throws -> T {
-        try FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        var database: OpaquePointer?
-        let flags = SQLITE_OPEN_CREATE
-            | SQLITE_OPEN_READWRITE
-            | SQLITE_OPEN_FULLMUTEX
-        let openResult = sqlite3_open_v2(
-            databaseURL.path,
-            &database,
-            flags,
-            nil
-        )
-        guard openResult == SQLITE_OK, let database else {
-            let message = database.map(databaseMessage)
-                ?? "Unable to open database"
-            if let database {
-                sqlite3_close(database)
-            }
-            throw PaneInputScheduleRepositoryError.database(message)
+        try withConnection { database in
+            try execute(
+                """
+                CREATE TABLE IF NOT EXISTS pane_input_schedule (
+                    schedule_id TEXT PRIMARY KEY,
+                    surface_id TEXT NOT NULL,
+                    fire_at REAL NOT NULL,
+                    input_text TEXT NOT NULL,
+                    append_newline INTEGER NOT NULL CHECK(append_newline IN (0, 1))
+                ) STRICT
+                """,
+                in: database
+            )
+            return try body(database)
         }
-        defer { sqlite3_close(database) }
-
-        sqlite3_busy_timeout(database, 1_000)
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS pane_input_schedule (
-                schedule_id TEXT PRIMARY KEY,
-                surface_id TEXT NOT NULL,
-                fire_at REAL NOT NULL,
-                input_text TEXT NOT NULL,
-                append_newline INTEGER NOT NULL CHECK(append_newline IN (0, 1))
-            ) STRICT
-            """,
-            in: database
-        )
-        return try body(database)
-    }
-
-    private func execute(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws {
-        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
-            throw databaseError(database)
-        }
-    }
-
-    private func prepare(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws -> OpaquePointer {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            sql,
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK,
-        let statement else {
-            throw databaseError(database)
-        }
-        return statement
     }
 
     private func bind(
@@ -256,14 +205,10 @@ public struct SQLitePaneInputScheduleRepository: Sendable {
         }
         guard result == SQLITE_OK else { throw databaseError(database) }
     }
+}
 
-    private func databaseError(
-        _ database: OpaquePointer
-    ) -> PaneInputScheduleRepositoryError {
-        .database(databaseMessage(database))
-    }
-
-    private func databaseMessage(_ database: OpaquePointer) -> String {
-        String(cString: sqlite3_errmsg(database))
+extension SQLitePaneInputScheduleRepository: SQLiteRepository {
+    static func makeDatabaseError(_ message: String) -> PaneInputScheduleRepositoryError {
+        .database(message)
     }
 }

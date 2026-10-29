@@ -137,6 +137,26 @@ struct PaneInputDeliveryQueueTests {
         )
     }
 
+    @Test("plain inputs in the middle do not stall queued deliveries")
+    @MainActor
+    func plainInputsDrainThroughToNextEnter() async throws {
+        let log = DeliveryLog()
+        let pane = TerminalSurfaceID()
+        let surface = FakeSurface(id: "p", log: log)
+        let queue = PaneInputDeliveryQueue<FakeSurface>(
+            enterDelay: .milliseconds(20),
+            target: { _ in surface }
+        )
+        queue.deliver(paneID: pane, text: "A", pressEnter: true)
+        queue.deliver(paneID: pane, text: "B", pressEnter: false)
+        queue.deliver(paneID: pane, text: "C", pressEnter: false)
+        queue.deliver(paneID: pane, text: "D", pressEnter: true)
+        try await waitFor(log, count: 6)
+        #expect(log.entries == [
+            "p:text:A", "p:enter", "p:text:B", "p:text:C", "p:text:D", "p:enter",
+        ])
+    }
+
     @Test("independent panes don't block each other")
     @MainActor
     func independentPanesAreNotSerialized() async throws {

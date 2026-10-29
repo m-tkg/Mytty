@@ -3160,10 +3160,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
-    /// Tabs currently awaiting an on-device auto-name suggestion, so a
-    /// second completed turn for the same tab (or overlapping polls) never
-    /// starts a second in-flight suggestion task.
-    private var autoNamingTabs: Set<TabID> = []
+    /// Only the newest completed turn may publish its suggestion.
+    /// Older requests may finish later, but cannot overwrite newer names.
+    private var autoNamingTabs: [TabID: UUID] = [:]
 
     /// Renames the tab hosting `surfaceID` from its agent conversation, the
     /// same on-device suggestion the manual "Auto-Name" button uses --
@@ -3186,7 +3185,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             provider: provider,
             pinnedTitle: tab.pinnedTitle,
             preferenceEnabled: applicationPreferences.autoNameAgentTabs
-        ), !autoNamingTabs.contains(tab.id) else { return }
+        ) else { return }
 
         let tabID = tab.id
         let language = applicationPreferences.language.resolved()
@@ -3196,16 +3195,31 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         )
         let buffer = surface.screenText()
 
-        autoNamingTabs.insert(tabID)
+        let requestID = UUID()
+        autoNamingTabs[tabID] = requestID
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.autoNamingTabs.remove(tabID) }
+            defer {
+                if self.autoNamingTabs[tabID] == requestID {
+                    self.autoNamingTabs[tabID] = nil
+                }
+            }
             let name = await TabNameSuggester.suggest(
                 buffer: buffer,
                 userPrompts: loadUserPrompts?() ?? [],
                 language: language
             )
-            guard let name else { return }
+            guard let name,
+                  self.autoNamingTabs[tabID] == requestID,
+                  let currentTab = self.session.tabs.first(where: { $0.id == tabID }),
+                  currentTab.surfaceIDs.contains(surfaceID),
+                  AutoTabNaming.shouldName(
+                      phase: turn.phase,
+                      provider: provider,
+                      pinnedTitle: currentTab.pinnedTitle,
+                      preferenceEnabled: self.applicationPreferences.autoNameAgentTabs
+                  )
+            else { return }
             self.session.setAutoTitle(tab: tabID, title: name)
             self.sessionDidChange()
             self.refreshSidebarRows()

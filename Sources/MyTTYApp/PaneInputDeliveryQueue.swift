@@ -121,28 +121,30 @@ final class PaneInputDeliveryQueue<Target: RemoteInputDeliverable> {
 
     private func drain(paneID: TerminalSurfaceID) {
         pendingEnterPanes.remove(paneID)
-        guard var queue = queuedByPane[paneID], !queue.isEmpty else {
-            queuedByPane.removeValue(forKey: paneID)
-            return
+        while !pendingEnterPanes.contains(paneID) {
+            guard var queue = queuedByPane[paneID], !queue.isEmpty else {
+                queuedByPane.removeValue(forKey: paneID)
+                return
+            }
+            let next = queue.removeFirst()
+            if queue.isEmpty {
+                queuedByPane.removeValue(forKey: paneID)
+            } else {
+                queuedByPane[paneID] = queue
+            }
+            guard let target = target(paneID) else {
+                // Pane closed while input was queued behind the pending
+                // Enter — drop the rest rather than delivering into thin air.
+                queuedByPane.removeValue(forKey: paneID)
+                return
+            }
+            send(
+                to: target,
+                paneID: paneID,
+                text: next.text,
+                pressEnter: next.pressEnter,
+                paste: next.paste
+            )
         }
-        let next = queue.removeFirst()
-        if queue.isEmpty {
-            queuedByPane.removeValue(forKey: paneID)
-        } else {
-            queuedByPane[paneID] = queue
-        }
-        guard let target = target(paneID) else {
-            // Pane closed while input was queued behind the pending
-            // Enter — drop the rest rather than delivering into thin air.
-            queuedByPane.removeValue(forKey: paneID)
-            return
-        }
-        send(
-            to: target,
-            paneID: paneID,
-            text: next.text,
-            pressEnter: next.pressEnter,
-            paste: next.paste
-        )
     }
 }

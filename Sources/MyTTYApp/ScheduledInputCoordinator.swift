@@ -30,6 +30,7 @@ import MyTTYCore
 /// same shape as the other coordinators' `onXChanged` callbacks.
 @MainActor
 final class ScheduledInputCoordinator {
+    private let inputQueue: PaneInputDeliveryQueue<GhosttySurfaceView>
     private let scheduler: PaneInputScheduler
     private var schedulesObserver: AnyCancellable?
     private var localizer: MyTTYLocalizer
@@ -47,6 +48,10 @@ final class ScheduledInputCoordinator {
         onSchedulesChanged: @escaping ([PaneInputSchedule]) -> Void,
         window: @escaping () -> NSWindow?
     ) {
+        self.inputQueue = PaneInputDeliveryQueue(
+            enterDelay: .milliseconds(100),
+            target: surface
+        )
         self.scheduler = scheduler
         self.localizer = localizer
         self.surface = surface
@@ -110,18 +115,11 @@ final class ScheduledInputCoordinator {
 
     @discardableResult
     func deliverScheduledInput(_ schedule: PaneInputSchedule) -> Bool {
-        guard let surfaceView = surface(schedule.surfaceID) else { return false }
-        surfaceView.sendText(schedule.text)
-        if schedule.appendNewline {
-            let surfaceID = schedule.surfaceID
-            let surfaceLookup = surface
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + Self.enterDelay
-            ) {
-                surfaceLookup(surfaceID)?.sendEnter()
-            }
-        }
-        return true
+        inputQueue.deliver(
+            paneID: schedule.surfaceID,
+            text: schedule.text,
+            pressEnter: schedule.appendNewline
+        )
     }
 
     func removeScheduledInputs(for surfaceIDs: [TerminalSurfaceID]) {

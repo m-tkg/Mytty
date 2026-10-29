@@ -103,79 +103,25 @@ public struct SQLiteSessionRepository: Sendable {
     private func withDatabase<T>(
         _ body: (OpaquePointer) throws -> T
     ) throws -> T {
-        try FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        try withConnection { database in
+            try execute(
+                """
+                CREATE TABLE IF NOT EXISTS session_snapshot (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    schema_version INTEGER NOT NULL,
+                    payload BLOB NOT NULL
+                ) STRICT
+                """,
+                in: database
+            )
 
-        var database: OpaquePointer?
-        let flags = SQLITE_OPEN_CREATE
-            | SQLITE_OPEN_READWRITE
-            | SQLITE_OPEN_FULLMUTEX
-        let openResult = sqlite3_open_v2(
-            databaseURL.path,
-            &database,
-            flags,
-            nil
-        )
-        guard openResult == SQLITE_OK, let database else {
-            let message = database.map(databaseMessage) ?? "Unable to open database"
-            if let database {
-                sqlite3_close(database)
-            }
-            throw SessionRepositoryError.database(message)
-        }
-        defer { sqlite3_close(database) }
-
-        sqlite3_busy_timeout(database, 1_000)
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS session_snapshot (
-                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-                schema_version INTEGER NOT NULL,
-                payload BLOB NOT NULL
-            ) STRICT
-            """,
-            in: database
-        )
-
-        return try body(database)
-    }
-
-    private func execute(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws {
-        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
-            throw databaseError(database)
+            return try body(database)
         }
     }
+}
 
-    private func prepare(
-        _ sql: String,
-        in database: OpaquePointer
-    ) throws -> OpaquePointer {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(
-            database,
-            sql,
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK,
-        let statement else {
-            throw databaseError(database)
-        }
-        return statement
-    }
-
-    private func databaseError(
-        _ database: OpaquePointer
-    ) -> SessionRepositoryError {
-        .database(databaseMessage(database))
-    }
-
-    private func databaseMessage(_ database: OpaquePointer) -> String {
-        String(cString: sqlite3_errmsg(database))
+extension SQLiteSessionRepository: SQLiteRepository {
+    static func makeDatabaseError(_ message: String) -> SessionRepositoryError {
+        .database(message)
     }
 }
