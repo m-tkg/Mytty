@@ -423,4 +423,40 @@ struct ControlProtocolTests {
             )
         }
     }
+
+
+    @Test("round-trips spawnAgentInNewTab and renameTab")
+    func newTabAndRenameRoundTrip() throws {
+        let requests: [ControlRequest] = [
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1",
+                provider: .codex,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "investigate",
+                label: nil,
+                worktreeBranch: nil,
+                tabTitle: nil
+            ),
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1",
+                provider: .claude,
+                cwd: "/tmp/repo",
+                access: .inherit,
+                model: "opus",
+                task: "investigate",
+                label: "a",
+                worktreeBranch: "feat/x",
+                tabTitle: "worker A"
+            ),
+            .renameTab(paneID: "pane-1", title: "Build"),
+            .renameTab(paneID: "pane-1", title: ""),
+        ]
+        for request in requests {
+            let data = try ControlMessageCodec.encode(request)
+            let decoded: ControlRequest = try ControlMessageCodec.decode(data)
+            #expect(decoded == request)
+        }
+    }
 }

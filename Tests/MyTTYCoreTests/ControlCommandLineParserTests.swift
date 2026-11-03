@@ -1083,4 +1083,156 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("integration-declined"))
         #expect(guide.contains("ONLY A HUMAN"))
     }
+
+
+    // MARK: - agent spawn --new-tab / rename-tab
+
+    @Test("agent spawn --new-tab builds a spawnAgentInNewTab request")
+    func agentSpawnNewTab() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "claude",
+                "--new-tab",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        #expect(request == .spawnAgentInNewTab(
+            anchorPaneID: "anchor-1",
+            provider: .claude,
+            cwd: nil,
+            access: nil,
+            model: nil,
+            task: "investigate",
+            label: nil,
+            worktreeBranch: nil,
+            tabTitle: nil
+        ))
+    }
+
+    @Test("agent spawn --new-tab --tab-title carries the tab title")
+    func agentSpawnNewTabTitle() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn",
+                "--provider", "codex",
+                "--new-tab", "--tab-title", "worker A",
+                "--access", "review",
+                "--task", "investigate",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        #expect(request == .spawnAgentInNewTab(
+            anchorPaneID: "anchor-1",
+            provider: .codex,
+            cwd: nil,
+            access: .review,
+            model: nil,
+            task: "investigate",
+            label: nil,
+            worktreeBranch: nil,
+            tabTitle: "worker A"
+        ))
+    }
+
+    @Test("agent spawn rejects --new-tab together with --direction")
+    func agentSpawnNewTabRejectsDirection() {
+        for direction in ["auto", "right"] {
+            #expect(throws: ControlCommandLineError.self) {
+                _ = try ControlCommandLineParser.parse(
+                    [
+                        "agent", "spawn",
+                        "--provider", "codex",
+                        "--new-tab", "--direction", direction,
+                        "--task", "x",
+                    ],
+                    environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+                )
+            }
+        }
+    }
+
+    @Test("agent spawn rejects --tab-title without --new-tab or with an empty value")
+    func agentSpawnTabTitleValidation() {
+        #expect(throws: ControlCommandLineError.self) {
+            _ = try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--tab-title", "x", "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            _ = try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", "codex",
+                    "--new-tab", "--tab-title", "", "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+        }
+    }
+
+    @Test("agent spawn --new-tab with --task-file keeps new-tab through the pending request")
+    func agentSpawnNewTabTaskFile() throws {
+        let invocation = try ControlCommandLineParser.parseInvocation(
+            [
+                "agent", "spawn", "--provider", "codex",
+                "--new-tab", "--tab-title", "T",
+                "--task-file", "/tmp/task.txt",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .agentSpawnPendingTaskFile(pending) = invocation else {
+            Issue.record("expected pending task file, got \(invocation)")
+            return
+        }
+        let request = try ControlCommandLineParser.spawnAgentRequest(
+            from: pending,
+            task: "do it"
+        )
+        #expect(request == .spawnAgentInNewTab(
+            anchorPaneID: "anchor-1",
+            provider: .codex,
+            cwd: nil,
+            access: nil,
+            model: nil,
+            task: "do it",
+            label: nil,
+            worktreeBranch: nil,
+            tabTitle: "T"
+        ))
+    }
+
+    @Test("rename-tab parses a pane ID and a name, and an empty name clears")
+    func renameTabParsing() throws {
+        #expect(
+            try ControlCommandLineParser.parse(["rename-tab", "pane-1", "Build"])
+                == .renameTab(paneID: "pane-1", title: "Build")
+        )
+        #expect(
+            try ControlCommandLineParser.parse(["rename-tab", "pane-1", ""])
+                == .renameTab(paneID: "pane-1", title: "")
+        )
+        #expect(throws: ControlCommandLineError.self) {
+            _ = try ControlCommandLineParser.parse(["rename-tab", "pane-1"])
+        }
+        #expect(throws: ControlCommandLineError.self) {
+            _ = try ControlCommandLineParser.parse(
+                ["rename-tab", "pane-1", "a", "b"]
+            )
+        }
+    }
+
+    @Test("usage and guide document --new-tab and rename-tab")
+    func newTabAndRenameTabDocumentation() {
+        #expect(ControlCommandLineParser.usage.contains("rename-tab"))
+        #expect(ControlCommandLineParser.usage.contains("--new-tab"))
+        let guide = ControlCommandLineParser.paneTeamGuide
+        #expect(guide.contains("--new-tab"))
+        #expect(guide.contains("--tab-title"))
+        #expect(guide.contains("rename-tab"))
+    }
 }

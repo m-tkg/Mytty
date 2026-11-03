@@ -767,6 +767,80 @@ struct ControlServerTests {
         #expect(agentDelegate.lastSpawnWorktreeBranch == "feat/worker-a")
     }
 
+    @Test("spawnAgentInNewTab forwards its fields and failures")
+    func agentSpawnInNewTabForwards() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        let job = Self.makeJob(state: .launching)
+        agentDelegate.spawnResult = .success(job)
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        let response = try await perform(
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1",
+                provider: .codex,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "investigate",
+                label: nil,
+                worktreeBranch: nil,
+                tabTitle: "worker A"
+            ),
+            to: socketURL
+        )
+        #expect(response == .agentJob(job))
+        #expect(agentDelegate.lastNewTabSpawnAnchor == "pane-1")
+        #expect(agentDelegate.lastNewTabSpawnTitle == "worker A")
+        #expect(agentDelegate.lastSpawnTask == "investigate")
+
+        agentDelegate.spawnResult = .failure(AgentControlFailure("invalid-tab-title"))
+        let failure = try await perform(
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1",
+                provider: .codex,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "investigate",
+                label: nil,
+                worktreeBranch: nil,
+                tabTitle: nil
+            ),
+            to: socketURL
+        )
+        #expect(failure == .failure(code: "invalid-tab-title"))
+    }
+
+    @Test("renameTab forwards pane and title, and surfaces failure codes")
+    func renameTabForwards() async throws {
+        let delegate = StubControlDelegate()
+        let (server, socketURL) = try await makeServer(delegate: delegate)
+        defer { server.stop() }
+
+        delegate.renameResult = .success(())
+        let ok = try await perform(
+            .renameTab(paneID: "pane-1", title: "Build"),
+            to: socketURL
+        )
+        #expect(ok == .ok)
+        #expect(delegate.lastRenamePaneID == "pane-1")
+        #expect(delegate.lastRenameTitle == "Build")
+
+        for code in ["pane-not-found", "remote-pane", "invalid-title"] {
+            delegate.renameResult = .failure(AgentControlFailure(code))
+            let response = try await perform(
+                .renameTab(paneID: "pane-1", title: "x"),
+                to: socketURL
+            )
+            #expect(response == .failure(code: code))
+        }
+    }
+
     @Test("agent wait resolves once running/attention/completed is reached")
     func agentWaitResolvesOnEachCondition() async throws {
         let delegate = StubControlDelegate()
@@ -1201,6 +1275,20 @@ private final class StubControlDelegate: ControlServerDelegate {
     var lastSplitCommand: String?
     var sentText: String?
     var sentPressEnter: Bool?
+    var renameResult: Result<Void, AgentControlFailure> =
+        .failure(AgentControlFailure("pane-not-found"))
+    var lastRenamePaneID: String?
+    var lastRenameTitle: String?
+
+    func controlServer(
+        _ server: ControlServer,
+        renameTabContainingPaneID paneID: String,
+        title: String
+    ) -> Result<Void, AgentControlFailure> {
+        lastRenamePaneID = paneID
+        lastRenameTitle = title
+        return renameResult
+    }
 
     func controlServerListPanes(_ server: ControlServer) -> [ControlPaneInfo] {
         panes
@@ -1380,6 +1468,8 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
     var lastSpawnLabel: String?
     var lastSpawnModel: String?
     var lastSpawnWorktreeBranch: String?
+    var lastNewTabSpawnAnchor: String?
+    var lastNewTabSpawnTitle: String?
     var lastSendText: String?
     var lastSendPressEnter: Bool?
 
@@ -1399,6 +1489,24 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         lastSpawnLabel = label
         lastSpawnModel = model
         lastSpawnWorktreeBranch = worktreeBranch
+        return spawnResult
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentInNewTabAnchorPaneID anchorPaneID: String,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?,
+        tabTitle: String?
+    ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        lastNewTabSpawnAnchor = anchorPaneID
+        lastNewTabSpawnTitle = tabTitle
+        lastSpawnTask = task
         return spawnResult
     }
 
