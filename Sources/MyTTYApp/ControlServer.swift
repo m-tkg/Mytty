@@ -101,6 +101,16 @@ protocol ControlServerDelegate: AnyObject {
         parkPaneID paneID: String
     ) -> String?
 
+    /// `rename-tab` — sets (or, for an empty `title`, clears) the manual
+    /// name of the tab containing `paneID`. Failures: `pane-not-found`,
+    /// `remote-pane`, `invalid-title`. The default implementation exists
+    /// so test stubs written before this request keep compiling.
+    func controlServer(
+        _ server: ControlServer,
+        renameTabContainingPaneID paneID: String,
+        title: String
+    ) -> Result<Void, AgentControlFailure>
+
     /// Current status of every provider's hook integration, for
     /// `integration list` and as the success payload of enable/repair.
     func controlServerIntegrationStatuses(
@@ -162,6 +172,23 @@ protocol ControlServerAgentDelegate: AnyObject {
         task: String,
         label: String?,
         worktreeBranch: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure>
+
+    /// `agent spawn --new-tab` — the same job creation as the split-based
+    /// spawn above, but the worker gets a tab of its own. See
+    /// `ControlRequest.spawnAgentInNewTab`. The default implementation
+    /// exists so test stubs written before this request keep compiling.
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentInNewTabAnchorPaneID anchorPaneID: String,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?,
+        tabTitle: String?
     ) async -> Result<AgentJobSnapshot, AgentControlFailure>
 
     /// Re-reads the job's tracked state against a fresh `AttentionCenter`
@@ -383,6 +410,18 @@ final class ControlServer {
             }
             return .ok
 
+        case let .renameTab(paneID, title):
+            switch delegate.controlServer(
+                self,
+                renameTabContainingPaneID: paneID,
+                title: title
+            ) {
+            case .success:
+                return .ok
+            case let .failure(failure):
+                return .failure(code: failure.code)
+            }
+
         case let .setPaneStatus(paneID, status):
             if let failureCode = delegate.controlServer(
                 self,
@@ -421,8 +460,8 @@ final class ControlServer {
                 )
             ) { .integrationStatuses($0) }
 
-        case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
-             .closeAgent, .parkAgent:
+        case .spawnAgent, .spawnAgentInNewTab, .waitAgent, .agentResult,
+             .sendAgent, .focusAgent, .closeAgent, .parkAgent:
             // Routed to `processAgent` before this switch is reached — see
             // `isAgentRequest`. Kept here only so the switch stays
             // exhaustive against future `ControlRequest` cases.
@@ -432,8 +471,8 @@ final class ControlServer {
 
     private func isAgentRequest(_ request: ControlRequest) -> Bool {
         switch request {
-        case .spawnAgent, .waitAgent, .agentResult, .sendAgent, .focusAgent,
-             .closeAgent, .parkAgent:
+        case .spawnAgent, .spawnAgentInNewTab, .waitAgent, .agentResult,
+             .sendAgent, .focusAgent, .closeAgent, .parkAgent:
             true
         default:
             false
@@ -461,6 +500,25 @@ final class ControlServer {
                     task: task,
                     label: label,
                     worktreeBranch: worktreeBranch
+                )
+            ) { .agentJob($0) }
+
+        case let .spawnAgentInNewTab(
+            anchorPaneID, provider, cwd, access, model, task, label,
+            worktreeBranch, tabTitle
+        ):
+            return Self.encodeAgentResult(
+                await delegate.controlServer(
+                    self,
+                    spawnAgentInNewTabAnchorPaneID: anchorPaneID,
+                    provider: provider,
+                    cwd: cwd,
+                    access: access,
+                    model: model,
+                    task: task,
+                    label: label,
+                    worktreeBranch: worktreeBranch,
+                    tabTitle: tabTitle
                 )
             ) { .agentJob($0) }
 
@@ -657,5 +715,32 @@ final class ControlServer {
         var data = (try? ControlMessageCodec.encode(response)) ?? Data()
         data.append(0x0A)
         return data
+    }
+}
+
+extension ControlServerDelegate {
+    func controlServer(
+        _ server: ControlServer,
+        renameTabContainingPaneID paneID: String,
+        title: String
+    ) -> Result<Void, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
+    }
+}
+
+extension ControlServerAgentDelegate {
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentInNewTabAnchorPaneID anchorPaneID: String,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?,
+        tabTitle: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
+        .failure(AgentControlFailure("not-implemented"))
     }
 }

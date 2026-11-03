@@ -170,11 +170,76 @@ final class AgentJobCoordinator {
     }
 }
 
+/// Where `agent spawn` puts the worker: a split of the anchor's tab (the
+/// original behavior) or a tab of its own (`--new-tab`).
+private enum AgentSpawnPlacement {
+    case split(ControlSplitDirection)
+    case newTab(title: String?)
+}
+
 extension AgentJobCoordinator: ControlServerAgentDelegate {
     func controlServer(
         _ server: ControlServer,
         spawnAgentAnchorPaneID anchorPaneID: String,
         direction: ControlSplitDirection,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
+        await spawnAgent(
+            anchorPaneID: anchorPaneID,
+            placement: .split(direction),
+            provider: provider,
+            cwd: cwd,
+            access: access,
+            model: model,
+            task: task,
+            label: label,
+            worktreeBranch: worktreeBranch
+        )
+    }
+
+    func controlServer(
+        _ server: ControlServer,
+        spawnAgentInNewTabAnchorPaneID anchorPaneID: String,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?,
+        tabTitle: String?
+    ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
+        if let tabTitle,
+           !ControlTabTitleValidation.isValidForSpawn(tabTitle)
+        {
+            return .failure(AgentControlFailure("invalid-tab-title"))
+        }
+        return await spawnAgent(
+            anchorPaneID: anchorPaneID,
+            placement: .newTab(title: tabTitle),
+            provider: provider,
+            cwd: cwd,
+            access: access,
+            model: model,
+            task: task,
+            label: label,
+            worktreeBranch: worktreeBranch
+        )
+    }
+
+    /// Shared body of both spawn requests. Everything that depends on the
+    /// anchor (working directory, access/inherit resolution) is resolved
+    /// from the anchor pane in both placements -- a new tab never becomes
+    /// the source of inheritance.
+    private func spawnAgent(
+        anchorPaneID: String,
+        placement: AgentSpawnPlacement,
         provider: AgentWorkerProvider,
         cwd: String?,
         access: AgentAccessPolicy?,
@@ -278,11 +343,6 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             }
         }
 
-        let splitTarget = BalancedSplitResolution.resolve(
-            direction: direction,
-            anchorPaneID: anchorSurfaceID,
-            controller: controller
-        )
         let initialInput = AgentLaunchPlan.initialInput(
             provider: provider,
             access: resolvedAccess,
@@ -291,13 +351,32 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             task: task
         )
 
-        guard let newPaneID = controller.splitPane(
-            splitTarget.paneID,
-            direction: splitTarget.direction,
-            workingDirectory: resolvedWorkingDirectory,
-            initialInput: initialInput,
-            orchestrated: true
-        ) else {
+        let newPaneID: TerminalSurfaceID?
+        switch placement {
+        case let .split(direction):
+            let splitTarget = BalancedSplitResolution.resolve(
+                direction: direction,
+                anchorPaneID: anchorSurfaceID,
+                controller: controller
+            )
+            newPaneID = controller.splitPane(
+                splitTarget.paneID,
+                direction: splitTarget.direction,
+                workingDirectory: resolvedWorkingDirectory,
+                initialInput: initialInput,
+                orchestrated: true
+            )
+        case let .newTab(title):
+            // Same window as the anchor (this controller owns it); the
+            // worker is the tab's only pane.
+            newPaneID = controller.newTab(
+                workingDirectory: resolvedWorkingDirectory,
+                initialInput: initialInput,
+                orchestrated: true,
+                tabTitle: title
+            )
+        }
+        guard let newPaneID else {
             return .failure(AgentControlFailure("spawn-failed"))
         }
 

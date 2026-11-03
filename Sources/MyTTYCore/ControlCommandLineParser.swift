@@ -17,6 +17,7 @@ public enum ControlCommandLineParser {
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>] [--worktree <branch>]
+                  [--new-tab [--tab-title <text>]]   (instead of --direction)
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
       agent send <job-id> <text> [--enter]
@@ -41,6 +42,7 @@ public enum ControlCommandLineParser {
       close-pane <pane-id>
       focus <pane-id>
       park <pane-id>
+      rename-tab <pane-id> <name>
 
     An omitted `--direction`/direction argument on `split` and `agent spawn`
     defaults to auto: the new pane lands wherever keeps the tab's layout
@@ -103,6 +105,7 @@ public enum ControlCommandLineParser {
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--label <text>] [--worktree <branch>]
+                  [--new-tab [--tab-title <text>]]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --direction defaults to auto: it picks
         whichever existing pane and side keeps the tab's layout closest
@@ -152,6 +155,16 @@ public enum ControlCommandLineParser {
         for a malformed branch name. Prints an
         agentJob response whose job.jobID.rawValue is the job ID every other
         agent command below takes.
+        --new-tab launches the worker alone in a new tab (in the anchor
+        pane's window, opened in the background) instead of splitting the
+        anchor's tab, so no empty shell pane is left behind. It replaces
+        --direction: passing both is an error. --tab-title <text> sets the
+        new tab's manual name, exactly like rename-tab (so automatic tab
+        naming never overwrites it); without it the tab keeps automatic
+        naming. --access omission and inherit still resolve against the
+        anchor pane's agent, never the new tab's, and every agent
+        wait/result/send/focus/close/park command works on the job as
+        usual.
 
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
         Blocks until this exact job's own spawned run reaches the given
@@ -210,6 +223,13 @@ public enum ControlCommandLineParser {
         cleared automatically when the pane's run starts or ends, never
         persisted. `agent spawn`'s worker contract already tells workers
         to report phases this way.
+
+      rename-tab <pane-id> <name>
+        Sets the manual name of the tab containing the pane, the same as
+        the GUI's Rename Tab: automatic naming never overwrites it. An
+        empty name ("") clears the manual name. The name shows as `title`
+        in `list`. Fails with pane-not-found, remote-pane (a pane that
+        mirrors another Mac's terminal), or invalid-title.
 
     HOOK INTEGRATIONS
 
@@ -495,6 +515,8 @@ public enum ControlCommandLineParser {
         public let label: String?
         public let worktreeBranch: String?
         public let taskFilePath: String
+        public let newTab: Bool
+        public let tabTitle: String?
 
         public init(
             anchorPaneID: String,
@@ -505,7 +527,9 @@ public enum ControlCommandLineParser {
             model: String?,
             label: String?,
             worktreeBranch: String?,
-            taskFilePath: String
+            taskFilePath: String,
+            newTab: Bool = false,
+            tabTitle: String? = nil
         ) {
             self.anchorPaneID = anchorPaneID
             self.direction = direction
@@ -516,6 +540,8 @@ public enum ControlCommandLineParser {
             self.label = label
             self.worktreeBranch = worktreeBranch
             self.taskFilePath = taskFilePath
+            self.newTab = newTab
+            self.tabTitle = tabTitle
         }
     }
 
@@ -594,7 +620,9 @@ public enum ControlCommandLineParser {
             model: pending.model,
             task: task,
             label: pending.label,
-            worktreeBranch: pending.worktreeBranch
+            worktreeBranch: pending.worktreeBranch,
+            newTab: pending.newTab,
+            tabTitle: pending.tabTitle
         )
     }
 
@@ -885,6 +913,16 @@ public enum ControlCommandLineParser {
             }
             return .parkPane(paneID: arguments[0])
 
+        case "rename-tab":
+            // The name is a required positional so an empty string ("")
+            // is the explicit way to clear the manual name.
+            guard arguments.count == 2 else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl rename-tab <pane-id> <name>"
+                )
+            }
+            return .renameTab(paneID: arguments[0], title: arguments[1])
+
         default:
             throw ControlCommandLineError.invalidArguments(usage)
         }
@@ -972,7 +1010,8 @@ public enum ControlCommandLineParser {
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down|auto>] [--cwd <path>] \
     [--access <review|workspace-write|inherit>] [--model <text>] \
-    [--label <text>] [--worktree <branch>]
+    [--label <text>] [--worktree <branch>] \
+    [--new-tab [--tab-title <text>]]
     """
 
     /// `agent` routed through `parseInvocation`: unlike every other
@@ -1138,11 +1177,11 @@ public enum ControlCommandLineParser {
         var positional = arguments
         let options = try parseOptions(
             &positional,
-            flags: [],
+            flags: ["--new-tab"],
             valued: [
                 "--anchor", "--direction", "--provider", "--cwd",
                 "--access", "--model", "--task", "--task-file", "--label",
-                "--worktree",
+                "--worktree", "--tab-title",
             ]
         )
         guard positional.isEmpty else {
@@ -1162,6 +1201,25 @@ public enum ControlCommandLineParser {
         // An omitted `--direction` resolves to balanced placement, the
         // same default `split` now applies when its direction is
         // omitted, rather than always growing a 1×N strip to the right.
+        let newTab = options.flags.contains("--new-tab")
+        if newTab, options.values["--direction"] != nil {
+            throw ControlCommandLineError.invalidArguments(
+                "mytty-ctl agent spawn: --new-tab cannot be combined with "
+                    + "--direction (a new tab has no split direction)"
+            )
+        }
+        if let tabTitle = options.values["--tab-title"] {
+            guard newTab else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl agent spawn: --tab-title requires --new-tab"
+                )
+            }
+            guard !tabTitle.isEmpty else {
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl agent spawn: --tab-title must not be empty"
+                )
+            }
+        }
         let directionValue = options.values["--direction"] ?? "auto"
         guard let direction = ControlSplitDirection(
             rawValue: directionValue
@@ -1216,7 +1274,9 @@ public enum ControlCommandLineParser {
             model: options.values["--model"],
             label: options.values["--label"],
             worktreeBranch: options.values["--worktree"],
-            taskFilePath: options.values["--task-file"] ?? ""
+            taskFilePath: options.values["--task-file"] ?? "",
+            newTab: newTab,
+            tabTitle: options.values["--tab-title"]
         )
 
         switch (options.values["--task"], options.values["--task-file"]) {
@@ -1241,24 +1301,38 @@ public enum ControlCommandLineParser {
         model: String?,
         task: String,
         label: String?,
-        worktreeBranch: String?
+        worktreeBranch: String?,
+        newTab: Bool,
+        tabTitle: String?
     ) throws -> ControlRequest {
         guard !task.isEmpty else {
             throw ControlCommandLineError.invalidArguments(
                 "mytty-ctl agent spawn requires a nonempty task"
             )
         }
-        let request = ControlRequest.spawnAgent(
-            anchorPaneID: anchorPaneID,
-            direction: direction,
-            provider: provider,
-            cwd: cwd,
-            access: access,
-            model: model,
-            task: task,
-            label: label,
-            worktreeBranch: worktreeBranch
-        )
+        let request: ControlRequest = newTab
+            ? .spawnAgentInNewTab(
+                anchorPaneID: anchorPaneID,
+                provider: provider,
+                cwd: cwd,
+                access: access,
+                model: model,
+                task: task,
+                label: label,
+                worktreeBranch: worktreeBranch,
+                tabTitle: tabTitle
+            )
+            : .spawnAgent(
+                anchorPaneID: anchorPaneID,
+                direction: direction,
+                provider: provider,
+                cwd: cwd,
+                access: access,
+                model: model,
+                task: task,
+                label: label,
+                worktreeBranch: worktreeBranch
+            )
         let encodedSize = (try? ControlMessageCodec.encode(request).count)
             ?? Int.max
         guard encodedSize < maximumRequestEnvelopeSize else {

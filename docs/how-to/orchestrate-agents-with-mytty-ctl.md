@@ -83,6 +83,17 @@ Neither `split` nor `agent spawn` needs a `--direction` -- both default to `auto
 
 Once a worker finishes and its result has been read (`agent result`, or after `agent wait --until completed`), run `agent park "$job"` (or `park "$pane_id"` for a pane not tracked by a job) instead of `agent close` -- it moves the pane into a `done_<tab>_<id>` tab in the same window rather than deleting it outright, so the working tab only shows live workers while finished ones stay reachable if something later needs to look back at their output. The done tab is created the first time a pane is parked out of a given tab, appended at the end of the tab strip and never selected (parking never interrupts what the user is looking at), and reused for every later `park` from that same source tab. Only reach for `agent close` once a worker's pane genuinely won't be needed again. See [Parking finished workers](../reference/mytty-ctl.md#parking-finished-workers-park--agent-park) in the reference for the done tab's naming and reuse rules.
 
+## Giving a worker its own tab
+
+To keep a worker out of the orchestrator's tab, spawn it with `--new-tab`. The worker is the only pane in a new tab in the anchor's window, and `--tab-title` names the tab:
+
+```bash
+job=$(mytty-ctl agent spawn --provider claude --new-tab --tab-title "login fix" \
+  --task "Fix the login timeout." | jq -r '.job.jobID.rawValue')
+```
+
+`--new-tab` replaces `--direction`. Permission inheritance still follows the anchor pane, and `agent wait`, `agent result` and the other job commands work as before. To rename any tab later, run `mytty-ctl rename-tab <pane-id> "<name>"`; an empty name clears it. See the [reference](../reference/mytty-ctl.md#agent-spawn) for details.
+
 ## Hooks are optional
 
 A worker's run state (running, idle, succeeded, failed, disconnected) is observable even for a provider whose hook integration was never installed in Settings -- Mytty estimates it natively from the pane's foreground process. Installing the provider's hooks raises the fidelity of that state (real lifecycle events instead of an estimate) and is required for `wait --until attention`/`agent wait --until attention`: native estimation deliberately never reports an approval or input request, so an attention wait against a provider with no hooks installed fails fast instead of blocking.
