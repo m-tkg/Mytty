@@ -70,6 +70,17 @@ mytty-ctl agent wait "$job_impl" --until completed
 
 `agent send` でテキストを送っても `claude` の承認ダイアログは反応しません。`send-key` で実際のキー入力を送る必要があります。この手順には worker の provider の hook 連携が必要です。詳しくは後述の「hook は必須ではない」を参照してください。
 
+## worker に専用のタブを与える
+
+worker を orchestrator のタブから離したいときは、`--new-tab` を付けて起動します。worker は anchor と同じウィンドウの新しいタブに単独で入り、`--tab-title` でタブ名を付けられます。
+
+```bash
+job=$(mytty-ctl agent spawn --provider claude --new-tab --tab-title "ログイン修正" \
+  --task "ログインのタイムアウトを直して。" | jq -r '.job.jobID.rawValue')
+```
+
+`--new-tab` は `--direction` の代わりに使います。権限の引き継ぎはこれまでどおり anchor ペインを基準にし、`agent wait` や `agent result` などの job コマンドもそのまま使えます。あとからタブ名を変えるには `mytty-ctl rename-tab <pane-id> "<名前>"` を実行します。空文字にすると手動名を解除します。詳しくは[リファレンス](../reference/mytty-ctl_ja.md#agent-spawn)を参照してください。
+
 ## hook は必須ではない
 
 worker の実行状態(running、idle、succeeded、failed、disconnected)は、設定で hook 連携を一度もインストールしていない provider でも観測できます。Mytty がペインのフォアグラウンドプロセスから実行状態をネイティブに推定するためです。provider の hook をインストールすると、この状態の精度が上がります(推定ではなく実際のライフサイクルイベントになります)。また `wait --until attention`/`agent wait --until attention` には hook が必須です。ネイティブ推定は承認・入力の要求をあえて一切報告しないため、hook 未導入の provider に対する attention wait はブロックせず即座に失敗します。

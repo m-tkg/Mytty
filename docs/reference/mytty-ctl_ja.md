@@ -46,7 +46,7 @@ mytty-ctl list | jq .
 
 | コマンド | 引数 | 成功時のレスポンス |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
@@ -67,6 +67,7 @@ mytty-ctl list | jq .
 | `events` | `[--after <seq>] [--timeout <seconds>]` | `{"type":"events","records":[...],"latestSequence":7,"timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
+| `rename-tab` | `<pane-id> <name>` | `{"type":"ok"}` |
 
 pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポンス、`pane` レスポンス、`$MYTTY_SURFACE_ID` のいずれかから取得できます。job ID は `AgentJobID` の `{"rawValue":"..."}` 形式の UUID で、`agentJob`/`agentWaitResult`/`agentResult` レスポンスの `job.jobID.rawValue` から取得します。
 
@@ -79,6 +80,8 @@ pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポ�
 `review` を指定すると provider を read-only/plan モードで起動します。`workspace-write` は worker がファイルを編集できるモードですが、`claude` の worker では lead 自身のモードに関わらず常に `--permission-mode acceptEdits` で起動します。**lead がより広いモード(`auto`、`--dangerously-skip-permissions` など)で動いているときに `--access workspace-write` を指定すると、lead に合わせるのではなく、承認プロンプトのたびに止まって待つ worker になってしまいます**。`acceptEdits` でも Bash コマンドの承認は別に必要だからです。worker が自分と同じ provider のときは、`--access` を省略する(または明示的に `--access inherit` を指定する)ほうを `--access workspace-write` より優先してください。`workspace-write` が向いているのは provider が異なる worker を起動するとき、あるいは acceptEdits 相当の固定ポリシーが本当に欲しいときです。
 
 `--model` は省略可能で、provider が使うモデルを指定します。値は provider CLI 自身のモデルフラグ(`codex` は `-m <model>`、`claude` と `cursor` は `--model <model>`)にそのまま渡されます。例: `claude` の worker に `--model sonnet`。省略すると provider のデフォルトモデルになります。`--cwd` を省略した場合のデフォルトは、anchor ペインのシェルが報告した作業ディレクトリ(シェル統合が最後に知らせたディレクトリ)であって、呼び出し元プロセス自身の cwd ではありません。ペインのシェルと違うディレクトリで動いている場合 -- たとえば `claude --worktree` で起動すると claude は git worktree に移動しますが、ペインのシェルは元の場所に残ります -- は `--cwd "$PWD"` を明示しないと、worker が worktree ではなく元のチェックアウトで動き出します。すべてのタスクには worker contract(作業ディレクトリの外に出ない、詰まったら止めずに続ける、最後に簡潔な要約で締める、という指示)が自動で追記されます。また、打鍵される起動行の先頭には `HISTFILE` を unset するガード(`hist_ignore_space` 構成向けの行頭スペース付き)が付くので、タスク全文を含む起動コマンドも、その後そのペインのシェルに手で入力したコマンドも `~/.zsh_history` には残りません。
+
+`--new-tab` を指定すると、anchor のタブを分割せず、worker だけを入れた新しいタブで起動します。空のシェルペインは残りません。タブは `--anchor` と同じウィンドウに、他の orchestrated なタブと同じくバックグラウンドで開きます。`--direction` の代わりに使うもので、両方を指定するとエラーです。`--tab-title <text>` は新しいタブの手動名を設定します。`rename-tab` が設定する名前と同じなので、自動命名で上書きされません。`--new-tab` が必要で、空文字は指定できません。`--tab-title` を省略したタブは自動命名のままです。`--access` の解決は、新しいタブではなく `--anchor` ペインのエージェントを基準にします。返ってきた job は、これまでどおり `agent wait`、`agent result`、`agent send`、`agent focus`、`agent close`、`agent park` で扱えます。`--new-tab` を付けない場合の動作は変わりません。
 
 `--worktree <branch>` を指定すると、単に解決済みの `--cwd`/anchor ペインのディレクトリではなく、`<branch>` 用の git worktree の中で worker を起動します。ベースとなるリポジトリは同じディレクトリから解決します(`git -C <dir> rev-parse --show-toplevel`)。worktree の置き場所は `<repo の親ディレクトリ>/<repo 名>-worktrees/<branch>` です(branch 中の `/` はディレクトリ名の部分だけ `-` に置き換わります。例: branch `feat/x` なら `mytty-worktrees/feat-x`)。リポジトリ本体の兄弟ディレクトリになるので、メインのチェックアウト側の `git status` には一切現れません。そのパスが既にそのリポジトリの登録済み worktree であれば、現在どの branch をチェックアウトしているかにかかわらずそのまま再利用します(再 spawn した場合に冪等になります)。そうでない場合、`<branch>` が既存の local branch ならそれをチェックアウトして worktree を作り、存在しなければ現在の `HEAD` から新規に作成します。Mytty が worktree を自動で削除することはありません -- `agent close` でもペインを閉じるだけです -- 未コミットの作業が残っている可能性があるためです。worker の branch をマージまたは破棄したら、ベースリポジトリ側で `git worktree remove <path>` を自分で実行して片付けてください。`not-a-git-repository`、`worktree-create-failed`、`invalid-worktree-branch` については下のエラーコード表を参照してください。
 
@@ -432,6 +435,21 @@ mytty-ctl focus "$paneA"
 { "type": "ok" }
 ```
 
+### rename-tab
+
+指定ペインを含むタブの手動名を設定します。GUI の Rename Tab と同じ扱いで、設定した名前は保たれ、自動命名で上書きされません。名前を空文字にすると手動名を解除します。新しい名前は `list` の `title` に反映されます。
+
+```bash
+mytty-ctl rename-tab "$paneA" "worker A"
+mytty-ctl rename-tab "$paneA" ""   # 解除
+```
+
+```json
+{ "type": "ok" }
+```
+
+別の Mac のターミナルを映しているペインは `remote-pane` で拒否されます。
+
 ## 失敗時のレスポンス
 
 失敗したリクエストには、サーバーから `{"type":"failure","code":"..."}` が返ります。CLI 側はこれを JSON として出力せず、非ゼロの終了コードと標準エラーへのメッセージとして表現します。
@@ -443,6 +461,9 @@ mytty-ctl focus "$paneA"
 | `new-tab-failed` | `new-tab` がタブを作成できなかった |
 | `split-failed` | `split` が指定ペインを分割できなかった |
 | `pane-not-found` | 指定した `pane-id` が生存中のペインに解決できない(`send`、`send-key`、`read`、`wait`、`close-pane`、`focus` でも返り得る)。`agent spawn` も `--anchor` が生存中のペインに解決できない場合にこれを返す |
+| `invalid-title` | `rename-tab`: 名前に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
+| `remote-pane` | `rename-tab`: 別の Mac のターミナルを映しているペインで、名前を変えるローカルのタブがない |
+| `invalid-tab-title` | `agent spawn --new-tab`: `--tab-title` が空、制御文字を含む、または 100 Unicode スカラー値を超えている |
 | `provider-integration-not-installed` | `wait --until attention` / `agent wait --until attention`: ペイン(または job)のフォアグラウンドプロセスが既知のエージェントで、その連携が有効化されていない(下記「wait の挙動」参照)。`agent spawn` はこのコードをもう返しません — job は hook が報告する実行ではなく、ネイティブに推定された実行にバインドされるためです |
 | `provider-integration-needs-repair` | `agent spawn`: provider の hook 連携は導入済みだが古くなっている、または壊れている — ネイティブな実行推定は `needs-repair` に対してはあえて関与しないため、修復だけが解決策です |
 | `invalid-cwd` | `agent spawn`: `--cwd` が実在するディレクトリを指していない |

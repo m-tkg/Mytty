@@ -46,7 +46,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 
 | Command | Arguments | Success response |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down\|auto>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down\|auto>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
@@ -69,6 +69,7 @@ Prefer the `agent` commands for anything shaped like "run one or more workers an
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
 | `park` | `<pane-id>` | `{"type":"ok"}` |
+| `rename-tab` | `<pane-id> <name>` | `{"type":"ok"}` |
 
 `--direction`/the `split` direction argument defaults to `auto` when omitted: the new pane lands wherever keeps the tab's layout closest to an evenly filled grid (see [Balanced placement (`--direction auto`)](#balanced-placement---direction-auto) below), instead of always growing a strip off the anchor pane.
 
@@ -85,6 +86,8 @@ Splits a new pane off `--anchor` (default `$MYTTY_SURFACE_ID`) and launches the 
 `--model` is optional and picks the provider's model, passed straight through to the provider CLI's own model flag -- `-m <model>` for `codex`, `--model <model>` for `claude` and `cursor` -- e.g. `--model sonnet` for a `claude` worker. Omit it to use whatever model the provider defaults to. `--cwd` defaults to the anchor pane's shell-reported working directory (the last directory the pane's shell announced via shell integration), not the calling process's own cwd. An orchestrator whose process cwd differs from its pane's shell -- for example Claude Code launched with `--worktree`, which chdirs into a git worktree the pane's shell never entered -- should pass `--cwd "$PWD"` explicitly, or its workers start in the original checkout instead of the worktree. A worker contract (stay in the working directory, keep going instead of stopping to ask, end with a concise summary) is appended to every task automatically. The typed launch line is also prefixed with a guard that unsets `HISTFILE` (and starts with a space, for `hist_ignore_space` setups), so neither the launch command with its full task text nor anything typed into that pane's shell afterwards is persisted into `~/.zsh_history`.
 
 `--direction` defaults to `auto`: rather than always growing a strip off `--anchor`, Mytty picks whichever existing pane and side keeps the tab's layout closest to an evenly filled grid -- see [Balanced placement (`--direction auto`)](#balanced-placement---direction-auto) below. Pass an explicit `left`/`right`/`up`/`down` when the worker specifically needs to sit next to `--anchor` itself.
+
+`--new-tab` launches the worker alone in a new tab instead of splitting the anchor's tab, so no empty shell pane is left behind. The tab opens in the same window as `--anchor`, in the background like other orchestrated tabs. It replaces `--direction`, and passing both is an error. `--tab-title <text>` sets the new tab's manual name, the same name `rename-tab` sets, so automatic tab naming does not overwrite it; it requires `--new-tab` and must not be empty. Without `--tab-title` the tab keeps automatic naming. `--access` resolution still looks at the `--anchor` pane's agent, never at the new tab, and the returned job works with `agent wait`, `agent result`, `agent send`, `agent focus`, `agent close` and `agent park` as usual. Without `--new-tab` nothing changes.
 
 `--worktree <branch>` launches the worker inside a git worktree for `<branch>` instead of the plain resolved `--cwd`/anchor-pane directory. The base repository is resolved from that same directory (`git -C <dir> rev-parse --show-toplevel`); the worktree lives at `<repo-parent>/<repo-name>-worktrees/<branch>` (a `/` in the branch becomes `-` in the directory name only, e.g. branch `feat/x` -> `mytty-worktrees/feat-x`), a sibling of the repository so it never shows up in the main checkout's `git status`. If that path is already a registered worktree of the repo, Mytty reuses it as-is -- idempotent respawn, regardless of which branch it currently has checked out. Otherwise, a `<branch>` that already exists as a local branch is checked out into the new worktree; one that doesn't is created from the current `HEAD`. Mytty never removes a worktree automatically -- not on `agent close`, not on pane close -- since it may hold uncommitted work; once a worker's branch is merged or abandoned, remove it yourself with `git worktree remove <path>` from the base repository. See the failure-code table below for `not-a-git-repository`, `worktree-create-failed`, and `invalid-worktree-branch`.
 
@@ -456,6 +459,21 @@ mytty-ctl park "$paneA"
 
 See [Parking finished workers (`park` / `agent park`)](#parking-finished-workers-park--agent-park) below for the done tab's naming, reuse, and creation rules.
 
+### rename-tab
+
+Sets the manual name of the tab that contains the pane. This is the same as Rename Tab in the GUI: the name is kept, and automatic tab naming does not overwrite it. An empty name clears the manual name. The new name shows as `title` in `list`.
+
+```bash
+mytty-ctl rename-tab "$paneA" "worker A"
+mytty-ctl rename-tab "$paneA" ""   # clear
+```
+
+```json
+{ "type": "ok" }
+```
+
+A pane that mirrors another Mac's terminal is rejected with `remote-pane`.
+
 ## Balanced placement (`--direction auto`)
 
 `split` and `agent spawn` both take `--direction <left|right|up|down|auto>`, and both default to `auto` when the direction is omitted. A fixed direction always splits next to the given pane (`--anchor` for `agent spawn`, the target pane for `split`); `auto` instead asks: of every pane already in that tab, which one is largest, and would splitting it along its longer side keep the layout closest to an evenly filled grid? Six workers spawned one at a time with `--direction auto` converge on roughly a 3x2 grid instead of a 1x6 strip running off the edge of the window.
@@ -488,6 +506,9 @@ A failed request returns `{"type":"failure","code":"..."}` from the server; the 
 | `new-tab-failed` | `new-tab` could not create a tab |
 | `split-failed` | `split` could not split the given pane |
 | `pane-not-found` | The given `pane-id` does not resolve to a live pane (also returned by `send`, `send-key`, `read`, `wait`, `close-pane`, `focus`, `park`); `agent spawn` also returns this if `--anchor` doesn't resolve to a live pane |
+| `invalid-title` | `rename-tab`: the name contains a control character or is longer than 100 Unicode scalars |
+| `remote-pane` | `rename-tab`: the pane mirrors another Mac's terminal, which has no local tab to rename |
+| `invalid-tab-title` | `agent spawn --new-tab`: `--tab-title` is empty, contains a control character, or is longer than 100 Unicode scalars |
 | `already-parked` | `park`/`agent park`: the pane is already inside a done tab -- there's no "done of done" |
 | `park-failed` | `park`/`agent park`: the pane could not be moved into its done tab for a reason other than `pane-not-found`/`already-parked` |
 | `provider-integration-not-installed` | `wait --until attention` / `agent wait --until attention`: the pane's (or job's) foreground process is a recognized agent whose integration isn't enabled (see [wait semantics](#wait-semantics)) -- `agent spawn` no longer returns this code, since a job binds to a natively estimated run instead of a hook-reported one |

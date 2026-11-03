@@ -175,6 +175,12 @@ public enum ControlRequest: Equatable, Sendable {
     /// `OrchestrationDoneTab`. Failure codes: `pane-not-found`,
     /// `already-parked`, `park-failed`.
     case parkPane(paneID: String)
+    /// `mytty-ctl rename-tab` — sets the manual name
+    /// (`TabSession.pinnedTitle`) of the tab containing `paneID`, the same
+    /// effect as the GUI's Rename Tab: automatic naming never overwrites
+    /// it. An empty (or whitespace-only) `title` clears the manual name.
+    /// Failure codes: `pane-not-found`, `remote-pane`, `invalid-title`.
+    case renameTab(paneID: String, title: String)
     /// A pane agent's own progress self-report ("running tests", ...),
     /// shown in the status bar and echoed in `list`/`agent result`
     /// answers. Ephemeral by design — never persisted, cleared when the
@@ -232,6 +238,28 @@ public enum ControlRequest: Equatable, Sendable {
         task: String,
         label: String?,
         worktreeBranch: String?
+    )
+    /// `agent spawn --new-tab` — like `spawnAgent`, but the worker gets a
+    /// tab of its own (in the anchor pane's window) instead of a split
+    /// of the anchor's tab, so no empty shell pane is left behind and
+    /// there is no `direction`. Everything about the anchor stays as
+    /// `spawnAgent` has it: `--access` omission/`inherit` resolve against
+    /// the *anchor* pane's agent, never the new tab's, and the returned
+    /// job is managed with the same `waitAgent`/`agentResult`/… requests.
+    ///
+    /// `tabTitle`, when present, becomes the new tab's manual name
+    /// (`TabSession.pinnedTitle`), exactly as `renameTab` would set it;
+    /// `nil` leaves the tab to automatic naming / the default title.
+    case spawnAgentInNewTab(
+        anchorPaneID: String,
+        provider: AgentWorkerProvider,
+        cwd: String?,
+        access: AgentAccessPolicy?,
+        model: String?,
+        task: String,
+        label: String?,
+        worktreeBranch: String?,
+        tabTitle: String?
     )
     case waitAgent(
         jobID: AgentJobID,
@@ -303,6 +331,8 @@ extension ControlRequest: Codable {
         case setPaneStatus
         case events
         case spawnAgent
+        case spawnAgentInNewTab
+        case renameTab
         case waitAgent
         case agentResult
         case sendAgent
@@ -338,6 +368,8 @@ extension ControlRequest: Codable {
         case status
         case afterSequence
         case worktreeBranch
+        case tabTitle
+        case title
     }
 
     public init(from decoder: Decoder) throws {
@@ -474,6 +506,47 @@ extension ControlRequest: Codable {
                     forKey: .worktreeBranch
                 )
             )
+        case .spawnAgentInNewTab:
+            self = .spawnAgentInNewTab(
+                anchorPaneID: try container.decode(
+                    String.self,
+                    forKey: .anchorPaneID
+                ),
+                provider: try container.decode(
+                    AgentWorkerProvider.self,
+                    forKey: .provider
+                ),
+                cwd: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .cwd
+                ),
+                access: try container.decodeIfPresent(
+                    AgentAccessPolicy.self,
+                    forKey: .access
+                ),
+                model: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .model
+                ),
+                task: try container.decode(String.self, forKey: .task),
+                label: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .label
+                ),
+                worktreeBranch: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .worktreeBranch
+                ),
+                tabTitle: try container.decodeIfPresent(
+                    String.self,
+                    forKey: .tabTitle
+                )
+            )
+        case .renameTab:
+            self = .renameTab(
+                paneID: try container.decode(String.self, forKey: .paneID),
+                title: try container.decode(String.self, forKey: .title)
+            )
         case .waitAgent:
             self = .waitAgent(
                 jobID: try container.decode(AgentJobID.self, forKey: .jobID),
@@ -603,6 +676,27 @@ extension ControlRequest: Codable {
                 worktreeBranch,
                 forKey: .worktreeBranch
             )
+        case let .spawnAgentInNewTab(
+            anchorPaneID, provider, cwd, access, model, task, label,
+            worktreeBranch, tabTitle
+        ):
+            try container.encode(RequestType.spawnAgentInNewTab, forKey: .type)
+            try container.encode(anchorPaneID, forKey: .anchorPaneID)
+            try container.encode(provider, forKey: .provider)
+            try container.encodeIfPresent(cwd, forKey: .cwd)
+            try container.encodeIfPresent(access, forKey: .access)
+            try container.encodeIfPresent(model, forKey: .model)
+            try container.encode(task, forKey: .task)
+            try container.encodeIfPresent(label, forKey: .label)
+            try container.encodeIfPresent(
+                worktreeBranch,
+                forKey: .worktreeBranch
+            )
+            try container.encodeIfPresent(tabTitle, forKey: .tabTitle)
+        case let .renameTab(paneID, title):
+            try container.encode(RequestType.renameTab, forKey: .type)
+            try container.encode(paneID, forKey: .paneID)
+            try container.encode(title, forKey: .title)
         case let .waitAgent(jobID, until, timeoutSeconds):
             try container.encode(RequestType.waitAgent, forKey: .type)
             try container.encode(jobID, forKey: .jobID)

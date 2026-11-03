@@ -322,6 +322,20 @@ extension ControlCoordinator: ControlServerDelegate {
 
     func controlServer(
         _ server: ControlServer,
+        renameTabContainingPaneID paneID: String,
+        title: String
+    ) -> Result<Void, AgentControlFailure> {
+        guard let surfaceID = terminalSurfaceID(from: paneID),
+              let controller = controller(owning: surfaceID)
+        else { return .failure(AgentControlFailure("pane-not-found")) }
+        if let code = controller.renameTab(forControl: surfaceID, title: title) {
+            return .failure(AgentControlFailure(code))
+        }
+        return .success(())
+    }
+
+    func controlServer(
+        _ server: ControlServer,
         parkPaneID paneID: String
     ) -> String? {
         guard let surfaceID = terminalSurfaceID(from: paneID),

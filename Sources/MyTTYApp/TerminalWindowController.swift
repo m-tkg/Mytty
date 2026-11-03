@@ -661,7 +661,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func newTab(
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
-        orchestrated: Bool = false
+        orchestrated: Bool = false,
+        tabTitle: String? = nil
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
@@ -672,7 +673,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         // away from the tab they're typing in — see issue #78.
         let select = !orchestrated
         do {
-            let tab = TabSession(initialSurface: state)
+            // `tabTitle` is a manual name, the same field the GUI's Rename
+            // Tab sets, so automatic naming never overwrites it.
+            let manualTitle = tabTitle?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let tab = TabSession(
+                initialSurface: state,
+                pinnedTitle: manualTitle?.isEmpty == false ? manualTitle : nil
+            )
             let surface = try makeSurface(for: state, initialInput: initialInput)
             switch applicationPreferences.newTabPosition {
             case .end:
@@ -3922,6 +3930,32 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     /// context-menu action's post-move bookkeeping, with
     /// `focusTerminal: false` since parking must never steal focus.
     @discardableResult
+    /// `mytty-ctl rename-tab`: sets (empty `title` clears) the manual name of
+    /// the tab containing `paneID`, via the same `session.rename` the GUI's
+    /// Rename Tab uses. Returns a failure code, or nil on success.
+    func renameTab(
+        forControl paneID: TerminalSurfaceID,
+        title: String
+    ) -> String? {
+        guard let tab = session.tabs.first(where: {
+            $0.paneIDs.contains(paneID)
+        }) else { return "pane-not-found" }
+        if tab.root.remoteState(with: paneID) != nil {
+            return "remote-pane"
+        }
+        guard ControlTabTitleValidation.isValid(title) else {
+            return "invalid-title"
+        }
+        do {
+            try session.rename(tab: tab.id, title: title)
+        } catch {
+            return "pane-not-found"
+        }
+        sessionDidChange()
+        refreshPresentation(focusTerminal: false)
+        return nil
+    }
+
     func parkPane(forControl paneID: TerminalSurfaceID) -> String? {
         guard let sourceTab = session.tabs.first(where: {
             $0.paneIDs.contains(paneID)
