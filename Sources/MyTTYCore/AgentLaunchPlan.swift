@@ -98,7 +98,7 @@ public enum AgentLaunchPlan {
         switch provider {
         case .codex:
             return "-m \(quotedModel) "
-        case .claude, .cursor:
+        case .claude, .cursor, .antigravity:
             return "--model \(quotedModel) "
         }
     }
@@ -122,7 +122,44 @@ public enum AgentLaunchPlan {
             return "--effort \(reasoningEffort.rawValue) "
         case .cursor:
             return ""
+        case .antigravity:
+            return "--effort \(reasoningEffort.rawValue) "
         }
+    }
+
+    /// Read-only commands a review worker may run without an approval
+    /// prompt. `agy` has no attention events, so an unanswered prompt would
+    /// stall the pane silently; `gh api` is included because posting the
+    /// review itself is a `gh api ... -X POST`.
+    private static let antigravityReadAllowRules = [
+        "gh pr view", "gh pr diff", "gh pr list", "gh pr checks",
+        "gh issue view", "gh api",
+        "git diff", "git log", "git show", "git status", "git blame",
+        "cat", "ls", "rg", "grep", "head", "tail", "wc", "pwd",
+        "mytty-ctl status",
+    ]
+
+    /// Extra rules for a worker that edits and builds in its workspace.
+    private static let antigravityWriteAllowRules = [
+        "git", "gh", "swift", "make", "mytty-ctl", "cat", "ls", "rg", "grep",
+        "head", "tail", "wc", "pwd", "mkdir", "touch", "mv", "cp",
+    ]
+
+    /// `--settings <json>` for `agy`: session-only (never saved) trust of
+    /// the pane's working directory, which skips the first-run "Do you trust
+    /// this folder" prompt, plus the shell-command allow rules for the
+    /// access policy. `agy` cannot prompt in a way Mytty can notice, so
+    /// any command outside the rules stops the worker at an approval
+    /// prompt. The directory is spliced in by the pane's shell (`$PWD`)
+    /// because the launch plan does not know it.
+    private static func antigravitySettings(writable: Bool) -> String {
+        let rules = (writable
+            ? antigravityWriteAllowRules : antigravityReadAllowRules)
+            .map { "\"command(\($0))\"" }
+            .joined(separator: ",")
+        let template = "{\"trustedWorkspaces\":[\"%s\"],"
+            + "\"permissions\":{\"allow\":[\(rules)]}}"
+        return "--settings \"$(printf '\(template)' \"$PWD\")\""
     }
 
     /// The codex flags that already govern approval behavior on their own
@@ -176,6 +213,10 @@ public enum AgentLaunchPlan {
             "command cursor-agent \(modelFlag)--mode plan -- \(quotedTask)"
         case (.cursor, .workspaceWrite), (.cursor, .inherit):
             "command cursor-agent \(modelFlag)--force --sandbox enabled -- \(quotedTask)"
+        case (.antigravity, .review):
+            "command agy \(modelFlag)--mode plan \(antigravitySettings(writable: false)) -i \(quotedTask)"
+        case (.antigravity, .workspaceWrite), (.antigravity, .inherit):
+            "command agy \(modelFlag)--mode accept-edits \(antigravitySettings(writable: true)) -i \(quotedTask)"
         }
     }
 
@@ -205,6 +246,9 @@ public enum AgentLaunchPlan {
                 + " -- \(quotedTask)"
         case .cursor:
             return "command cursor-agent \(modelFlag)\(quotedFlags) -- \(quotedTask)"
+        case .antigravity:
+            return "command agy \(modelFlag)\(quotedFlags) "
+                + "\(antigravitySettings(writable: true)) -i \(quotedTask)"
         }
     }
 }

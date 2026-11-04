@@ -396,6 +396,7 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("codex -s workspace-write -a never"))
         #expect(guide.contains("cursor-agent --force"))
         #expect(guide.contains("antigravity"))
+        #expect(guide.contains("agy --mode accept-edits"))
         #expect(guide.contains("--until idle"))
         #expect(guide.contains("MYTTY_CTL_BIN"))
         #expect(guide.contains("MYTTY_SURFACE_ID"))
@@ -698,6 +699,7 @@ struct ControlCommandLineParserTests {
             ("codex", "turbo"),    // not a level at all
             ("codex", ""),
             ("cursor", "low"),     // no such setting
+            ("antigravity", "minimal"), // codex-only level
         ]
         for (provider, value) in cases {
             #expect(throws: ControlCommandLineError.self) {
@@ -710,6 +712,29 @@ struct ControlCommandLineParserTests {
                 )
             }
         }
+    }
+
+    @Test("agent spawn accepts antigravity, with --reasoning-effort and --new-tab")
+    func agentSpawnAntigravity() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn", "--provider", "antigravity",
+                "--model", "gemini-4-argon-medium",
+                "--reasoning-effort", "max", "--new-tab",
+                "--tab-title", "review", "--task", "x",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgentInNewTab(
+            _, provider, _, _, model, _, _, _, tabTitle, effort
+        ) = request else {
+            Issue.record("expected .spawnAgentInNewTab, got \(request)")
+            return
+        }
+        #expect(provider == .antigravity)
+        #expect(model == "gemini-4-argon-medium")
+        #expect(effort == .max)
+        #expect(tabTitle == "review")
     }
 
     @Test("agent spawn --worktree is optional and defaults to nil")
