@@ -157,6 +157,7 @@ private final class StubSocketServer: @unchecked Sendable {
             Darwin.close(listener)
             listener = -1
         }
+        try? FileManager.default.removeItem(at: directory)
     }
 
     private func wakeAcceptLoop() {
