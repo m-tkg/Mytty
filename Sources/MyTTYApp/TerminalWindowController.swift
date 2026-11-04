@@ -2880,7 +2880,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             )
         }
         sidebarModel.selectedTabID = session.selectedTabID
-        sidebarModel.actionableAttentionCount = attentionCenter.actionableCount
+        sidebarModel.actionableAttentionCount = attentionCenter.displayedActionableCount
             + session.tabs.reduce(0) { $0 + remoteAttentionCount(in: $1) }
     }
 

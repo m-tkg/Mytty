@@ -20,6 +20,13 @@ final class AttentionCenter: ObservableObject {
     @Published private(set) var paneStatusNotes:
         [TerminalSurfaceID: PaneStatusNote] = [:]
 
+    /// Display-only filter for the toolbar bell and Attention list: panes
+    /// it returns true for (`agent spawn` without `--notify`) are watched
+    /// by their orchestrator, so the human's inbox leaves them out. It
+    /// never touches `items`, `runs` or acknowledgements, which
+    /// `mytty-ctl wait/events/list` keep reading.
+    var isSurfaceHiddenFromDisplay: (TerminalSurfaceID) -> Bool = { _ in false }
+
     private let repository: SQLiteAgentEventRepository
     private let policy: AttentionPolicy
     private var events: [AgentEvent] = []
@@ -212,7 +219,9 @@ final class AttentionCenter: ObservableObject {
     func acknowledgeAllActionableItems(
         at acknowledgedAt: Date = Date()
     ) throws -> Int {
-        let actionableItems = items.filter(\.isActionable)
+        // Hidden panes' items are not on screen, so a clear-all must not
+        // acknowledge them behind the orchestrator's back.
+        let actionableItems = displayedItems.filter(\.isActionable)
         guard !actionableItems.isEmpty else { return 0 }
 
         var acknowledgedCount = 0
@@ -419,6 +428,15 @@ final class AttentionCenter: ObservableObject {
 
     var actionableCount: Int {
         items.lazy.filter(\.isActionable).count
+    }
+
+    /// `items` minus the panes hidden from the human's inbox.
+    var displayedItems: [AttentionItem] {
+        items.filter { !isSurfaceHiddenFromDisplay($0.surfaceID) }
+    }
+
+    var displayedActionableCount: Int {
+        displayedItems.lazy.filter(\.isActionable).count
     }
 
     func actionableCount(for surfaceIDs: [TerminalSurfaceID]) -> Int {

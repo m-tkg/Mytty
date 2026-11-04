@@ -58,8 +58,9 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     /// True when attention notifications (Mac banner, sound, iOS push)
     /// must stay silent: orchestrated panes are watched by the
     /// orchestrating agent unless `--notify` opted them back in. Covers
-    /// the Mac banner, sound, iOS push and the tab's unread count badge
-    /// (`TabSession.unreadBadgeSurfaceIDs`); never run state or
+    /// the Mac banner, sound, iOS push, the tab's unread count badge
+    /// (`TabSession.unreadBadgeSurfaceIDs`) and the Attention bell/list
+    /// (`AttentionCenter.isSurfaceHiddenFromDisplay`); never run state or
     /// status indicators.
     public var suppressesAttentionNotifications: Bool {
         isOrchestrated && !notifiesWhenOrchestrated

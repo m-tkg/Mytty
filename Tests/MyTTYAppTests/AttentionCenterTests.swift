@@ -529,6 +529,68 @@ struct AttentionCenterTests {
         #expect(try center.acknowledgeAllActionableItems() == 0)
     }
 
+    @Test("hiding a surface from display leaves items, runs and counts intact")
+    @MainActor
+    func hiddenSurfaceOnlyAffectsDisplay() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let humanSurface = TerminalSurfaceID()
+        let spawnedSurface = TerminalSurfaceID()
+
+        for surfaceID in [humanSurface, spawnedSurface] {
+            let runID = AgentRunID()
+            try center.append(harness.event(
+                runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+            ))
+            try center.append(harness.event(
+                runID: runID, surfaceID: surfaceID,
+                kind: .approvalRequested, at: 2
+            ))
+        }
+        // Shown everywhere until a hide predicate is installed.
+        #expect(center.displayedItems.count == 2)
+        #expect(center.displayedActionableCount == 2)
+
+        center.isSurfaceHiddenFromDisplay = { $0 == spawnedSurface }
+
+        #expect(center.displayedItems.map(\.surfaceID) == [humanSurface])
+        #expect(center.displayedActionableCount == 1)
+        // The underlying data the control surface reads is untouched.
+        #expect(center.items.count == 2)
+        #expect(center.actionableCount == 2)
+        #expect(center.actionableCount(for: [spawnedSurface]) == 1)
+        #expect(center.mostRelevantState(for: [spawnedSurface]) == .waitingApproval)
+    }
+
+    @Test("clear-all skips items hidden from display")
+    @MainActor
+    func clearAllSkipsHiddenItems() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let humanSurface = TerminalSurfaceID()
+        let spawnedSurface = TerminalSurfaceID()
+        for surfaceID in [humanSurface, spawnedSurface] {
+            let runID = AgentRunID()
+            try center.append(harness.event(
+                runID: runID, surfaceID: surfaceID, kind: .started, at: 1
+            ))
+            try center.append(harness.event(
+                runID: runID, surfaceID: surfaceID,
+                kind: .approvalRequested, at: 2
+            ))
+        }
+        center.isSurfaceHiddenFromDisplay = { $0 == spawnedSurface }
+
+        let acknowledged = try center.acknowledgeAllActionableItems()
+
+        #expect(acknowledged == 1)
+        #expect(center.actionableCount(for: [humanSurface]) == 0)
+        // The orchestrator's item must stay actionable for `wait`.
+        #expect(center.actionableCount(for: [spawnedSurface]) == 1)
+    }
+
     @Test("startup sweep disconnects a run a previous launch left running, and a second sweep is a no-op")
     @MainActor
     func sweepInterruptedRuns() throws {

@@ -192,8 +192,8 @@ public enum ControlCommandLineParser {
         anchor pane's agent, never the new tab's, and every agent
         wait/result/send/focus/close/park command works on the job as
         usual. Spawned panes are watched by you, so Mytty raises no Mac
-        banner, sound, iOS push or tab unread badge for them (status
-        indicators, the Attention inbox, `list`,
+        banner, sound, iOS push, tab unread badge or Attention list entry
+        for them (status indicators, `list`,
         `events` and `wait` are unaffected). --notify opts that one
         worker back into those notifications.
 
