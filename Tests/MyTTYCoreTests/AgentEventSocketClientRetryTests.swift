@@ -152,7 +152,10 @@ private final class StubSocketServer: @unchecked Sendable {
         // So wake the loop with a throwaway connection, wait until it has
         // exited, and only then release the descriptor.
         wakeAcceptLoop()
-        loopDone.wait()
+        // Bounded so a failed wake-up cannot hang the whole suite. On a
+        // timeout the descriptor is leaked on purpose: closing it under a
+        // live loop is exactly the reuse hazard this guards against.
+        guard loopDone.wait(timeout: .now() + 5) == .success else { return }
         if listener >= 0 {
             Darwin.close(listener)
             listener = -1
@@ -233,7 +236,7 @@ struct AgentEventSocketClientRetryTests {
 
     @Test("a server that answers is not retried")
     func successIsNotRetried() throws {
-        let server = try StubSocketServer(behavior: .reply, acceptDelay: 0.7)
+        let server = try StubSocketServer(behavior: .reply)
         defer { server.stop() }
 
         let client = AgentEventSocketClient(operationTimeout: 2)
@@ -282,7 +285,7 @@ struct AgentEventSocketClientRetryTests {
 
     @Test("a half-close ENOTCONN does not discard an available response")
     func enotconnOnHalfCloseIsIgnored() throws {
-        let server = try StubSocketServer(behavior: .reply, acceptDelay: 0.7)
+        let server = try StubSocketServer(behavior: .reply)
         defer { server.stop() }
 
         let response = try AgentEventSocketClient(
