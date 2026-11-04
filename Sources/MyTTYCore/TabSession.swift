@@ -49,6 +49,7 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     /// True when this pane was created through the mytty-ctl control surface
     /// by an orchestrating agent; attention notifications for it are
     /// suppressed because the orchestrator handles its approvals/results.
+    /// `agent spawn --notify` sets `notifiesWhenOrchestrated` to opt back in.
     public var isOrchestrated: Bool
     /// Opt-in set by `agent spawn --notify`: an orchestrated pane whose
     /// human also wants Mac banners / iOS pushes for it.
@@ -56,8 +57,10 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
 
     /// True when attention notifications (Mac banner, sound, iOS push)
     /// must stay silent: orchestrated panes are watched by the
-    /// orchestrating agent unless `--notify` opted them back in. Only
-    /// notifications are affected, never run state or indicators.
+    /// orchestrating agent unless `--notify` opted them back in. Covers
+    /// the Mac banner, sound, iOS push and the tab's unread count badge
+    /// (`TabSession.unreadBadgeSurfaceIDs`); never run state or
+    /// status indicators.
     public var suppressesAttentionNotifications: Bool {
         isOrchestrated && !notifiesWhenOrchestrated
     }

@@ -4416,17 +4416,6 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 }
 
 private extension SplitNode {
-    var surfaceStates: [TerminalSurfaceState] {
-        switch self {
-        case let .surface(state):
-            [state]
-        case .browser, .remote:
-            []
-        case let .split(_, _, first, second):
-            first.surfaceStates + second.surfaceStates
-        }
-    }
-
     var browserStates: [BrowserPaneState] {
         switch self {
         case .surface, .remote:

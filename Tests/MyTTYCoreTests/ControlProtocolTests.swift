@@ -425,6 +425,38 @@ struct ControlProtocolTests {
         ))
     }
 
+    @Test("notify false is omitted from the wire; legacy new-tab payload decodes")
+    func spawnAgentNotifyFalseOmitted() throws {
+        for request in [
+            ControlRequest.spawnAgent(
+                anchorPaneID: "pane-1", direction: .right, provider: .codex,
+                cwd: nil, access: nil, model: nil, task: "t", label: nil,
+                worktreeBranch: nil
+            ),
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1", provider: .codex, cwd: nil,
+                access: nil, model: nil, task: "t", label: nil,
+                worktreeBranch: nil, tabTitle: nil
+            ),
+        ] {
+            let object = try JSONSerialization.jsonObject(
+                with: ControlMessageCodec.encode(request)
+            ) as? [String: Any]
+            #expect(object?["notify"] == nil)
+        }
+
+        let legacy = Data("""
+        {"type":"spawnAgentInNewTab","anchorPaneID":"pane-1",\
+        "provider":"codex","task":"t"}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(ControlRequest.self, from: legacy)
+        #expect(decoded == .spawnAgentInNewTab(
+            anchorPaneID: "pane-1", provider: .codex, cwd: nil, access: nil,
+            model: nil, task: "t", label: nil, worktreeBranch: nil,
+            tabTitle: nil, notify: false
+        ))
+    }
+
     @Test("decodes a legacy newTab/split payload without a command key")
     func decodesLegacyNewTabAndSplitWithoutCommand() throws {
         let legacyNewTab = Data("""
