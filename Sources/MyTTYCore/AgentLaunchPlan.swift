@@ -61,6 +61,7 @@ public enum AgentLaunchPlan {
         model: String?,
         reasoningEffort: AgentReasoningEffort? = nil,
         inheritedModeArguments: [String]? = nil,
+        workingDirectory: String? = nil,
         task: String
     ) -> String {
         let quotedTask = ShellQuoting.quote(task + workerContract)
@@ -70,6 +71,7 @@ public enum AgentLaunchPlan {
             model: model,
             reasoningEffort: reasoningEffort,
             inheritedModeArguments: inheritedModeArguments,
+            workingDirectory: workingDirectory,
             quotedTask: quotedTask
         ) + "\n"
     }
@@ -127,39 +129,64 @@ public enum AgentLaunchPlan {
         }
     }
 
-    /// Read-only commands a review worker may run without an approval
-    /// prompt. `agy` has no attention events, so an unanswered prompt would
-    /// stall the pane silently; `gh api` is included because posting the
-    /// review itself is a `gh api ... -X POST`.
+    /// Commands a review worker may run without an approval prompt. agy
+    /// matches a rule as a whole-word command prefix and judges `;`, `&&`,
+    /// pipes, `$(...)` and redirects per sub-command, but it cannot fence
+    /// off flags: `rg --pre <cmd>` runs arbitrary commands and
+    /// `git diff|log|show --output=<path>` writes files, so neither `rg`
+    /// nor those git subcommands are listed (a review worker uses `gh pr
+    /// diff` and `cat`; anything else stops at a prompt). `gh api` stays
+    /// because posting the review is a `gh api ... -X POST`; that also lets
+    /// the worker write to GitHub, which is documented, not prevented.
     private static let antigravityReadAllowRules = [
         "gh pr view", "gh pr diff", "gh pr list", "gh pr checks",
         "gh issue view", "gh api",
-        "git diff", "git log", "git show", "git status", "git blame",
-        "cat", "ls", "rg", "grep", "head", "tail", "wc", "pwd",
+        "git status", "git blame",
+        "cat", "ls", "grep", "head", "tail", "wc", "pwd",
         "mytty-ctl status",
     ]
 
-    /// Extra rules for a worker that edits and builds in its workspace.
-    private static let antigravityWriteAllowRules = [
-        "git", "gh", "swift", "make", "mytty-ctl", "cat", "ls", "rg", "grep",
-        "head", "tail", "wc", "pwd", "mkdir", "touch", "mv", "cp",
-    ]
+    /// Rules for a worker that edits and builds in its workspace. Scoped to
+    /// subcommands so that push, merge, reset and deletions still stop at a
+    /// prompt, as they do for claude's `acceptEdits`. `swift` and `make`
+    /// are effectively arbitrary code execution; that is accepted.
+    private static let antigravityWriteAllowRules = antigravityReadAllowRules
+        .filter { $0 != "gh api" }
+        + [
+            "git add", "git commit", "git diff", "git log", "git show",
+            "git branch", "git checkout", "git switch", "git fetch",
+            "gh pr create", "gh pr comment", "gh issue list",
+            "swift", "make", "mkdir", "touch",
+        ]
 
-    /// `--settings <json>` for `agy`: session-only (never saved) trust of
-    /// the pane's working directory, which skips the first-run "Do you trust
-    /// this folder" prompt, plus the shell-command allow rules for the
-    /// access policy. `agy` cannot prompt in a way Mytty can notice, so
-    /// any command outside the rules stops the worker at an approval
-    /// prompt. The directory is spliced in by the pane's shell (`$PWD`)
-    /// because the launch plan does not know it.
-    private static func antigravitySettings(writable: Bool) -> String {
+    /// `--settings <json>` for `agy`: one shell-quoted argument holding
+    /// session-only (never saved) settings. `trustedWorkspaces` pre-trusts
+    /// the worker's directory so agy skips its first-run "Do you trust this
+    /// folder" prompt; `permissions.allow` lists the shell commands allowed
+    /// without asking. agy reports no approval events, so anything outside
+    /// the rules stops the worker at an approval prompt nobody is told
+    /// about. The JSON is built here and quoted as a whole, so a directory
+    /// name with quotes, backslashes or shell metacharacters cannot add
+    /// settings or break the command.
+    private static func antigravitySettings(
+        writable: Bool,
+        workingDirectory: String?
+    ) -> String {
         let rules = (writable
             ? antigravityWriteAllowRules : antigravityReadAllowRules)
-            .map { "\"command(\($0))\"" }
-            .joined(separator: ",")
-        let template = "{\"trustedWorkspaces\":[\"%s\"],"
-            + "\"permissions\":{\"allow\":[\(rules)]}}"
-        return "--settings \"$(printf '\(template)' \"$PWD\")\""
+            .map { "command(\($0))" }
+        var settings: [String: Any] = [
+            "permissions": ["allow": rules],
+        ]
+        if let workingDirectory {
+            settings["trustedWorkspaces"] = [workingDirectory]
+        }
+        let data = (try? JSONSerialization.data(
+            withJSONObject: settings,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )) ?? Data("{}".utf8)
+        return "--settings "
+            + ShellQuoting.quote(String(decoding: data, as: UTF8.self))
     }
 
     /// The codex flags that already govern approval behavior on their own
@@ -177,6 +204,7 @@ public enum AgentLaunchPlan {
         model: String?,
         reasoningEffort: AgentReasoningEffort?,
         inheritedModeArguments: [String]?,
+        workingDirectory: String?,
         quotedTask: String
     ) -> String {
         // Model and reasoning effort travel together as the leading
@@ -191,6 +219,7 @@ public enum AgentLaunchPlan {
                 provider: provider,
                 modelFlag: modelFlag,
                 inheritedModeArguments: inheritedModeArguments,
+                workingDirectory: workingDirectory,
                 quotedTask: quotedTask
             )
         }
@@ -214,9 +243,13 @@ public enum AgentLaunchPlan {
         case (.cursor, .workspaceWrite), (.cursor, .inherit):
             "command cursor-agent \(modelFlag)--force --sandbox enabled -- \(quotedTask)"
         case (.antigravity, .review):
-            "command agy \(modelFlag)--mode plan \(antigravitySettings(writable: false)) -i \(quotedTask)"
+            "command agy \(modelFlag)--mode plan "
+                + "\(antigravitySettings(writable: false, workingDirectory: workingDirectory)) "
+                + "-i \(quotedTask)"
         case (.antigravity, .workspaceWrite), (.antigravity, .inherit):
-            "command agy \(modelFlag)--mode accept-edits \(antigravitySettings(writable: true)) -i \(quotedTask)"
+            "command agy \(modelFlag)--mode accept-edits "
+                + "\(antigravitySettings(writable: true, workingDirectory: workingDirectory)) "
+                + "-i \(quotedTask)"
         }
     }
 
@@ -229,6 +262,7 @@ public enum AgentLaunchPlan {
         provider: AgentWorkerProvider,
         modelFlag: String,
         inheritedModeArguments: [String],
+        workingDirectory: String?,
         quotedTask: String
     ) -> String {
         let quotedFlags = inheritedModeArguments
@@ -247,8 +281,17 @@ public enum AgentLaunchPlan {
         case .cursor:
             return "command cursor-agent \(modelFlag)\(quotedFlags) -- \(quotedTask)"
         case .antigravity:
+            // Only a lead in plan mode gets the read-only rules: plan mode
+            // does not stop an allowed shell command (agy only keeps the
+            // model from planning writes), so the rules are what keeps a
+            // read-only lead's worker read-only.
+            let isPlan = zip(
+                inheritedModeArguments,
+                inheritedModeArguments.dropFirst()
+            ).contains { $0 == "--mode" && $1 == "plan" }
             return "command agy \(modelFlag)\(quotedFlags) "
-                + "\(antigravitySettings(writable: true)) -i \(quotedTask)"
+                + "\(antigravitySettings(writable: !isPlan, workingDirectory: workingDirectory)) "
+                + "-i \(quotedTask)"
         }
     }
 }

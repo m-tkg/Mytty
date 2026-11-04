@@ -397,6 +397,8 @@ struct ControlCommandLineParserTests {
         #expect(guide.contains("cursor-agent --force"))
         #expect(guide.contains("antigravity"))
         #expect(guide.contains("agy --mode accept-edits"))
+        // The review worker can still write to GitHub through `gh api`.
+        #expect(guide.contains("gh api"))
         #expect(guide.contains("--until idle"))
         #expect(guide.contains("MYTTY_CTL_BIN"))
         #expect(guide.contains("MYTTY_SURFACE_ID"))

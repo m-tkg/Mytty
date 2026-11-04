@@ -130,10 +130,17 @@ public enum ControlCommandLineParser {
         a different provider, rather than silently falling back to
         workspace-write. --access review is read-only investigation.
         For antigravity, review launches agy in --mode plan and the other
-        values in --mode accept-edits; agent spawn also passes a
-        session-only --settings that pre-trusts the working directory and
-        allows common shell commands, because agy reports no approval
-        events and an unanswered prompt would stall the pane silently.
+        values in --mode accept-edits (inherit copies your --mode,
+        --sandbox and --dangerously-skip-permissions). agent spawn also
+        passes a session-only --settings that pre-trusts the working
+        directory and allows a fixed set of shell commands, because agy
+        reports no approval events and an unanswered prompt would stall
+        the pane silently. Plan mode does not block an allowed command,
+        so the review worker's rules are read-only commands only -- but
+        they include `gh api`, which a review needs to post its review
+        and which can also write to GitHub (merge, delete, ...). The
+        workspace-write rules cover git add/commit/diff/log/show, gh pr
+        create/comment, swift and make, but not push, merge or reset.
         --access workspace-write lets the worker edit files, but for a
         claude worker it always launches with
         --permission-mode acceptEdits regardless of your own mode -- so a
@@ -152,8 +159,9 @@ public enum ControlCommandLineParser {
         --effort, but agy rejects it together with a model name that
         already carries a level such as gemini-4-argon-medium: use that
         name alone, or the base name gemini-4-argon plus the flag; see
-        `agy models`); cursor has no such
-        setting, so the flag is an error there. Omitted, the provider's own configured default applies. --cwd
+        `agy models`); cursor has no such setting, so the flag is an
+        error there. Omitted, the provider's own configured default
+        applies. --cwd
         defaults to the anchor pane's shell-reported working directory,
         not your own process cwd -- if you were started somewhere the
         pane's shell never cd'd into (e.g. `claude --worktree` chdirs
@@ -406,13 +414,15 @@ public enum ControlCommandLineParser {
         antigravity
           launch: agy --mode accept-edits (agent spawn adds --settings with
           trustedWorkspaces and shell allow rules; --access review uses
-          --mode plan with read-only rules instead)
+          --mode plan with read-only rules instead, which still include
+          `gh api` so it can post a review)
           The task is passed with `-i` as the initial prompt. Its hooks never
           emit approval/input events, so only `wait --until idle` ever
           resolves for it; `wait --until attention` always times out. A shell
           command outside the allow rules stops at an approval prompt that
           nothing reports: read the pane when a worker looks stuck, and
-          approve with `send-key`.
+          approve with `send-key`. git push, gh pr merge and similar are
+          not in the rules either, so they always wait for you.
 
       WAIT PITFALLS
 
