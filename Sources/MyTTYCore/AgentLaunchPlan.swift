@@ -87,6 +87,81 @@ public enum AgentLaunchPlan {
         historySuppressionPrefix + command + "\n"
     }
 
+    /// Largest `initialInput` (bytes) typed straight into the pane. Ghostty
+    /// writes it to the pty right away, usually before the shell has left
+    /// the tty's canonical mode, whose input line holds at most 1023 bytes
+    /// on macOS (`MAX_CANON` is 1024): the excess, trailing newline
+    /// included, is silently dropped, leaving a truncated command at the
+    /// prompt. Stay well below that.
+    public static let maxInlineInputBytes = 900
+
+    /// Per-user private scratch directory for staged launch scripts.
+    public static var stagingDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("mytty-launch", isDirectory: true)
+    }
+
+    /// Returns `input` unchanged when it fits `maxInlineInputBytes`.
+    /// Otherwise the command moves into a private one-shot script under
+    /// `directory` and the pane gets a short line that sources it, keeping
+    /// the history-suppression prefix on the typed line. The script deletes
+    /// itself first thing (the shell has already opened it), so nothing
+    /// lingers; leftovers older than a day are swept on each call. If the
+    /// script cannot be written, `input` is returned as it was.
+    public static func staged(
+        _ input: String,
+        in directory: URL,
+        fileManager: FileManager = .default
+    ) -> String {
+        guard input.utf8.count > maxInlineInputBytes,
+              input.hasPrefix(historySuppressionPrefix),
+              input.hasSuffix("\n")
+        else { return input }
+        let command = String(
+            input.dropFirst(historySuppressionPrefix.count).dropLast()
+        )
+        do {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            sweepStaleScripts(in: directory, fileManager: fileManager)
+            let file = directory.appendingPathComponent(
+                "launch-\(UUID().uuidString).sh"
+            )
+            let quotedPath = ShellQuoting.quote(file.path)
+            let script = "command rm -f -- \(quotedPath)\n\(command)\n"
+            guard fileManager.createFile(
+                atPath: file.path,
+                contents: Data(script.utf8),
+                attributes: [.posixPermissions: 0o600]
+            ) else { return input }
+            return historySuppressionPrefix + ". \(quotedPath)\n"
+        } catch {
+            return input
+        }
+    }
+
+    private static func sweepStaleScripts(
+        in directory: URL,
+        fileManager: FileManager
+    ) {
+        let cutoff = Date().addingTimeInterval(-86_400)
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files where file.lastPathComponent.hasPrefix("launch-") {
+            let modified = (try? file.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate
+            if let modified, modified < cutoff {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+
     /// `--model <quoted-model> ` (with a trailing space) for the given
     /// provider, or the empty string when no model was requested — kept
     /// separate from `command(...)` so each provider's flag ordering below

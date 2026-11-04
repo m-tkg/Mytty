@@ -163,7 +163,12 @@ extension ControlCoordinator: ControlServerDelegate {
         }
         return controller.newTab(
             workingDirectory: url,
-            initialInput: command.map { AgentLaunchPlan.initialInput(command: $0) },
+            initialInput: command.map {
+                AgentLaunchPlan.staged(
+                    AgentLaunchPlan.initialInput(command: $0),
+                    in: AgentLaunchPlan.stagingDirectory
+                )
+            },
             orchestrated: true
         )?.rawValue.uuidString
     }
@@ -190,7 +195,12 @@ extension ControlCoordinator: ControlServerDelegate {
             target.paneID,
             direction: target.direction,
             workingDirectory: url,
-            initialInput: command.map { AgentLaunchPlan.initialInput(command: $0) },
+            initialInput: command.map {
+                AgentLaunchPlan.staged(
+                    AgentLaunchPlan.initialInput(command: $0),
+                    in: AgentLaunchPlan.stagingDirectory
+                )
+            },
             orchestrated: true
         )?.rawValue.uuidString
     }
