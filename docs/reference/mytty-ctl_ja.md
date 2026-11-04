@@ -85,10 +85,10 @@ pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポ�
 
 拒否ルールは守りの一層であり、安全の境界ではありません。agy は先頭一致で判定するので、`git -C . push` や `gh api ... -X POST` は拒否できません。次のリスクが残ります。
 - `gh api` は GitHub に書き込めます(投稿、マージ、削除)。レビューの投稿に必要なので許可したままで、拒否ルールでは読み取りと書き込みを区別できません。
-- `python3`、`awk`、`find -exec`、`e` フラグ付きの `sed`、`rg --pre`、`git diff --output=<path>` は、任意のコマンドの実行やファイルの書き込みができます。`--mode plan` は防ぎません。実機で plan モードのまま `python3 -c` がファイルを書きました。
+- `python3`、`awk`、`find -exec`、`sed`(`-i` や `w` コマンドでファイルを書き換えられ、GNU `sed` には `e` もあります)、`find -delete`(`rm` の拒否ルールを通らずにファイルを消せます)、`rg --pre`、`git diff --output=<path>` は、任意のコマンドの実行やファイルの書き込みができます。`--mode plan` は防ぎません。実機で plan モードのまま `python3 -c` がファイルを書きました。
 - `git fetch` は強制 refspec でローカルブランチを上書きできます。
 
-この点は `claude` や `codex` の review worker と違います。それ以外の access では、さらに `git add`/`commit`/`diff`/`log`/`show`、`gh pr create`/`comment`、`swift`、`make`、`mkdir`、`touch` を許可します。`git push`、`git reset`、`git checkout`/`switch`/`branch`/`fetch`(変更の破棄やブランチの削除・上書きになる形があるため)、`gh pr merge`、`mv`/`cp` は許可せず、承認プロンプトで止まります。ブランチが必要なら `--worktree` を使ってください。
+この点は `claude` や `codex` の review worker と違います。それ以外の access では、別の狭い許可リストを使い、拒否ルールも `gh api` もありません。許可するのは `gh pr view`/`diff`/`list`/`checks`、`gh issue view`/`list`、`git status`/`blame`/`add`/`commit`/`diff`/`log`/`show`、`cat`、`ls`、`grep`、`head`、`tail`、`wc`、`pwd`、`mytty-ctl status`、`gh pr create`/`comment`、`swift`、`make`、`mkdir`、`touch` です。review の `python3`、`rg`、`sed`、`awk`、`jq`、`find`、`/tmp` へのリダイレクトは含まれません。`git push`、`git reset`、`git checkout`/`switch`/`branch`/`fetch`(変更の破棄やブランチの削除・上書きになる形があるため)、`gh pr merge`、`mv`/`cp` は許可せず、承認プロンプトで止まります。ブランチが必要なら `--worktree` を使ってください。
 
 `agy` は承認や入力待ちのイベントを出さないため、ルール外のコマンドは誰にも通知されない承認プロンプトで止まり、`wait --until attention` はタイムアウトします。worker が止まって見えるときはペインを読み、`send-key` で答えてください。モデル名は `agy models` で確認できます。多くの名前には推論レベルが含まれています(`gemini-4-argon-medium`)。agy はこうした名前と `--effort` の併用を拒否する(`--model gemini-4-argon-medium conflicts with --effort=low`)ため、レベル込みの名前だけを使うか、基本名(`gemini-4-argon`)と `--reasoning-effort` を組み合わせてください。Mytty はこの組み合わせを事前に検査せず、エラーは worker のペインに表示されます。
 

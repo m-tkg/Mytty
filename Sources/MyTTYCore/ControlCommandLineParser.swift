@@ -138,11 +138,12 @@ public enum ControlCommandLineParser {
         the pane silently. Plan mode does not block an allowed command,
         so a review worker can still write: its rules are broad (git
         read commands incl. fetch, gh pr view/diff/list/checks and gh
-        api, python3, mytty-ctl status, cat/nl/head/tail/rg/grep/sed/awk/
-        jq/wc/sort/uniq/diff/ls/find, and redirects into /tmp) and a
-        deny list stops git push/commit/checkout/reset/merge/rebase, gh
-        pr merge/close/edit, gh repo/release, curl, wget, sudo, rm and
-        mv. The deny list is a prefix match and a second layer, not a
+        api, gh issue view/list, python3, mytty-ctl status, cat/nl/head/
+        tail/rg/grep/sed/awk/jq/wc/sort/uniq/diff/ls/find/pwd, and
+        redirects into /tmp) and a
+        deny list stops git push/commit/checkout/switch/reset/merge/rebase/clean/
+        restore, gh pr merge/close/edit, gh repo/release, curl, wget,
+        sudo, rm, rmdir and mv. The deny list is a prefix match and a second layer, not a
         boundary: `git -C . push` and `gh api -X POST` are not caught,
         python3, awk, find and sed can run or write anything, and gh api
         can write to GitHub. $(...) and <(...) always stop at a prompt;

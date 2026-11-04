@@ -129,7 +129,8 @@ public enum AgentLaunchPlan {
         }
     }
 
-    /// Base rules shared by every agy worker (the writer extends these).
+    /// Base for the writer's rules (`antigravityWriteAllowRules` extends these);
+    /// the review worker has its own list below.
     /// agy matches `command(x)` as a whole-word command prefix and judges
     /// `;`, `&&`, pipes and `2>&1` per sub-command.
     private static let antigravityReadAllowRules = [
@@ -314,10 +315,10 @@ public enum AgentLaunchPlan {
         case .cursor:
             return "command cursor-agent \(modelFlag)\(quotedFlags) -- \(quotedTask)"
         case .antigravity:
-            // Only a lead in plan mode gets the read-only rules: plan mode
-            // does not stop an allowed shell command (agy only keeps the
-            // model from planning writes), so the rules are what keeps a
-            // read-only lead's worker read-only.
+            // Only a lead in plan mode gets the review rules: plan mode does
+            // not stop an allowed shell command (agy only keeps the model
+            // from planning writes), so the allow and deny rules are what
+            // limit a plan-mode lead's worker (see the review rule docs).
             let isPlan = zip(
                 inheritedModeArguments,
                 inheritedModeArguments.dropFirst()
