@@ -8,11 +8,14 @@ import Testing
 /// test asked for, so the client's failure handling can be exercised
 /// without a real `AgentEventServer`.
 private final class StubSocketServer: @unchecked Sendable {
-    enum Behavior {
+    enum Behavior: Equatable {
         /// Accept and never answer, so the client's receive timeout fires.
         case hang
         /// Accept, read the request, and reply with a valid response.
         case reply
+        /// Like `.reply`, but only after a pause, so a client that already
+        /// gave up and closed is written to.
+        case slowReply
     }
 
     let url: URL
@@ -94,14 +97,21 @@ private final class StubSocketServer: @unchecked Sendable {
 
     private static func serve(client: Int32, behavior: Behavior) {
         defer { Darwin.close(client) }
+        // The client's SO_NOSIGPIPE does not cover this end, and setting it
+        // on an accepted socket whose peer already closed fails with EINVAL
+        // on Darwin. Replying to a connection the client closed would raise
+        // SIGPIPE and kill the whole test process, so ignore the signal;
+        // the failed `send` just returns EPIPE.
+        signal(SIGPIPE, SIG_IGN)
         switch behavior {
         case .hang:
             // Hold the connection open without answering; the client's
             // SO_RCVTIMEO is what ends the exchange.
             Thread.sleep(forTimeInterval: 2)
-        case .reply:
+        case .reply, .slowReply:
             var buffer = [UInt8](repeating: 0, count: 4096)
             _ = Darwin.recv(client, &buffer, buffer.count, 0)
+            if behavior == .slowReply { Thread.sleep(forTimeInterval: 0.2) }
             let response = Data(#"{"ok":true,"inserted":true}"#.utf8)
                 + Data([0x0A])
             _ = response.withUnsafeBytes {
@@ -189,5 +199,31 @@ struct AgentEventSocketClientRetryTests {
         #expect(!AgentEventSocketClient.isRetryable(ENOENT))
         #expect(!AgentEventSocketClient.isRetryable(ECONNREFUSED))
         #expect(!AgentEventSocketClient.isRetryable(EPERM))
+    }
+
+    @Test("a half-close ENOTCONN does not discard an available response")
+    func enotconnOnHalfCloseIsIgnored() throws {
+        let server = try StubSocketServer(behavior: .reply)
+        defer { server.stop() }
+
+        let response = try AgentEventSocketClient(
+            operationTimeout: 2,
+            halfClose: { _ in ENOTCONN }
+        ).send(envelope(), to: server.url)
+
+        #expect(response.ok)
+    }
+
+    @Test("other half-close errors are still reported")
+    func otherHalfCloseErrorsThrow() throws {
+        let server = try StubSocketServer(behavior: .slowReply)
+        defer { server.stop() }
+
+        #expect(throws: AgentEventSocketClientError.socketOperation(EIO)) {
+            try AgentEventSocketClient(
+                operationTimeout: 2,
+                halfClose: { _ in EIO }
+            ).send(envelope(), to: server.url)
+        }
     }
 }

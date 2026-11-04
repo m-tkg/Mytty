@@ -104,7 +104,24 @@ public struct ControlSocketClient: Sendable {
     private static let maximumResponseSize = 256 * 1024
     private static let defaultTimeoutSeconds = 5
 
-    public init() {}
+    /// Half-closes the write side of a connected socket, returning 0 or the
+    /// errno it failed with. Injectable so tests can deterministically
+    /// reproduce the ENOTCONN a fast-closing server provokes on Darwin.
+    typealias HalfClose = @Sendable (Int32) -> Int32
+
+    private let halfClose: HalfClose
+
+    public init() {
+        self.init(halfClose: Self.systemHalfClose)
+    }
+
+    init(halfClose: @escaping HalfClose) {
+        self.halfClose = halfClose
+    }
+
+    static let systemHalfClose: HalfClose = { descriptor in
+        Darwin.shutdown(descriptor, SHUT_WR) == 0 ? 0 : errno
+    }
 
     public func send(
         _ request: ControlRequest,
@@ -181,7 +198,13 @@ public struct ControlSocketClient: Sendable {
         }
 
         try sendAll(request, descriptor: descriptor)
-        guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
+        // The server can reply and close before this half-close runs (a
+        // `wait` on a pane already in the target state does exactly that).
+        // Darwin then reports ENOTCONN, but the response is still buffered
+        // on our end, so only other failures are real.
+        let halfCloseError = halfClose(descriptor)
+        if halfCloseError != 0, halfCloseError != ENOTCONN {
+            errno = halfCloseError
             throw socketError()
         }
         return try receiveResponse(descriptor: descriptor)

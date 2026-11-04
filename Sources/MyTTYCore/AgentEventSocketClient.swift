@@ -62,12 +62,27 @@ public struct AgentEventSocketClient: Sendable {
     /// path without waiting seconds for it.
     private let operationTimeout: Double
 
+    /// Half-closes the write side of a connected socket, returning 0 or the
+    /// errno it failed with. Injectable so tests can deterministically
+    /// reproduce the ENOTCONN a fast-closing server provokes on Darwin.
+    typealias HalfClose = @Sendable (Int32) -> Int32
+
+    private let halfClose: HalfClose
+
     public init() {
         self.init(operationTimeout: Self.defaultOperationTimeout)
     }
 
-    init(operationTimeout: Double) {
+    init(
+        operationTimeout: Double,
+        halfClose: @escaping HalfClose = AgentEventSocketClient.systemHalfClose
+    ) {
         self.operationTimeout = operationTimeout
+        self.halfClose = halfClose
+    }
+
+    static let systemHalfClose: HalfClose = { descriptor in
+        Darwin.shutdown(descriptor, SHUT_WR) == 0 ? 0 : errno
     }
 
     public func send(
@@ -169,7 +184,13 @@ public struct AgentEventSocketClient: Sendable {
         guard connectResult == 0 else { throw socketError() }
 
         try sendAll(request, descriptor: descriptor)
-        guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
+        // The server can reply and close before this half-close runs (a
+        // `wait` on a pane already in the target state does exactly that).
+        // Darwin then reports ENOTCONN, but the response is still buffered
+        // on our end, so only other failures are real.
+        let halfCloseError = halfClose(descriptor)
+        if halfCloseError != 0, halfCloseError != ENOTCONN {
+            errno = halfCloseError
             throw socketError()
         }
         return try receiveResponse(descriptor: descriptor)
