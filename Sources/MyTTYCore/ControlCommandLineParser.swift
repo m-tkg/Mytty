@@ -19,6 +19,7 @@ public enum ControlCommandLineParser {
                   [--model <text>] [--reasoning-effort <level>]
                   [--label <text>] [--worktree <branch>]
                   [--new-tab [--tab-title <text>]]   (instead of --direction)
+                  [--notify]
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
       agent send <job-id> <text> [--enter]
@@ -107,7 +108,7 @@ public enum ControlCommandLineParser {
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--reasoning-effort <level>]
                   [--label <text>] [--worktree <branch>]
-                  [--new-tab [--tab-title <text>]]
+                  [--new-tab [--tab-title <text>]] [--notify]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --direction defaults to auto: it picks
         whichever existing pane and side keeps the tab's layout closest
@@ -190,7 +191,10 @@ public enum ControlCommandLineParser {
         naming. --access omission and inherit still resolve against the
         anchor pane's agent, never the new tab's, and every agent
         wait/result/send/focus/close/park command works on the job as
-        usual.
+        usual. Spawned panes are watched by you, so Mytty raises no Mac
+        banner, sound or iOS push for them (status indicators, `list`,
+        `events` and `wait` are unaffected). --notify opts that one
+        worker back into those notifications.
 
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
         Blocks until this exact job's own spawned run reaches the given
@@ -560,6 +564,7 @@ public enum ControlCommandLineParser {
         public let taskFilePath: String
         public let newTab: Bool
         public let tabTitle: String?
+        public let notify: Bool
 
         public init(
             anchorPaneID: String,
@@ -573,8 +578,10 @@ public enum ControlCommandLineParser {
             taskFilePath: String,
             newTab: Bool = false,
             tabTitle: String? = nil,
-            reasoningEffort: AgentReasoningEffort? = nil
+            reasoningEffort: AgentReasoningEffort? = nil,
+            notify: Bool = false
         ) {
+            self.notify = notify
             self.anchorPaneID = anchorPaneID
             self.direction = direction
             self.provider = provider
@@ -668,7 +675,8 @@ public enum ControlCommandLineParser {
             worktreeBranch: pending.worktreeBranch,
             newTab: pending.newTab,
             tabTitle: pending.tabTitle,
-            reasoningEffort: pending.reasoningEffort
+            reasoningEffort: pending.reasoningEffort,
+            notify: pending.notify
         )
     }
 
@@ -1057,7 +1065,7 @@ public enum ControlCommandLineParser {
     [--direction <left|right|up|down|auto>] [--cwd <path>] \
     [--access <review|workspace-write|inherit>] [--model <text>] \
     [--reasoning-effort <level>] [--label <text>] [--worktree <branch>] \
-    [--new-tab [--tab-title <text>]]
+    [--new-tab [--tab-title <text>]] [--notify]
     """
 
     /// `agent` routed through `parseInvocation`: unlike every other
@@ -1223,7 +1231,7 @@ public enum ControlCommandLineParser {
         var positional = arguments
         let options = try parseOptions(
             &positional,
-            flags: ["--new-tab"],
+            flags: ["--new-tab", "--notify"],
             valued: [
                 "--anchor", "--direction", "--provider", "--cwd",
                 "--access", "--model", "--reasoning-effort", "--task",
@@ -1349,7 +1357,8 @@ public enum ControlCommandLineParser {
             taskFilePath: options.values["--task-file"] ?? "",
             newTab: newTab,
             tabTitle: options.values["--tab-title"],
-            reasoningEffort: reasoningEffort
+            reasoningEffort: reasoningEffort,
+            notify: options.flags.contains("--notify")
         )
 
         switch (options.values["--task"], options.values["--task-file"]) {
@@ -1377,7 +1386,8 @@ public enum ControlCommandLineParser {
         worktreeBranch: String?,
         newTab: Bool,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) throws -> ControlRequest {
         guard !task.isEmpty else {
             throw ControlCommandLineError.invalidArguments(
@@ -1395,7 +1405,8 @@ public enum ControlCommandLineParser {
                 label: label,
                 worktreeBranch: worktreeBranch,
                 tabTitle: tabTitle,
-                reasoningEffort: reasoningEffort
+                reasoningEffort: reasoningEffort,
+                notify: notify
             )
             : .spawnAgent(
                 anchorPaneID: anchorPaneID,
@@ -1407,7 +1418,8 @@ public enum ControlCommandLineParser {
                 task: task,
                 label: label,
                 worktreeBranch: worktreeBranch,
-                reasoningEffort: reasoningEffort
+                reasoningEffort: reasoningEffort,
+                notify: notify
             )
         let encodedSize = (try? ControlMessageCodec.encode(request).count)
             ?? Int.max

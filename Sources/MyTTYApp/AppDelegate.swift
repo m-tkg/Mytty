@@ -1499,8 +1499,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // notified by the orchestrator's own pane instead, so both the
         // phone push and the Mac banner stay silent for these panes
         // regardless of visibility/focus/app-active state.
+        // `agent spawn --notify` opts a pane back in; it then follows the
+        // normal visibility/focus gating below.
         let orchestrated = windowSessionCoordinator.controllers.contains {
-            $0.isOrchestratedSurface(event.surfaceID)
+            $0.suppressesAttentionNotifications(for: event.surfaceID)
         }
 
         // The phone is gated on the Mac being unattended rather than on

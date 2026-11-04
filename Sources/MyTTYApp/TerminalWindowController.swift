@@ -649,11 +649,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// True when `surfaceID` was created through the mytty-ctl control
-    /// surface (`new-tab`, `split`, `agent spawn`). Such panes never raise
-    /// attention notifications — see `AppDelegate.receiveAgentEvent`.
-    func isOrchestratedSurface(_ surfaceID: TerminalSurfaceID) -> Bool {
+    /// surface (`new-tab`, `split`, `agent spawn`) and was not opted back
+    /// in with `agent spawn --notify`. Such panes never raise attention
+    /// notifications — see `AppDelegate.receiveAgentEvent`.
+    func suppressesAttentionNotifications(
+        for surfaceID: TerminalSurfaceID
+    ) -> Bool {
         session.tabs.contains {
-            $0.root.surfaceState(with: surfaceID)?.isOrchestrated == true
+            $0.root.surfaceState(with: surfaceID)?
+                .suppressesAttentionNotifications == true
         }
     }
 
@@ -662,11 +666,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
         orchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false,
         tabTitle: String? = nil
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
-            isOrchestrated: orchestrated
+            isOrchestrated: orchestrated,
+            notifiesWhenOrchestrated: notifiesWhenOrchestrated
         )
         // Orchestrated tabs (mytty-ctl / agent-created) open in the
         // background so an agent spawning workers never yanks the user
@@ -995,14 +1001,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         direction: SplitDirection,
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
-        orchestrated: Bool = false
+        orchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false
     ) -> TerminalSurfaceID? {
         if orchestrated {
             return splitPaneInBackground(
                 paneID,
                 direction: direction,
                 workingDirectory: workingDirectory,
-                initialInput: initialInput
+                initialInput: initialInput,
+                notifiesWhenOrchestrated: notifiesWhenOrchestrated
             )
         }
         guard focus(pane: paneID) else { return nil }
@@ -1021,14 +1029,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ paneID: TerminalSurfaceID,
         direction: SplitDirection,
         workingDirectory: URL?,
-        initialInput: String?
+        initialInput: String?,
+        notifiesWhenOrchestrated: Bool
     ) -> TerminalSurfaceID? {
         guard session.tabs.contains(where: {
             $0.paneIDs.contains(paneID)
         }) else { return nil }
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
-            isOrchestrated: true
+            isOrchestrated: true,
+            notifiesWhenOrchestrated: notifiesWhenOrchestrated
         )
         let initialSize = paneLayout.host(for: paneID).map {
             Self.initialSurfaceSize(

@@ -393,6 +393,38 @@ struct ControlProtocolTests {
         #expect(object?["access"] == nil)
     }
 
+    @Test("spawnAgent notify round-trips and a legacy payload decodes to false")
+    func spawnAgentNotifyWire() throws {
+        for request in [
+            ControlRequest.spawnAgent(
+                anchorPaneID: "pane-1", direction: .right, provider: .codex,
+                cwd: nil, access: nil, model: nil, task: "t", label: nil,
+                worktreeBranch: nil, notify: true
+            ),
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1", provider: .codex, cwd: nil,
+                access: nil, model: nil, task: "t", label: nil,
+                worktreeBranch: nil, tabTitle: nil, notify: true
+            ),
+        ] {
+            let decoded: ControlRequest = try ControlMessageCodec.decode(
+                ControlMessageCodec.encode(request)
+            )
+            #expect(decoded == request)
+        }
+
+        let legacy = Data("""
+        {"type":"spawnAgent","anchorPaneID":"pane-1","direction":"right",\
+        "provider":"codex","task":"t"}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(ControlRequest.self, from: legacy)
+        #expect(decoded == .spawnAgent(
+            anchorPaneID: "pane-1", direction: .right, provider: .codex,
+            cwd: nil, access: nil, model: nil, task: "t", label: nil,
+            worktreeBranch: nil, notify: false
+        ))
+    }
+
     @Test("decodes a legacy newTab/split payload without a command key")
     func decodesLegacyNewTabAndSplitWithoutCommand() throws {
         let legacyNewTab = Data("""

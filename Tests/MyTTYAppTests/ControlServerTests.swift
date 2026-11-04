@@ -710,6 +710,42 @@ struct ControlServerTests {
         }
     }
 
+    @Test("spawn requests forward notify to the delegate")
+    func agentSpawnForwardsNotify() async throws {
+        let delegate = StubControlDelegate()
+        let agentDelegate = StubControlAgentDelegate()
+        agentDelegate.spawnResult = .success(Self.makeJob(state: .launching))
+        let (server, socketURL) = try await makeServer(
+            delegate: delegate,
+            agentDelegate: agentDelegate
+        )
+        defer { server.stop() }
+
+        for notify in [false, true] {
+            _ = try await perform(
+                .spawnAgent(
+                    anchorPaneID: "pane-1", direction: .right,
+                    provider: .codex, cwd: nil, access: .workspaceWrite,
+                    model: nil, task: "t", label: nil, worktreeBranch: nil,
+                    notify: notify
+                ),
+                to: socketURL
+            )
+            #expect(agentDelegate.lastSpawnNotify == notify)
+            agentDelegate.lastSpawnNotify = nil
+            _ = try await perform(
+                .spawnAgentInNewTab(
+                    anchorPaneID: "pane-1", provider: .codex, cwd: nil,
+                    access: .workspaceWrite, model: nil, task: "t",
+                    label: nil, worktreeBranch: nil, tabTitle: nil,
+                    notify: notify
+                ),
+                to: socketURL
+            )
+            #expect(agentDelegate.lastSpawnNotify == notify)
+        }
+    }
+
     @Test("spawnAgent forwards a nil model unchanged")
     func agentSpawnForwardsNilModel() async throws {
         let delegate = StubControlDelegate()
@@ -1472,6 +1508,7 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
     var lastSpawnModel: String?
     var lastSpawnWorktreeBranch: String?
     var lastSpawnReasoningEffort: AgentReasoningEffort?
+    var lastSpawnNotify: Bool?
     var lastNewTabSpawnAnchor: String?
     var lastNewTabSpawnTitle: String?
     var lastSendText: String?
@@ -1488,8 +1525,10 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        lastSpawnNotify = notify
         lastSpawnTask = task
         lastSpawnLabel = label
         lastSpawnModel = model
@@ -1509,8 +1548,10 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         label: String?,
         worktreeBranch: String?,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
+        lastSpawnNotify = notify
         lastNewTabSpawnAnchor = anchorPaneID
         lastNewTabSpawnTitle = tabTitle
         lastSpawnTask = task
@@ -1633,7 +1674,8 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         .failure(AgentControlFailure("not-implemented"))
     }

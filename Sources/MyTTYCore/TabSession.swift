@@ -50,19 +50,32 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     /// by an orchestrating agent; attention notifications for it are
     /// suppressed because the orchestrator handles its approvals/results.
     public var isOrchestrated: Bool
+    /// Opt-in set by `agent spawn --notify`: an orchestrated pane whose
+    /// human also wants Mac banners / iOS pushes for it.
+    public var notifiesWhenOrchestrated: Bool
+
+    /// True when attention notifications (Mac banner, sound, iOS push)
+    /// must stay silent: orchestrated panes are watched by the
+    /// orchestrating agent unless `--notify` opted them back in. Only
+    /// notifications are affected, never run state or indicators.
+    public var suppressesAttentionNotifications: Bool {
+        isOrchestrated && !notifiesWhenOrchestrated
+    }
 
     public init(
         id: TerminalSurfaceID = TerminalSurfaceID(),
         workingDirectory: URL,
         agentResume: AgentResumeDescriptor? = nil,
         terminalHistory: String? = nil,
-        isOrchestrated: Bool = false
+        isOrchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false
     ) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.agentResume = agentResume
         self.terminalHistory = terminalHistory
         self.isOrchestrated = isOrchestrated
+        self.notifiesWhenOrchestrated = notifiesWhenOrchestrated
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -71,6 +84,7 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
         case agentResume
         case terminalHistory
         case isOrchestrated
+        case notifiesWhenOrchestrated
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,6 +103,10 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .isOrchestrated
         ) ?? false
+        notifiesWhenOrchestrated = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .notifiesWhenOrchestrated
+        ) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -98,6 +116,10 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
         try container.encodeIfPresent(agentResume, forKey: .agentResume)
         try container.encodeIfPresent(terminalHistory, forKey: .terminalHistory)
         try container.encode(isOrchestrated, forKey: .isOrchestrated)
+        try container.encode(
+            notifiesWhenOrchestrated,
+            forKey: .notifiesWhenOrchestrated
+        )
     }
 }
 

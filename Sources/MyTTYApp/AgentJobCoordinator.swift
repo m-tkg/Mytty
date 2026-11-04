@@ -189,7 +189,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         await spawnAgent(
             anchorPaneID: anchorPaneID,
@@ -201,7 +202,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             task: task,
             label: label,
             worktreeBranch: worktreeBranch,
-            reasoningEffort: reasoningEffort
+            reasoningEffort: reasoningEffort,
+            notify: notify
         )
     }
 
@@ -216,7 +218,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         label: String?,
         worktreeBranch: String?,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         if let tabTitle,
            !ControlTabTitleValidation.isValidForSpawn(tabTitle)
@@ -233,7 +236,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             task: task,
             label: label,
             worktreeBranch: worktreeBranch,
-            reasoningEffort: reasoningEffort
+            reasoningEffort: reasoningEffort,
+            notify: notify
         )
     }
 
@@ -251,7 +255,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         guard let anchorSurfaceID = TerminalSurfaceID(
             uuidString: anchorPaneID
@@ -379,7 +384,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
                 direction: splitTarget.direction,
                 workingDirectory: resolvedWorkingDirectory,
                 initialInput: initialInput,
-                orchestrated: true
+                orchestrated: true,
+                notifiesWhenOrchestrated: notify
             )
         case let .newTab(title):
             // Same window as the anchor (this controller owns it); the
@@ -388,6 +394,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
                 workingDirectory: resolvedWorkingDirectory,
                 initialInput: initialInput,
                 orchestrated: true,
+                notifiesWhenOrchestrated: notify,
                 tabTitle: title
             )
         }

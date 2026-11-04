@@ -172,7 +172,8 @@ protocol ControlServerAgentDelegate: AnyObject {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure>
 
     /// `agent spawn --new-tab` — the same job creation as the split-based
@@ -190,7 +191,8 @@ protocol ControlServerAgentDelegate: AnyObject {
         label: String?,
         worktreeBranch: String?,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure>
 
     /// Re-reads the job's tracked state against a fresh `AttentionCenter`
@@ -488,7 +490,7 @@ final class ControlServer {
         switch request {
         case let .spawnAgent(
             anchorPaneID, direction, provider, cwd, access, model, task,
-            label, worktreeBranch, reasoningEffort
+            label, worktreeBranch, reasoningEffort, notify
         ):
             return Self.encodeAgentResult(
                 await delegate.controlServer(
@@ -502,13 +504,14 @@ final class ControlServer {
                     task: task,
                     label: label,
                     worktreeBranch: worktreeBranch,
-                    reasoningEffort: reasoningEffort
+                    reasoningEffort: reasoningEffort,
+                    notify: notify
                 )
             ) { .agentJob($0) }
 
         case let .spawnAgentInNewTab(
             anchorPaneID, provider, cwd, access, model, task, label,
-            worktreeBranch, tabTitle, reasoningEffort
+            worktreeBranch, tabTitle, reasoningEffort, notify
         ):
             return Self.encodeAgentResult(
                 await delegate.controlServer(
@@ -522,7 +525,8 @@ final class ControlServer {
                     label: label,
                     worktreeBranch: worktreeBranch,
                     tabTitle: tabTitle,
-                    reasoningEffort: reasoningEffort
+                    reasoningEffort: reasoningEffort,
+                    notify: notify
                 )
             ) { .agentJob($0) }
 
@@ -744,7 +748,8 @@ extension ControlServerAgentDelegate {
         label: String?,
         worktreeBranch: String?,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort?
+        reasoningEffort: AgentReasoningEffort?,
+        notify: Bool
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         .failure(AgentControlFailure("not-implemented"))
     }
