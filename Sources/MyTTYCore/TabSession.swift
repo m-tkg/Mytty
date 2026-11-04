@@ -60,7 +60,7 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     /// orchestrating agent unless `--notify` opted them back in. Covers
     /// the Mac banner, sound, iOS push, the tab's unread count badge
     /// (`TabSession.unreadBadgeSurfaceIDs`) and the Attention bell/list
-    /// (`AttentionCenter.isSurfaceHiddenFromDisplay`); never run state or
+    /// (`AttentionCenter.hideFromDisplay`); never run state or
     /// status indicators.
     public var suppressesAttentionNotifications: Bool {
         isOrchestrated && !notifiesWhenOrchestrated
@@ -891,8 +891,8 @@ public struct TabSession: Codable, Equatable, Sendable {
 
     /// The terminal panes whose unresolved Attention items count toward
     /// this tab's unread badge. Panes silenced by
-    /// `suppressesAttentionNotifications` (`agent spawn` without
-    /// `--notify`) are left out; their items still exist for the Attention
+    /// `suppressesAttentionNotifications` (`mytty-ctl` panes -- `agent
+    /// spawn`, `new-tab`, `split` -- without `--notify`) are left out; their items still exist for the Attention
     /// inbox, `mytty-ctl list/events/wait` and the status indicators.
     public var unreadBadgeSurfaceIDs: [TerminalSurfaceID] {
         root.surfaceStates

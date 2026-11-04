@@ -853,11 +853,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         attentionCenter.startPruneTimer()
         self.attentionCenter = attentionCenter
-        attentionCenter.isSurfaceHiddenFromDisplay = { [weak self] surfaceID in
-            self?.windowSessionCoordinator.controllers.contains {
-                $0.suppressesAttentionNotifications(for: surfaceID)
-            } ?? false
-        }
         windowSessionCoordinator.attentionCenter = attentionCenter
         if Bundle.main.bundleIdentifier != nil {
             attentionNotifier = AttentionNotifier(

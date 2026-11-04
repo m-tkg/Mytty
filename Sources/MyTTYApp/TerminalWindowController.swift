@@ -2853,6 +2853,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func refreshSidebarRows() {
+        // Register before counting so a restored or freshly spawned
+        // silenced pane never flashes in the bell; see
+        // `AttentionCenter.hideFromDisplay`.
+        attentionCenter.hideFromDisplay(
+            session.tabs.flatMap { $0.root.surfaceStates }
+                .filter(\.suppressesAttentionNotifications)
+                .map(\.id)
+        )
         let lifecycleBySurface = agentLifecycleBySurface
         sidebarModel.rows = session.tabs.enumerated().map { offset, tab in
             let state = tab.root.surfaceState(with: tab.focusedSurfaceID)

@@ -20,12 +20,23 @@ final class AttentionCenter: ObservableObject {
     @Published private(set) var paneStatusNotes:
         [TerminalSurfaceID: PaneStatusNote] = [:]
 
-    /// Display-only filter for the toolbar bell and Attention list: panes
-    /// it returns true for (`agent spawn` without `--notify`) are watched
-    /// by their orchestrator, so the human's inbox leaves them out. It
-    /// never touches `items`, `runs` or acknowledgements, which
-    /// `mytty-ctl wait/events/list` keep reading.
-    var isSurfaceHiddenFromDisplay: (TerminalSurfaceID) -> Bool = { _ in false }
+    /// Display-only registry for the toolbar bell and Attention list:
+    /// panes registered here (`mytty-ctl` panes -- `agent spawn`,
+    /// `new-tab`, `split` -- without `--notify`) are watched by their
+    /// orchestrator, so the human's inbox leaves them out. It never
+    /// touches `items`, `runs` or acknowledgements, which `mytty-ctl
+    /// wait/events/list` keep reading. Entries are never removed: surface
+    /// IDs are unique, and the history of a closed pane must stay hidden
+    /// too. Not persisted; window controllers re-register restored panes.
+    private var hiddenSurfaceIDs: Set<TerminalSurfaceID> = []
+
+    func hideFromDisplay(_ surfaceIDs: some Sequence<TerminalSurfaceID>) {
+        let new = Set(surfaceIDs).subtracting(hiddenSurfaceIDs)
+        guard !new.isEmpty else { return }
+        hiddenSurfaceIDs.formUnion(new)
+        // Items are unchanged, so nudge observers to redraw.
+        objectWillChange.send()
+    }
 
     private let repository: SQLiteAgentEventRepository
     private let policy: AttentionPolicy
@@ -432,7 +443,7 @@ final class AttentionCenter: ObservableObject {
 
     /// `items` minus the panes hidden from the human's inbox.
     var displayedItems: [AttentionItem] {
-        items.filter { !isSurfaceHiddenFromDisplay($0.surfaceID) }
+        items.filter { !hiddenSurfaceIDs.contains($0.surfaceID) }
     }
 
     var displayedActionableCount: Int {
