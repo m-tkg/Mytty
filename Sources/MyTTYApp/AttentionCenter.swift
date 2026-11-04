@@ -434,8 +434,21 @@ final class AttentionCenter: ObservableObject {
         mostRelevantRun(for: Set(surfaceIDs))?.state
     }
 
-    func mostRelevantRun(for surfaceID: TerminalSurfaceID) -> AgentRun? {
-        mostRelevantRun(for: [surfaceID])
+    /// `preferredProvider` is the pane's primary agent (what its
+    /// foreground process is). When it has any run on the pane, only its
+    /// runs are considered, so a run of a child agent that never reported
+    /// an end (a worker's Bash starting another CLI that is then killed)
+    /// cannot keep the pane `running` forever. Another provider's run that
+    /// is waiting for approval or input stays visible, since a human or
+    /// orchestrator really has to answer it. With no run for that
+    /// provider, or no preference, every run on the pane counts.
+    func mostRelevantRun(
+        for surfaceID: TerminalSurfaceID,
+        preferredProvider: AgentProvider? = nil
+    ) -> AgentRun? {
+        mostRelevantRun(
+            for: [surfaceID], preferredProvider: preferredProvider
+        )
     }
 
     func latestRun(
@@ -466,10 +479,20 @@ final class AttentionCenter: ObservableObject {
     }
 
     private func mostRelevantRun(
-        for surfaceIDs: Set<TerminalSurfaceID>
+        for surfaceIDs: Set<TerminalSurfaceID>,
+        preferredProvider: AgentProvider? = nil
     ) -> AgentRun? {
-        let matchingRuns = runs.values
+        var matchingRuns = runs.values
             .filter { surfaceIDs.contains($0.surfaceID) }
+        if let preferredProvider {
+            if matchingRuns.contains(where: { $0.provider == preferredProvider }) {
+                matchingRuns = matchingRuns.filter {
+                    $0.provider == preferredProvider
+                        || $0.state == .waitingApproval
+                        || $0.state == .waitingInput
+                }
+            }
+        }
         let activeRuns = matchingRuns.filter { isActive($0.state) }
         if let active = activeRuns.max(by: activeRunIsLessRelevant) {
             return active

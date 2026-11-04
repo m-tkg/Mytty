@@ -521,6 +521,154 @@ struct AgentJobTrackerTests {
         #expect(tracker.state == .running)
     }
 
+    @Test("a finished job follows a later run of the same pane and provider, e.g. after a plain send")
+    func finishedJobFollowsNewerRun() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        let first = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base), (.succeeded, base.addingTimeInterval(1))]
+        )
+        tracker.reconcile(runs: [first], paneExists: true, now: base.addingTimeInterval(2))
+        #expect(tracker.state == .succeeded)
+
+        // The follow-up arrived through plain `send`, so the tracker was
+        // never told; the next run still has to be tracked.
+        let second = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(5))]
+        )
+        tracker.reconcile(runs: [first, second], paneExists: true, now: base.addingTimeInterval(6))
+        #expect(tracker.boundRunID == second.id)
+        #expect(tracker.state == .running)
+    }
+
+    @Test("a finished job does not follow an older or unprogressed run")
+    func finishedJobIgnoresOlderRun() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        let first = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(10)), (.succeeded, base.addingTimeInterval(11))]
+        )
+        tracker.reconcile(runs: [first], paneExists: true, now: base.addingTimeInterval(12))
+        let older = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(1))]
+        )
+        let idle = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.idle, base.addingTimeInterval(20))]
+        )
+        tracker.reconcile(runs: [first, older, idle], paneExists: true, now: base.addingTimeInterval(21))
+        #expect(tracker.boundRunID == first.id)
+        #expect(tracker.state == .succeeded)
+    }
+
+    @Test("a finished job ignores a same-provider run that overlapped the bound run")
+    func finishedJobIgnoresOverlappingRun() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        // A child `claude -p` started by the worker inherits MYTTY_* and
+        // reports as a second run while the first is still running.
+        let firstRunning = makeRun(
+            runID: AgentRunID(), surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base)]
+        )
+        tracker.reconcile(runs: [firstRunning], paneExists: true, now: base.addingTimeInterval(1))
+        #expect(tracker.boundRunID == firstRunning.id)
+        let first = makeRun(
+            runID: firstRunning.id, surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base), (.succeeded, base.addingTimeInterval(10))]
+        )
+        let overlapping = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(5))]
+        )
+        tracker.reconcile(runs: [first, overlapping], paneExists: true, now: base.addingTimeInterval(11))
+        #expect(tracker.boundRunID == first.id)
+        #expect(tracker.state == .succeeded)
+    }
+
+    @Test("a finished job does not follow a run of a different session")
+    func finishedJobIgnoresOtherSession() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        let running = makeRun(
+            surfaceID: paneID, provider: .claudeCode, sessionID: "session-a",
+            kinds: [(.started, base)]
+        )
+        tracker.reconcile(runs: [running], paneExists: true, now: base.addingTimeInterval(1))
+        let first = makeRun(
+            runID: running.id, surfaceID: paneID, provider: .claudeCode, sessionID: "session-a",
+            kinds: [(.started, base), (.succeeded, base.addingTimeInterval(1))]
+        )
+        let otherSession = makeRun(
+            surfaceID: paneID, provider: .claudeCode, sessionID: "session-b",
+            kinds: [(.started, base.addingTimeInterval(5))]
+        )
+        tracker.reconcile(runs: [first, otherSession], paneExists: true, now: base.addingTimeInterval(6))
+        #expect(tracker.boundRunID == first.id)
+        let sameSession = makeRun(
+            surfaceID: paneID, provider: .claudeCode, sessionID: "session-a",
+            kinds: [(.started, base.addingTimeInterval(7))]
+        )
+        tracker.reconcile(runs: [first, otherSession, sameSession], paneExists: true, now: base.addingTimeInterval(8))
+        #expect(tracker.boundRunID == sameSession.id)
+    }
+
+    @Test("a bound run with no start time leaves a finished job where it is")
+    func finishedJobWithoutStartStaysPut() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        let first = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.disconnected, base)]
+        )
+        tracker.reconcile(runs: [first], paneExists: true, now: base.addingTimeInterval(2))
+        let later = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(5))]
+        )
+        tracker.reconcile(runs: [first, later], paneExists: true, now: base.addingTimeInterval(6))
+        #expect(tracker.boundRunID == first.id)
+    }
+
+    @Test("a stray run of another provider on the pane never affects the job")
+    func strayOtherProviderRunIgnored() {
+        let paneID = TerminalSurfaceID()
+        var tracker = AgentJobTracker(
+            paneID: paneID, provider: .claude, label: nil,
+            baselineRunIDs: [], createdAt: base
+        )
+        let stray = makeRun(
+            surfaceID: paneID, provider: .antigravity,
+            kinds: [(.started, base)]
+        )
+        let own = makeRun(
+            surfaceID: paneID, provider: .claudeCode,
+            kinds: [(.started, base.addingTimeInterval(1)), (.succeeded, base.addingTimeInterval(2))]
+        )
+        tracker.reconcile(runs: [stray, own], paneExists: true, now: base.addingTimeInterval(3))
+        #expect(tracker.boundRunID == own.id)
+        #expect(tracker.state == .succeeded)
+    }
+
     @Test("prepareForFollowUp rebinds a job whose bound run already succeeded")
     func prepareForFollowUpRebindsAfterSuccess() {
         let paneID = TerminalSurfaceID()
@@ -730,11 +878,13 @@ struct AgentJobTrackerTests {
         runID: AgentRunID = AgentRunID(),
         surfaceID: TerminalSurfaceID,
         provider: AgentProvider,
+        sessionID: String? = nil,
         kinds: [(AgentEventKind, Date)]
     ) -> AgentRun {
         let events = kinds.map { kind, date in
             AgentEvent(
                 runID: runID,
+                sessionID: sessionID,
                 surfaceID: surfaceID,
                 provider: provider,
                 kind: kind,

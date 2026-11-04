@@ -130,7 +130,11 @@ extension ControlCoordinator: ControlServerDelegate {
             }
             let workingDirectory = controller?
                 .workingDirectory(forPane: item.paneID)
-            let run = attentionCenter.mostRelevantRun(for: item.paneID)
+            let run = attentionCenter.mostRelevantRun(
+                for: item.paneID,
+                preferredProvider: controller?
+                    .foregroundAgentProvider(forPane: item.paneID)
+            )
             return ControlPaneInfo(
                 paneID: item.paneID.rawValue.uuidString,
                 windowID: item.windowID.rawValue.uuidString,
@@ -246,9 +250,12 @@ extension ControlCoordinator: ControlServerDelegate {
         agentStateForPaneID paneID: String
     ) -> AgentRunState?? {
         guard let surfaceID = terminalSurfaceID(from: paneID),
-              controller(owning: surfaceID) != nil
+              let owner = controller(owning: surfaceID)
         else { return nil }
-        return .some(attentionCenter.mostRelevantRun(for: surfaceID)?.state)
+        return .some(attentionCenter.mostRelevantRun(
+            for: surfaceID,
+            preferredProvider: owner.foregroundAgentProvider(forPane: surfaceID)
+        )?.state)
     }
 
     func controlServer(

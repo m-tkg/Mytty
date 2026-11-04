@@ -219,7 +219,10 @@ public enum ControlCommandLineParser {
       agent send <job-id> <text> [--enter]
         Sends a follow-up instruction to the job's pane by job ID, so a
         correction always reaches the intended worker even if panes were
-        reused for something else in between.
+        reused for something else in between. If the job's run already
+        finished, the job is re-armed so the next `agent wait` tracks the
+        run this follow-up starts, not the finished one. Prefer this over
+        plain `send` for follow-ups to a spawned worker.
 
       agent focus <job-id>
         Brings the job's pane to the front for a human to look at.
@@ -374,7 +377,12 @@ public enum ControlCommandLineParser {
          losing its output; close-pane only once nothing will read it
          again; or focus to hand control back to a human. `send` is
          still the right tool for a follow-up instruction to an
-         already-running agent.
+         already-running agent. For a spawned worker, send follow-ups
+         with `agent send <job-id>` and wait with `agent wait`: they
+         track the latest run of that worker's own provider and ignore
+         runs of other agents started inside the pane (e.g. a CLI the
+         worker launches from its shell), which `wait --until idle`
+         also no longer lets hold the pane at `running`.
 
       TESTING A TUI APP FROM INSIDE A PANE
 
