@@ -666,11 +666,13 @@ struct ControlServerTests {
                 model: "gpt-5.2",
                 task: "investigate",
                 label: "investigate-a",
-                worktreeBranch: nil
+                worktreeBranch: nil,
+                reasoningEffort: .low
             ),
             to: socketURL
         )
         #expect(response == .agentJob(job))
+        #expect(agentDelegate.lastSpawnReasoningEffort == .low)
         #expect(agentDelegate.lastSpawnTask == "investigate")
         #expect(agentDelegate.lastSpawnLabel == "investigate-a")
         #expect(agentDelegate.lastSpawnModel == "gpt-5.2")
@@ -682,6 +684,7 @@ struct ControlServerTests {
             "invalid-cwd",
             "invalid-label",
             "invalid-model",
+            "invalid-reasoning-effort",
             "invalid-task",
             "inherit-unavailable",
             "not-a-git-repository",
@@ -1468,6 +1471,7 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
     var lastSpawnLabel: String?
     var lastSpawnModel: String?
     var lastSpawnWorktreeBranch: String?
+    var lastSpawnReasoningEffort: AgentReasoningEffort?
     var lastNewTabSpawnAnchor: String?
     var lastNewTabSpawnTitle: String?
     var lastSendText: String?
@@ -1483,12 +1487,14 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         model: String?,
         task: String,
         label: String?,
-        worktreeBranch: String?
+        worktreeBranch: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         lastSpawnTask = task
         lastSpawnLabel = label
         lastSpawnModel = model
         lastSpawnWorktreeBranch = worktreeBranch
+        lastSpawnReasoningEffort = reasoningEffort
         return spawnResult
     }
 
@@ -1502,7 +1508,8 @@ private final class StubControlAgentDelegate: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        tabTitle: String?
+        tabTitle: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         lastNewTabSpawnAnchor = anchorPaneID
         lastNewTabSpawnTitle = tabTitle
@@ -1625,7 +1632,8 @@ private final class FakeAgentJobDelegate: ControlServerAgentDelegate {
         model: String?,
         task: String,
         label: String?,
-        worktreeBranch: String?
+        worktreeBranch: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) -> Result<AgentJobSnapshot, AgentControlFailure> {
         .failure(AgentControlFailure("not-implemented"))
     }

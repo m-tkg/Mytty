@@ -487,7 +487,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, direction, _, _, _, _, _, _, _) = request
+        guard case let .spawnAgent(_, direction, _, _, _, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -505,7 +505,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -524,7 +524,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -596,12 +596,120 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, _, model, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, _, model, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }
         #expect(model == nil)
+    }
+
+    @Test("agent spawn --reasoning-effort is optional and defaults to nil")
+    func agentSpawnReasoningEffortDefaultsToNil() throws {
+        let request = try ControlCommandLineParser.parse(
+            ["agent", "spawn", "--provider", "codex", "--task", "x"],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgent(
+            _, _, _, _, _, _, _, _, _, effort
+        ) = request else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(effort == nil)
+    }
+
+    @Test("agent spawn --reasoning-effort reaches the request for codex and claude")
+    func agentSpawnReasoningEffortParsed() throws {
+        for (provider, value, expected) in [
+            ("codex", "low", AgentReasoningEffort.low),
+            ("codex", "xhigh", .xhigh),
+            ("claude", "max", .max),
+            ("claude", "high", .high),
+        ] {
+            let request = try ControlCommandLineParser.parse(
+                [
+                    "agent", "spawn", "--provider", provider,
+                    "--reasoning-effort", value, "--task", "x",
+                ],
+                environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+            )
+            guard case let .spawnAgent(
+                _, _, _, _, _, _, _, _, _, effort
+            ) = request else {
+                Issue.record("expected .spawnAgent, got \(request)")
+                return
+            }
+            #expect(effort == expected)
+        }
+    }
+
+    @Test("agent spawn --reasoning-effort also applies with --new-tab")
+    func agentSpawnReasoningEffortNewTab() throws {
+        let request = try ControlCommandLineParser.parse(
+            [
+                "agent", "spawn", "--provider", "codex", "--new-tab",
+                "--reasoning-effort", "medium", "--task", "x",
+            ],
+            environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+        )
+        guard case let .spawnAgentInNewTab(
+            _, _, _, _, _, _, _, _, _, effort
+        ) = request else {
+            Issue.record("expected .spawnAgentInNewTab, got \(request)")
+            return
+        }
+        #expect(effort == .medium)
+    }
+
+    @Test("agent spawn --reasoning-effort works with --task-file too")
+    func agentSpawnReasoningEffortTaskFile() throws {
+        let invocation = try ControlCommandLineParser.parseInvocation(
+            [
+                "agent", "spawn", "--anchor", "pane-1",
+                "--provider", "claude", "--reasoning-effort", "low",
+                "--task-file", "/tmp/does-not-exist-anywhere.txt",
+            ],
+            environment: [:]
+        )
+        guard case let .agentSpawnPendingTaskFile(pending) = invocation else {
+            Issue.record("expected .agentSpawnPendingTaskFile, got \(invocation)")
+            return
+        }
+        #expect(pending.reasoningEffort == .low)
+        let request = try ControlCommandLineParser.spawnAgentRequest(
+            from: pending,
+            task: "do it"
+        )
+        guard case let .spawnAgent(
+            _, _, _, _, _, _, _, _, _, effort
+        ) = request else {
+            Issue.record("expected .spawnAgent, got \(request)")
+            return
+        }
+        #expect(effort == .low)
+    }
+
+    @Test("agent spawn rejects a --reasoning-effort the provider does not accept")
+    func agentSpawnRejectsUnsupportedReasoningEffort() {
+        let cases: [(String, String)] = [
+            ("codex", "max"),      // claude-only level
+            ("claude", "minimal"), // codex-only level
+            ("codex", "turbo"),    // not a level at all
+            ("codex", ""),
+            ("cursor", "low"),     // no such setting
+        ]
+        for (provider, value) in cases {
+            #expect(throws: ControlCommandLineError.self) {
+                try ControlCommandLineParser.parse(
+                    [
+                        "agent", "spawn", "--provider", provider,
+                        "--reasoning-effort", value, "--task", "x",
+                    ],
+                    environment: ["MYTTY_SURFACE_ID": "anchor-1"]
+                )
+            }
+        }
     }
 
     @Test("agent spawn --worktree is optional and defaults to nil")
@@ -615,7 +723,7 @@ struct ControlCommandLineParserTests {
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, worktreeBranch
+            _, _, _, _, _, _, _, _, worktreeBranch, _
         ) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -680,7 +788,7 @@ struct ControlCommandLineParserTests {
             task: "do it"
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, worktreeBranch
+            _, _, _, _, _, _, _, _, worktreeBranch, _
         ) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return

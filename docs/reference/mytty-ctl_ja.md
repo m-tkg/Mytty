@@ -46,7 +46,7 @@ mytty-ctl list | jq .
 
 | コマンド | 引数 | 成功時のレスポンス |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--reasoning-effort <level>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
@@ -79,7 +79,7 @@ pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポ�
 
 `review` を指定すると provider を read-only/plan モードで起動します。`workspace-write` は worker がファイルを編集できるモードですが、`claude` の worker では lead 自身のモードに関わらず常に `--permission-mode acceptEdits` で起動します。**lead がより広いモード(`auto`、`--dangerously-skip-permissions` など)で動いているときに `--access workspace-write` を指定すると、lead に合わせるのではなく、承認プロンプトのたびに止まって待つ worker になってしまいます**。`acceptEdits` でも Bash コマンドの承認は別に必要だからです。worker が自分と同じ provider のときは、`--access` を省略する(または明示的に `--access inherit` を指定する)ほうを `--access workspace-write` より優先してください。`workspace-write` が向いているのは provider が異なる worker を起動するとき、あるいは acceptEdits 相当の固定ポリシーが本当に欲しいときです。
 
-`--model` は省略可能で、provider が使うモデルを指定します。値は provider CLI 自身のモデルフラグ(`codex` は `-m <model>`、`claude` と `cursor` は `--model <model>`)にそのまま渡されます。例: `claude` の worker に `--model sonnet`。省略すると provider のデフォルトモデルになります。`--cwd` を省略した場合のデフォルトは、anchor ペインのシェルが報告した作業ディレクトリ(シェル統合が最後に知らせたディレクトリ)であって、呼び出し元プロセス自身の cwd ではありません。ペインのシェルと違うディレクトリで動いている場合 -- たとえば `claude --worktree` で起動すると claude は git worktree に移動しますが、ペインのシェルは元の場所に残ります -- は `--cwd "$PWD"` を明示しないと、worker が worktree ではなく元のチェックアウトで動き出します。すべてのタスクには worker contract(作業ディレクトリの外に出ない、詰まったら止めずに続ける、最後に簡潔な要約で締める、という指示)が自動で追記されます。また、打鍵される起動行の先頭には `HISTFILE` を unset するガード(`hist_ignore_space` 構成向けの行頭スペース付き)が付くので、タスク全文を含む起動コマンドも、その後そのペインのシェルに手で入力したコマンドも `~/.zsh_history` には残りません。
+`--model` は省略可能で、provider が使うモデルを指定します。値は provider CLI 自身のモデルフラグ(`codex` は `-m <model>`、`claude` と `cursor` は `--model <model>`)にそのまま渡されます。例: `claude` の worker に `--model sonnet`。省略すると provider のデフォルトモデルになります。`--reasoning-effort` は worker の推論レベルを指定し、provider CLI 自身の設定に渡されます。`codex` は `-c model_reasoning_effort=<level>`(`minimal`、`low`、`medium`、`high`、`xhigh`)、`claude` は `--effort <level>`(`low`、`medium`、`high`、`xhigh`、`max`)です。`cursor` には対応する設定がないため、指定するとエラーになります。provider が受け付けない値も同様にエラーで、黙って無視はしません。意図しないレベルで動くことを防ぐためです。省略すると provider の設定済みデフォルトが使われます。`--cwd` を省略した場合のデフォルトは、anchor ペインのシェルが報告した作業ディレクトリ(シェル統合が最後に知らせたディレクトリ)であって、呼び出し元プロセス自身の cwd ではありません。ペインのシェルと違うディレクトリで動いている場合 -- たとえば `claude --worktree` で起動すると claude は git worktree に移動しますが、ペインのシェルは元の場所に残ります -- は `--cwd "$PWD"` を明示しないと、worker が worktree ではなく元のチェックアウトで動き出します。すべてのタスクには worker contract(作業ディレクトリの外に出ない、詰まったら止めずに続ける、最後に簡潔な要約で締める、という指示)が自動で追記されます。また、打鍵される起動行の先頭には `HISTFILE` を unset するガード(`hist_ignore_space` 構成向けの行頭スペース付き)が付くので、タスク全文を含む起動コマンドも、その後そのペインのシェルに手で入力したコマンドも `~/.zsh_history` には残りません。
 
 `--new-tab` を指定すると、anchor のタブを分割せず、worker だけを入れた新しいタブで起動します。空のシェルペインは残りません。タブは `--anchor` と同じウィンドウに、他の orchestrated なタブと同じくバックグラウンドで開きます。`--direction` の代わりに使うもので、両方を指定するとエラーです。`--tab-title <text>` は新しいタブの手動名を設定します。`rename-tab` が設定する名前と同じなので、自動命名で上書きされません。`--new-tab` が必要で、空文字は指定できません。`--tab-title` を省略したタブは自動命名のままです。`--access` の解決は、新しいタブではなく `--anchor` ペインのエージェントを基準にします。返ってきた job は、これまでどおり `agent wait`、`agent result`、`agent send`、`agent focus`、`agent close`、`agent park` で扱えます。`--new-tab` を付けない場合の動作は変わりません。
 
@@ -469,6 +469,7 @@ mytty-ctl rename-tab "$paneA" ""   # 解除
 | `invalid-cwd` | `agent spawn`: `--cwd` が実在するディレクトリを指していない |
 | `invalid-label` | `agent spawn`: `--label` に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
 | `invalid-model` | `agent spawn`: `--model` が空、制御文字か空白を含む、または 100 Unicode スカラー値を超えている |
+| `invalid-reasoning-effort` | `agent spawn`: `--reasoning-effort` が `--provider` の受け付けない値(`cursor` はどの値も不可) |
 | `inherit-unavailable` | `agent spawn`: `--access inherit` を指定したが、anchor ペインの前面プロセスを読み取れないか、`--provider` と同じ provider ではない |
 | `invalid-worktree-branch` | `agent spawn --worktree`: branch が空、100 Unicode スカラー値を超えている、または git の branch 名として不正 |
 | `not-a-git-repository` | `agent spawn --worktree`: 解決済みの `--cwd`/anchor ペインのディレクトリが git リポジトリの中にない |

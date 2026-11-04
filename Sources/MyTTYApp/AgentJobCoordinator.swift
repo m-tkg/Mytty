@@ -188,7 +188,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         model: String?,
         task: String,
         label: String?,
-        worktreeBranch: String?
+        worktreeBranch: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         await spawnAgent(
             anchorPaneID: anchorPaneID,
@@ -199,7 +200,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             model: model,
             task: task,
             label: label,
-            worktreeBranch: worktreeBranch
+            worktreeBranch: worktreeBranch,
+            reasoningEffort: reasoningEffort
         )
     }
 
@@ -213,7 +215,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        tabTitle: String?
+        tabTitle: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         if let tabTitle,
            !ControlTabTitleValidation.isValidForSpawn(tabTitle)
@@ -229,7 +232,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             model: model,
             task: task,
             label: label,
-            worktreeBranch: worktreeBranch
+            worktreeBranch: worktreeBranch,
+            reasoningEffort: reasoningEffort
         )
     }
 
@@ -246,7 +250,8 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         model: String?,
         task: String,
         label: String?,
-        worktreeBranch: String?
+        worktreeBranch: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) async -> Result<AgentJobSnapshot, AgentControlFailure> {
         guard let anchorSurfaceID = TerminalSurfaceID(
             uuidString: anchorPaneID
@@ -266,6 +271,14 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
         }
         guard isValidModel(model) else {
             return .failure(AgentControlFailure("invalid-model"))
+        }
+        // A level the provider's CLI would not accept (or any level for a
+        // provider with no such flag) is refused rather than dropped, so
+        // the caller never thinks it got an effort it did not.
+        if let reasoningEffort,
+           !reasoningEffort.isSupported(by: provider)
+        {
+            return .failure(AgentControlFailure("invalid-reasoning-effort"))
         }
 
         let status = integrationStatus(provider.agentProvider)
@@ -347,6 +360,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             provider: provider,
             access: resolvedAccess,
             model: model,
+            reasoningEffort: reasoningEffort,
             inheritedModeArguments: inheritedModeArguments,
             task: task
         )
