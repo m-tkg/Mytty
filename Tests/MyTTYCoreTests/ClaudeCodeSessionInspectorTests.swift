@@ -42,7 +42,7 @@ struct ClaudeCodeSessionInspectorTests {
     @Test("keeps the 200k window without a [1m] selection")
     func defaultContextWindowWithoutSelection() {
         let data = Data("""
-        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5","usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
         """.utf8)
 
         #expect(
@@ -71,7 +71,7 @@ struct ClaudeCodeSessionInspectorTests {
     @Test("rounds the remaining percentage the way Claude Code does")
     func roundsLikeClaudeCode() {
         let data = Data("""
-        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5","usage":{"input_tokens":85000,"cache_creation_input_tokens":6806,"cache_read_input_tokens":0,"output_tokens":6301}}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":85000,"cache_creation_input_tokens":6806,"cache_read_input_tokens":0,"output_tokens":6301}}}
         """.utf8)
 
         // 91,806 / 200,000 = 45.903% used -> 46% used -> 54% remaining.
@@ -130,10 +130,96 @@ struct ClaudeCodeSessionInspectorTests {
         #expect(status.flatMap(\.contextRemainingPercent).map { $0 > 40 && $0 < 50 } == true)
     }
 
+    @Test("uses a 1,000,000 token window for Opus 5 family models by default")
+    func opusFiveDefaultsToLargeWindow() {
+        for model in ["claude-opus-5", "claude-opus-5-5"] {
+            let data = Data("""
+            {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"\(model)","usage":{"input_tokens":250000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+            """.utf8)
+
+            #expect(
+                ClaudeCodeSessionInspector.status(from: data)?
+                    .contextRemainingPercent == 75
+            )
+        }
+    }
+
+    @Test("infers a 1,000,000 token window once usage was observed above 200k")
+    func observedUsageImpliesLargeWindow() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":300000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        """.utf8)
+
+        // The 300k row proves the window is 1M, so 100k is 10% used.
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 90
+        )
+    }
+
+    @Test("infers a 1,000,000 token window from compact preTokens above 200k")
+    func compactPreTokensImplyLargeWindow() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":300000}}}
+        {"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","preTokens":487564}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":50000}}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 95
+        )
+    }
+
+    @Test("reports unknown remaining context right after a compact")
+    func compactWithoutNewUsageIsUnknown() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5-5","usage":{"input_tokens":487564}}}
+        {"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":487564}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)
+                == AgentSessionStatus(
+                    sessionID: "claude-session-id",
+                    modelName: "claude-opus-5-5",
+                    contextRemainingPercent: nil
+                )
+        )
+    }
+
+    @Test("uses the usage that follows a compact")
+    func usageAfterCompactIsUsed() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5-5","usage":{"input_tokens":487564}}}
+        {"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":487564}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-opus-5-5","usage":{"input_tokens":100000}}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 90
+        )
+    }
+
+    @Test("ignores a compact boundary recorded by a sidechain")
+    func sidechainCompactIsIgnored() {
+        let data = Data("""
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":100000}}}
+        {"type":"system","subtype":"compact_boundary","isSidechain":true,"compactMetadata":{"preTokens":50000}}
+        """.utf8)
+
+        #expect(
+            ClaudeCodeSessionInspector.status(from: data)?
+                .contextRemainingPercent == 50
+        )
+    }
+
     @Test("clamps to 0% once usage exceeds the context window")
     func clampsAtZero() {
         let data = Data("""
-        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":250000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+        {"type":"assistant","isSidechain":false,"sessionId":"claude-session-id","message":{"model":"claude-sonnet-5","usage":{"input_tokens":1200000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
         """.utf8)
 
         #expect(
