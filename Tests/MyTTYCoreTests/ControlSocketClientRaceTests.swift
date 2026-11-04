@@ -27,7 +27,9 @@ struct ControlSocketClientRaceTests {
 
     @Test("other half-close errors are still reported")
     func otherHalfCloseErrorsThrow() throws {
-        let fixture = try ReplyingServer()
+        // The client closes right after the injected error; replying late
+        // makes the server write into that closed connection.
+        let fixture = try ReplyingServer(replyDelay: 0.2)
         defer { fixture.stop() }
 
         #expect(throws: ControlSocketClientError.socketOperation(EIO)) {
@@ -67,6 +69,7 @@ struct ControlSocketClientRaceTests {
             for _ in 0..<iterations {
                 let client = Darwin.accept(listener, nil, nil)
                 guard client >= 0 else { return }
+                Self.suppressSIGPIPE(client)
                 var byte: UInt8 = 0
                 // Reply as soon as the request's first byte arrives, then
                 // close without waiting for the client's half-close.
@@ -93,6 +96,15 @@ struct ControlSocketClientRaceTests {
             }
         }
         #expect(failures.isEmpty, "\(failures.count) failures, e.g. \(failures.first ?? "")")
+    }
+
+    /// The client's SO_NOSIGPIPE does not cover the server's end, and
+    /// setting it on an accepted socket whose peer already closed fails
+    /// with EINVAL on Darwin. Replying to a connection the client closed
+    /// would raise SIGPIPE and kill the whole test process, so ignore the
+    /// signal for the process; the failed `send` just returns EPIPE.
+    fileprivate static func suppressSIGPIPE(_ descriptor: Int32) {
+        signal(SIGPIPE, SIG_IGN)
     }
 
     private static func makeListener(path: String) throws -> Int32 {
@@ -126,7 +138,7 @@ struct ControlSocketClientRaceTests {
         private let directory: URL
         private let listener: Int32
 
-        init() throws {
+        init(replyDelay: TimeInterval = 0) throws {
             directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent(
                     String(UUID().uuidString.prefix(8)),
@@ -150,8 +162,10 @@ struct ControlSocketClientRaceTests {
                 while true {
                     let client = Darwin.accept(descriptor, nil, nil)
                     guard client >= 0 else { return }
+                    ControlSocketClientRaceTests.suppressSIGPIPE(client)
                     var buffer = [UInt8](repeating: 0, count: 4096)
                     _ = Darwin.recv(client, &buffer, buffer.count, 0)
+                    if replyDelay > 0 { Thread.sleep(forTimeInterval: replyDelay) }
                     reply.withUnsafeBytes {
                         _ = Darwin.send(client, $0.baseAddress, $0.count, 0)
                     }
