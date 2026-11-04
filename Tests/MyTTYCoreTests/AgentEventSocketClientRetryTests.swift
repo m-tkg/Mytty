@@ -190,4 +190,30 @@ struct AgentEventSocketClientRetryTests {
         #expect(!AgentEventSocketClient.isRetryable(ECONNREFUSED))
         #expect(!AgentEventSocketClient.isRetryable(EPERM))
     }
+
+    @Test("a half-close ENOTCONN does not discard an available response")
+    func enotconnOnHalfCloseIsIgnored() throws {
+        let server = try StubSocketServer(behavior: .reply)
+        defer { server.stop() }
+
+        let response = try AgentEventSocketClient(
+            operationTimeout: 2,
+            halfClose: { _ in ENOTCONN }
+        ).send(envelope(), to: server.url)
+
+        #expect(response.ok)
+    }
+
+    @Test("other half-close errors are still reported")
+    func otherHalfCloseErrorsThrow() throws {
+        let server = try StubSocketServer(behavior: .reply)
+        defer { server.stop() }
+
+        #expect(throws: AgentEventSocketClientError.socketOperation(EIO)) {
+            try AgentEventSocketClient(
+                operationTimeout: 2,
+                halfClose: { _ in EIO }
+            ).send(envelope(), to: server.url)
+        }
+    }
 }
