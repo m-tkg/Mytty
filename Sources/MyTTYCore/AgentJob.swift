@@ -326,6 +326,7 @@ public struct AgentJobTracker: Equatable, Sendable {
                 return
             }
             apply(boundRun)
+            followLaterRun(after: boundRun, among: matchingRuns)
             return
         }
 
@@ -363,6 +364,39 @@ public struct AgentJobTracker: Equatable, Sendable {
             message = "No \(provider.rawValue) run was observed within "
                 + "the launch window after spawning."
         }
+    }
+
+    /// Once the bound run has finished, a *later* run of the same
+    /// pane/provider is the job's next turn: input reached the worker
+    /// without going through `agent send` (plain `mytty-ctl send`, or the
+    /// human typing), so `prepareForFollowUp` never ran. Without this the
+    /// job would report the old run's terminal state forever.
+    ///
+    /// Only a run that started after the bound one, is not in the
+    /// baseline, and has progressed past `.unknown`/`.idle` qualifies, so
+    /// a stale or marker run can never hijack the job. Other providers'
+    /// runs never reach here (`reconcile` filters by provider). The
+    /// `agent send` path stays the race-free one: a plain `send` followed
+    /// immediately by `agent wait` can still see the old terminal state
+    /// before the new run exists.
+    private mutating func followLaterRun(
+        after boundRun: AgentRun,
+        among runs: [AgentRun]
+    ) {
+        guard Self.followUpEligibleStates.contains(state),
+              let boundStart = boundRun.startedAt
+        else { return }
+        let later = runs.filter {
+            $0.id != boundRun.id
+                && !baselineRunIDs.contains($0.id)
+                && $0.state != .unknown && $0.state != .idle
+                && ($0.startedAt ?? .distantPast) > boundStart
+        }
+        guard let next = later.max(by: {
+            ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast)
+        }) else { return }
+        boundRunID = next.id
+        apply(next)
     }
 
     /// States a bound run must have reached for `prepareForFollowUp` to

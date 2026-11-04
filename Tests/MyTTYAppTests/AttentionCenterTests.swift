@@ -211,6 +211,53 @@ struct AttentionCenterTests {
         #expect(center.mostRelevantRun(for: TerminalSurfaceID()) == nil)
     }
 
+    @Test("a stale run of another provider does not hide the primary provider's state")
+    @MainActor
+    func preferredProviderIgnoresStaleOtherProviderRun() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let claudeRun = AgentRunID()
+        let strayRun = AgentRunID()
+
+        try center.append(harness.event(
+            runID: claudeRun, surfaceID: surfaceID,
+            provider: .claudeCode, kind: .started, at: 1
+        ))
+        // A child process (e.g. agy started from the worker's Bash) that
+        // was killed without ever reporting a terminal event.
+        try center.append(harness.event(
+            runID: strayRun, surfaceID: surfaceID,
+            provider: .antigravity, kind: .started, at: 2
+        ))
+        try center.append(harness.event(
+            runID: claudeRun, surfaceID: surfaceID,
+            provider: .claudeCode, kind: .succeeded, at: 3
+        ))
+
+        // Without a preference, the stray active run still wins.
+        #expect(center.mostRelevantRun(for: surfaceID)?.state == .running)
+        // With the pane's primary provider known, it is ignored.
+        let preferred = center.mostRelevantRun(
+            for: surfaceID, preferredProvider: .claudeCode
+        )
+        #expect(preferred?.provider == .claudeCode)
+        #expect(preferred?.state == .succeeded)
+        // No run of the preferred provider: fall back to every run.
+        #expect(center.mostRelevantRun(
+            for: surfaceID, preferredProvider: .codex
+        )?.state == .running)
+        // The preference never hides a genuinely active primary run.
+        try center.append(harness.event(
+            runID: AgentRunID(), surfaceID: surfaceID,
+            provider: .claudeCode, kind: .started, at: 4
+        ))
+        #expect(center.mostRelevantRun(
+            for: surfaceID, preferredProvider: .claudeCode
+        )?.state == .running)
+    }
+
     @Test("a new idle session supersedes stale processing on a reused surface")
     @MainActor
     func idleSessionSupersedesStaleRun() throws {
