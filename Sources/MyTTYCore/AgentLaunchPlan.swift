@@ -107,7 +107,8 @@ public enum AgentLaunchPlan {
     /// the history-suppression prefix on the typed line. The script deletes
     /// itself first thing (the shell has already opened it), so nothing
     /// lingers; leftovers older than a day are swept on each call. If the
-    /// script cannot be written, `input` is returned as it was.
+    /// script cannot be written safely (staging directory not a private
+    /// directory of ours, write failure), `input` is returned as it was.
     public static func staged(
         _ input: String,
         in directory: URL,
@@ -120,27 +121,55 @@ public enum AgentLaunchPlan {
         let command = String(
             input.dropFirst(historySuppressionPrefix.count).dropLast()
         )
-        do {
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            sweepStaleScripts(in: directory, fileManager: fileManager)
-            let file = directory.appendingPathComponent(
-                "launch-\(UUID().uuidString).sh"
-            )
-            let quotedPath = ShellQuoting.quote(file.path)
-            let script = "command rm -f -- \(quotedPath)\n\(command)\n"
-            guard fileManager.createFile(
-                atPath: file.path,
-                contents: Data(script.utf8),
-                attributes: [.posixPermissions: 0o600]
-            ) else { return input }
-            return historySuppressionPrefix + ". \(quotedPath)\n"
-        } catch {
+        guard prepareStagingDirectory(directory) else { return input }
+        sweepStaleScripts(in: directory, fileManager: fileManager)
+        let file = directory.appendingPathComponent(
+            "launch-\(UUID().uuidString).sh"
+        )
+        let quotedPath = ShellQuoting.quote(file.path)
+        let script = "command rm -f -- \(quotedPath)\n\(command)\n"
+        guard writePrivateFile(Data(script.utf8), to: file.path) else {
             return input
         }
+        return historySuppressionPrefix + ". \(quotedPath)\n"
+    }
+
+    /// Creates `directory` (mode 0700) if needed, then insists it is a real
+    /// directory (not a symlink) owned by this user with mode exactly 0700.
+    /// An existing directory that fails the check is not trusted, which
+    /// matters when `TMPDIR` points at a shared location.
+    private static func prepareStagingDirectory(_ directory: URL) -> Bool {
+        let path = directory.path
+        if mkdir(path, 0o700) != 0, errno != EEXIST { return false }
+        var info = stat()
+        guard lstat(path, &info) == 0,
+              (info.st_mode & S_IFMT) == S_IFDIR,
+              info.st_uid == getuid(),
+              (info.st_mode & 0o777) == 0o700
+        else { return false }
+        return true
+    }
+
+    /// Creates `path` exclusively, without following a symlink, already at
+    /// mode 0600 (no window where the task text is readable by others).
+    private static func writePrivateFile(_ data: Data, to path: String) -> Bool {
+        let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var offset = 0
+        let ok = data.withUnsafeBytes { buffer -> Bool in
+            while offset < buffer.count {
+                let n = write(fd, buffer.baseAddress! + offset, buffer.count - offset)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    return false
+                }
+                offset += n
+            }
+            return true
+        }
+        if !ok { unlink(path) }
+        return ok
     }
 
     private static func sweepStaleScripts(

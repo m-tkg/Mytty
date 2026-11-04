@@ -9,7 +9,8 @@ struct AgentLaunchPlanStagingTests {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("staging-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
-            at: url, withIntermediateDirectories: true
+            at: url, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
         return url
     }
@@ -68,6 +69,15 @@ struct AgentLaunchPlanStagingTests {
             command: "printf '%s' \(ShellQuoting.quote(task))"
         )
         let staged = AgentLaunchPlan.staged(raw, in: dir)
+        #expect(staged != raw)
+        let before = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(before.count == 1)
+        let mode = { (path: String) -> Int in
+            let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+            return (attrs?[.posixPermissions] as? Int) ?? -1
+        }
+        #expect(mode(dir.path) == 0o700)
+        #expect(mode(dir.appendingPathComponent(before[0]).path) == 0o600)
         let line = String(
             staged.dropFirst(AgentLaunchPlan.historySuppressionPrefix.count)
         )
@@ -82,5 +92,71 @@ struct AgentLaunchPlanStagingTests {
         #expect(String(decoding: out, as: UTF8.self) == task)
         let left = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(left.isEmpty)
+    }
+
+    @Test("a staging directory that is not private is not trusted")
+    func untrustedDirectoryFallsBack() throws {
+        let parent = try scratch()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let raw = longReview()
+        // Too-open mode.
+        let open = parent.appendingPathComponent("open")
+        try FileManager.default.createDirectory(
+            at: open, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o755]
+        )
+        #expect(AgentLaunchPlan.staged(raw, in: open) == raw)
+        // Symlink to a private directory.
+        let real = parent.appendingPathComponent("real")
+        try FileManager.default.createDirectory(
+            at: real, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let link = parent.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        #expect(AgentLaunchPlan.staged(raw, in: link) == raw)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: real.path).isEmpty)
+    }
+
+    @Test("only stale launch scripts are swept")
+    func sweepsOnlyStaleScripts() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = AgentLaunchPlan.staged(longReview(), in: dir)
+        let fm = FileManager.default
+        let old = dir.appendingPathComponent("launch-old.sh")
+        let other = dir.appendingPathComponent("keep-old.txt")
+        for url in [old, other] {
+            fm.createFile(atPath: url.path, contents: Data())
+            try fm.setAttributes(
+                [.modificationDate: Date().addingTimeInterval(-172_800)],
+                ofItemAtPath: url.path
+            )
+        }
+        let fresh = dir.appendingPathComponent("launch-fresh.sh")
+        fm.createFile(atPath: fresh.path, contents: Data())
+        _ = AgentLaunchPlan.staged(longReview(), in: dir)
+        #expect(!fm.fileExists(atPath: old.path))
+        #expect(fm.fileExists(atPath: other.path))
+        #expect(fm.fileExists(atPath: fresh.path))
+    }
+
+    @Test("an unwritable directory falls back to the original input")
+    func unwritableFallsBack() throws {
+        let parent = try scratch()
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: parent.path
+            )
+            try? FileManager.default.removeItem(at: parent)
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o500], ofItemAtPath: parent.path
+        )
+        let raw = longReview()
+        #expect(
+            AgentLaunchPlan.staged(raw, in: parent.appendingPathComponent("sub"))
+                == raw
+        )
     }
 }
