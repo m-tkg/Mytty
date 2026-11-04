@@ -16,7 +16,8 @@ public enum ControlCommandLineParser {
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
-                  [--model <text>] [--label <text>] [--worktree <branch>]
+                  [--model <text>] [--reasoning-effort <level>]
+                  [--label <text>] [--worktree <branch>]
                   [--new-tab [--tab-title <text>]]   (instead of --direction)
       agent wait <job-id> --until <running|attention|completed> [--timeout-seconds <n>]
       agent result <job-id>
@@ -104,7 +105,8 @@ public enum ControlCommandLineParser {
       agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
-                  [--model <text>] [--label <text>] [--worktree <branch>]
+                  [--model <text>] [--reasoning-effort <level>]
+                  [--label <text>] [--worktree <branch>]
                   [--new-tab [--tab-title <text>]]
         Splits a new pane off --anchor (default: $MYTTY_SURFACE_ID) and
         launches the worker in it. --direction defaults to auto: it picks
@@ -137,7 +139,12 @@ public enum ControlCommandLineParser {
         over --access workspace-write whenever the worker is the same
         provider as you. --model
         picks the provider's model, passed through to the provider CLI's
-        model flag, e.g. --model sonnet for claude. --cwd
+        model flag, e.g. --model sonnet for claude. --reasoning-effort
+        sets the worker's reasoning effort: codex takes minimal, low,
+        medium, high or xhigh (passed as -c model_reasoning_effort=...),
+        claude takes low, medium, high, xhigh or max (passed as
+        --effort); cursor has no such setting, so the flag is an error
+        there. Omitted, the provider's own configured default applies. --cwd
         defaults to the anchor pane's shell-reported working directory,
         not your own process cwd -- if you were started somewhere the
         pane's shell never cd'd into (e.g. `claude --worktree` chdirs
@@ -512,6 +519,7 @@ public enum ControlCommandLineParser {
         public let cwd: String?
         public let access: AgentAccessPolicy?
         public let model: String?
+        public let reasoningEffort: AgentReasoningEffort?
         public let label: String?
         public let worktreeBranch: String?
         public let taskFilePath: String
@@ -529,7 +537,8 @@ public enum ControlCommandLineParser {
             worktreeBranch: String?,
             taskFilePath: String,
             newTab: Bool = false,
-            tabTitle: String? = nil
+            tabTitle: String? = nil,
+            reasoningEffort: AgentReasoningEffort? = nil
         ) {
             self.anchorPaneID = anchorPaneID
             self.direction = direction
@@ -537,6 +546,7 @@ public enum ControlCommandLineParser {
             self.cwd = cwd
             self.access = access
             self.model = model
+            self.reasoningEffort = reasoningEffort
             self.label = label
             self.worktreeBranch = worktreeBranch
             self.taskFilePath = taskFilePath
@@ -622,7 +632,8 @@ public enum ControlCommandLineParser {
             label: pending.label,
             worktreeBranch: pending.worktreeBranch,
             newTab: pending.newTab,
-            tabTitle: pending.tabTitle
+            tabTitle: pending.tabTitle,
+            reasoningEffort: pending.reasoningEffort
         )
     }
 
@@ -1010,7 +1021,7 @@ public enum ControlCommandLineParser {
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down|auto>] [--cwd <path>] \
     [--access <review|workspace-write|inherit>] [--model <text>] \
-    [--label <text>] [--worktree <branch>] \
+    [--reasoning-effort <level>] [--label <text>] [--worktree <branch>] \
     [--new-tab [--tab-title <text>]]
     """
 
@@ -1180,8 +1191,8 @@ public enum ControlCommandLineParser {
             flags: ["--new-tab"],
             valued: [
                 "--anchor", "--direction", "--provider", "--cwd",
-                "--access", "--model", "--task", "--task-file", "--label",
-                "--worktree", "--tab-title",
+                "--access", "--model", "--reasoning-effort", "--task",
+                "--task-file", "--label", "--worktree", "--tab-title",
             ]
         )
         guard positional.isEmpty else {
@@ -1249,6 +1260,32 @@ public enum ControlCommandLineParser {
             access = nil
         }
 
+        // Same fail-fast treatment as `--worktree` below: the server
+        // re-validates (`invalid-reasoning-effort`) for clients that speak
+        // the socket directly. Unlike `--model`, the value is checked
+        // against a closed per-provider list, and a provider with no
+        // reasoning-effort flag is an error rather than a silent no-op so
+        // a caller never believes it got a level it did not.
+        let reasoningEffort: AgentReasoningEffort?
+        if let effortValue = options.values["--reasoning-effort"] {
+            let supported = AgentReasoningEffort.supportedValues(for: provider)
+            guard let parsed = AgentReasoningEffort(rawValue: effortValue),
+                  supported.contains(parsed)
+            else {
+                let allowed = supported.isEmpty
+                    ? "\(providerValue) has no reasoning-effort setting"
+                    : "\(providerValue) accepts "
+                        + supported.map(\.rawValue).joined(separator: ", ")
+                throw ControlCommandLineError.invalidArguments(
+                    "mytty-ctl agent spawn --reasoning-effort: "
+                        + "\"\(effortValue)\" is not valid -- \(allowed)"
+                )
+            }
+            reasoningEffort = parsed
+        } else {
+            reasoningEffort = nil
+        }
+
         // Fail fast client-side for an obviously-invalid branch, matching
         // the treatment `--task`'s emptiness gets below -- the server
         // still re-validates and answers `invalid-worktree-branch` since
@@ -1276,7 +1313,8 @@ public enum ControlCommandLineParser {
             worktreeBranch: options.values["--worktree"],
             taskFilePath: options.values["--task-file"] ?? "",
             newTab: newTab,
-            tabTitle: options.values["--tab-title"]
+            tabTitle: options.values["--tab-title"],
+            reasoningEffort: reasoningEffort
         )
 
         switch (options.values["--task"], options.values["--task-file"]) {
@@ -1303,7 +1341,8 @@ public enum ControlCommandLineParser {
         label: String?,
         worktreeBranch: String?,
         newTab: Bool,
-        tabTitle: String?
+        tabTitle: String?,
+        reasoningEffort: AgentReasoningEffort?
     ) throws -> ControlRequest {
         guard !task.isEmpty else {
             throw ControlCommandLineError.invalidArguments(
@@ -1320,7 +1359,8 @@ public enum ControlCommandLineParser {
                 task: task,
                 label: label,
                 worktreeBranch: worktreeBranch,
-                tabTitle: tabTitle
+                tabTitle: tabTitle,
+                reasoningEffort: reasoningEffort
             )
             : .spawnAgent(
                 anchorPaneID: anchorPaneID,
@@ -1331,7 +1371,8 @@ public enum ControlCommandLineParser {
                 model: model,
                 task: task,
                 label: label,
-                worktreeBranch: worktreeBranch
+                worktreeBranch: worktreeBranch,
+                reasoningEffort: reasoningEffort
             )
         let encodedSize = (try? ControlMessageCodec.encode(request).count)
             ?? Int.max

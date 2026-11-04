@@ -124,6 +124,31 @@ struct ControlProtocolTests {
                 label: nil,
                 worktreeBranch: nil
             ),
+            // `reasoningEffort` round-trips on both spawn forms.
+            .spawnAgent(
+                anchorPaneID: "pane-1",
+                direction: .auto,
+                provider: .codex,
+                cwd: nil,
+                access: .review,
+                model: "gpt-6.1-sol",
+                task: "review the diff",
+                label: nil,
+                worktreeBranch: nil,
+                reasoningEffort: .low
+            ),
+            .spawnAgentInNewTab(
+                anchorPaneID: "pane-1",
+                provider: .claude,
+                cwd: nil,
+                access: nil,
+                model: nil,
+                task: "review the diff",
+                label: nil,
+                worktreeBranch: nil,
+                tabTitle: nil,
+                reasoningEffort: .max
+            ),
             .waitAgent(
                 jobID: AgentJobID(),
                 until: .running,

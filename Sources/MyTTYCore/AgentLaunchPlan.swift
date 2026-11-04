@@ -59,6 +59,7 @@ public enum AgentLaunchPlan {
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
         model: String?,
+        reasoningEffort: AgentReasoningEffort? = nil,
         inheritedModeArguments: [String]? = nil,
         task: String
     ) -> String {
@@ -67,6 +68,7 @@ public enum AgentLaunchPlan {
             provider: provider,
             access: access,
             model: model,
+            reasoningEffort: reasoningEffort,
             inheritedModeArguments: inheritedModeArguments,
             quotedTask: quotedTask
         ) + "\n"
@@ -101,6 +103,28 @@ public enum AgentLaunchPlan {
         }
     }
 
+    /// The provider's reasoning-effort flag with a trailing space, or the
+    /// empty string when none was requested or the provider has no such
+    /// flag (the control server rejects that combination before it gets
+    /// here, so the empty fallback is only defensive). The value comes
+    /// from a closed enum, so it needs no quoting.
+    private static func reasoningEffortSegment(
+        provider: AgentWorkerProvider,
+        reasoningEffort: AgentReasoningEffort?
+    ) -> String {
+        guard let reasoningEffort,
+              reasoningEffort.isSupported(by: provider)
+        else { return "" }
+        switch provider {
+        case .codex:
+            return "-c model_reasoning_effort=\(reasoningEffort.rawValue) "
+        case .claude:
+            return "--effort \(reasoningEffort.rawValue) "
+        case .cursor:
+            return ""
+        }
+    }
+
     /// The codex flags that already govern approval behavior on their own
     /// -- when one of these came from the lead's own argv, appending our
     /// usual `-a never` on top would be redundant at best and could
@@ -114,10 +138,17 @@ public enum AgentLaunchPlan {
         provider: AgentWorkerProvider,
         access: AgentAccessPolicy,
         model: String?,
+        reasoningEffort: AgentReasoningEffort?,
         inheritedModeArguments: [String]?,
         quotedTask: String
     ) -> String {
+        // Model and reasoning effort travel together as the leading
+        // launch options, ahead of the access-derived mode flags.
         let modelFlag = modelSegment(provider: provider, model: model)
+            + reasoningEffortSegment(
+                provider: provider,
+                reasoningEffort: reasoningEffort
+            )
         if let inheritedModeArguments, !inheritedModeArguments.isEmpty {
             return inheritedCommand(
                 provider: provider,

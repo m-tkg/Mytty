@@ -401,4 +401,74 @@ struct AgentLaunchPlanTests {
             ))
         }
     }
+
+    @Test("passes reasoning effort to codex as a -c config override")
+    func codexReasoningEffort() {
+        let input = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .review,
+            model: "gpt-6.1-sol",
+            reasoningEffort: .low,
+            task: "t"
+        )
+        #expect(input.hasPrefix(
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command codex -m 'gpt-6.1-sol' -c model_reasoning_effort=low "
+                + "-s read-only -a never -- "
+        ))
+    }
+
+    @Test("passes reasoning effort to claude as --effort")
+    func claudeReasoningEffort() {
+        let input = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .workspaceWrite,
+            model: nil,
+            reasoningEffort: .high,
+            task: "t"
+        )
+        #expect(input.hasPrefix(
+            AgentLaunchPlan.historySuppressionPrefix
+                + "command claude --effort high "
+                + "--permission-mode acceptEdits -- "
+        ))
+    }
+
+    @Test("reasoning effort also applies to an inherited-mode launch")
+    func inheritedReasoningEffort() {
+        let codex = AgentLaunchPlan.initialInput(
+            provider: .codex,
+            access: .inherit,
+            model: nil,
+            reasoningEffort: .xhigh,
+            inheritedModeArguments: ["-s", "read-only"],
+            task: "t"
+        )
+        #expect(codex.contains(
+            "command codex -c model_reasoning_effort=xhigh "
+        ))
+        let claude = AgentLaunchPlan.initialInput(
+            provider: .claude,
+            access: .inherit,
+            model: nil,
+            reasoningEffort: .max,
+            inheritedModeArguments: ["--permission-mode", "plan"],
+            task: "t"
+        )
+        #expect(claude.contains("command claude --effort max "))
+    }
+
+    @Test("omitted reasoning effort adds no flag")
+    func noReasoningEffortNoFlag() {
+        for provider in [AgentWorkerProvider.codex, .claude, .cursor] {
+            let input = AgentLaunchPlan.initialInput(
+                provider: provider,
+                access: .workspaceWrite,
+                model: nil,
+                task: "t"
+            )
+            #expect(!input.contains("reasoning_effort"))
+            #expect(!input.contains("--effort"))
+        }
+    }
 }
