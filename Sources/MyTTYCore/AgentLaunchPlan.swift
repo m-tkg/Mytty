@@ -87,6 +87,110 @@ public enum AgentLaunchPlan {
         historySuppressionPrefix + command + "\n"
     }
 
+    /// Largest `initialInput` (bytes) typed straight into the pane. Ghostty
+    /// writes it to the pty right away, usually before the shell has left
+    /// the tty's canonical mode, whose input line holds at most 1023 bytes
+    /// on macOS (`MAX_CANON` is 1024): the excess, trailing newline
+    /// included, is silently dropped, leaving a truncated command at the
+    /// prompt. Stay well below that.
+    public static let maxInlineInputBytes = 900
+
+    /// Per-user private scratch directory for staged launch scripts.
+    public static var stagingDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("mytty-launch", isDirectory: true)
+    }
+
+    /// Returns `input` unchanged when it fits `maxInlineInputBytes`.
+    /// Otherwise the command moves into a private one-shot script under
+    /// `directory` and the pane gets a short line that sources it, keeping
+    /// the history-suppression prefix on the typed line. The script deletes
+    /// itself first thing (the shell has already opened it), so nothing
+    /// lingers; leftovers older than a day are swept on each call. If the
+    /// script cannot be written safely (staging directory not a private
+    /// directory of ours, write failure), `input` is returned as it was.
+    public static func staged(
+        _ input: String,
+        in directory: URL,
+        fileManager: FileManager = .default
+    ) -> String {
+        guard input.utf8.count > maxInlineInputBytes,
+              input.hasPrefix(historySuppressionPrefix),
+              input.hasSuffix("\n")
+        else { return input }
+        let command = String(
+            input.dropFirst(historySuppressionPrefix.count).dropLast()
+        )
+        guard prepareStagingDirectory(directory) else { return input }
+        sweepStaleScripts(in: directory, fileManager: fileManager)
+        let file = directory.appendingPathComponent(
+            "launch-\(UUID().uuidString).sh"
+        )
+        let quotedPath = ShellQuoting.quote(file.path)
+        let script = "command rm -f -- \(quotedPath)\n\(command)\n"
+        guard writePrivateFile(Data(script.utf8), to: file.path) else {
+            return input
+        }
+        return historySuppressionPrefix + ". \(quotedPath)\n"
+    }
+
+    /// Creates `directory` (mode 0700) if needed, then insists it is a real
+    /// directory (not a symlink) owned by this user with mode exactly 0700.
+    /// An existing directory that fails the check is not trusted, which
+    /// matters when `TMPDIR` points at a shared location.
+    private static func prepareStagingDirectory(_ directory: URL) -> Bool {
+        let path = directory.path
+        if mkdir(path, 0o700) != 0, errno != EEXIST { return false }
+        var info = stat()
+        guard lstat(path, &info) == 0,
+              (info.st_mode & S_IFMT) == S_IFDIR,
+              info.st_uid == getuid(),
+              (info.st_mode & 0o777) == 0o700
+        else { return false }
+        return true
+    }
+
+    /// Creates `path` exclusively, without following a symlink, already at
+    /// mode 0600 (no window where the task text is readable by others).
+    private static func writePrivateFile(_ data: Data, to path: String) -> Bool {
+        let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var offset = 0
+        let ok = data.withUnsafeBytes { buffer -> Bool in
+            while offset < buffer.count {
+                let n = write(fd, buffer.baseAddress! + offset, buffer.count - offset)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    return false
+                }
+                offset += n
+            }
+            return true
+        }
+        if !ok { unlink(path) }
+        return ok
+    }
+
+    private static func sweepStaleScripts(
+        in directory: URL,
+        fileManager: FileManager
+    ) {
+        let cutoff = Date().addingTimeInterval(-86_400)
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files where file.lastPathComponent.hasPrefix("launch-") {
+            let modified = (try? file.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate
+            if let modified, modified < cutoff {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+
     /// `--model <quoted-model> ` (with a trailing space) for the given
     /// provider, or the empty string when no model was requested — kept
     /// separate from `command(...)` so each provider's flag ordering below

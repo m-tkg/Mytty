@@ -361,7 +361,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             }
         }
 
-        let initialInput = AgentLaunchPlan.initialInput(
+        let initialInput = AgentLaunchPlan.staged(AgentLaunchPlan.initialInput(
             provider: provider,
             access: resolvedAccess,
             model: model,
@@ -369,7 +369,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             inheritedModeArguments: inheritedModeArguments,
             workingDirectory: resolvedWorkingDirectory.path,
             task: task
-        )
+        ), in: AgentLaunchPlan.stagingDirectory)
 
         let newPaneID: TerminalSurfaceID?
         switch placement {
