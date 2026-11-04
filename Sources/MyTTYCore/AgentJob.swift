@@ -386,17 +386,31 @@ public struct AgentJobTracker: Equatable, Sendable {
         guard Self.followUpEligibleStates.contains(state),
               let boundStart = boundRun.startedAt
         else { return }
+        // Compared with when the bound run *ended*, not started: a run
+        // that overlapped it (a child `claude -p` the worker launched,
+        // inheriting MYTTY_*) is not the worker's next turn, and following
+        // it could strand the job on a run that never reports an end.
+        let boundEnd = boundRun.updatedAt ?? boundStart
         let later = runs.filter {
             $0.id != boundRun.id
                 && !baselineRunIDs.contains($0.id)
                 && $0.state != .unknown && $0.state != .idle
-                && ($0.startedAt ?? .distantPast) > boundStart
+                && ($0.startedAt ?? .distantPast) > boundEnd
+                && Self.sameSession($0.sessionID, boundRun.sessionID)
         }
         guard let next = later.max(by: {
             ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast)
         }) else { return }
         boundRunID = next.id
         apply(next)
+    }
+
+    /// Two session IDs are compatible unless both are known and differ.
+    /// A different session in the same pane (the user restarted the CLI,
+    /// or `/clear`) is not this worker's next turn.
+    private static func sameSession(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs, let rhs else { return true }
+        return lhs == rhs
     }
 
     /// States a bound run must have reached for `prepareForFollowUp` to

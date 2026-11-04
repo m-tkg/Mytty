@@ -258,6 +258,38 @@ struct AttentionCenterTests {
         )?.state == .running)
     }
 
+    @Test("a preferred provider does not hide another provider's pending approval or input")
+    @MainActor
+    func preferredProviderKeepsOtherProviderWaitingRuns() throws {
+        let harness = AttentionHarness()
+        defer { harness.remove() }
+        let center = harness.center
+        let surfaceID = TerminalSurfaceID()
+        let claudeRun = AgentRunID()
+        let otherRun = AgentRunID()
+
+        try center.append(harness.event(
+            runID: claudeRun, surfaceID: surfaceID,
+            provider: .claudeCode, kind: .started, at: 1
+        ))
+        try center.append(harness.event(
+            runID: claudeRun, surfaceID: surfaceID,
+            provider: .claudeCode, kind: .succeeded, at: 2
+        ))
+        try center.append(harness.event(
+            runID: otherRun, surfaceID: surfaceID,
+            provider: .antigravity, kind: .started, at: 3
+        ))
+        try center.append(harness.event(
+            runID: otherRun, surfaceID: surfaceID,
+            provider: .antigravity, kind: .approvalRequested, at: 4
+        ))
+
+        #expect(center.mostRelevantRun(
+            for: surfaceID, preferredProvider: .claudeCode
+        )?.state == .waitingApproval)
+    }
+
     @Test("a new idle session supersedes stale processing on a reused surface")
     @MainActor
     func idleSessionSupersedesStaleRun() throws {
