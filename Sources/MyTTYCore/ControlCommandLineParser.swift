@@ -137,9 +137,18 @@ public enum ControlCommandLineParser {
         directory and allows a fixed set of shell commands, because agy
         reports no approval events and an unanswered prompt would stall
         the pane silently. Plan mode does not block an allowed command,
-        so the review worker's rules are read-only commands only -- but
-        they include `gh api`, which a review needs to post its review
-        and which can also write to GitHub (merge, delete, ...). The
+        so a review worker can still write: its rules are broad (git
+        read commands incl. fetch, gh pr view/diff/list/checks and gh
+        api, gh issue view/list, python3, mytty-ctl status, cat/nl/head/
+        tail/rg/grep/sed/awk/jq/wc/sort/uniq/diff/ls/find/pwd, and
+        redirects into /tmp) and a
+        deny list stops git push/commit/checkout/switch/reset/merge/rebase/clean/
+        restore, gh pr merge/close/edit, gh repo/release, curl, wget,
+        sudo, rm, rmdir and mv. The deny list is a prefix match and a second layer, not a
+        boundary: `git -C . push` and `gh api -X POST` are not caught,
+        python3, awk, find and sed can run or write anything, and gh api
+        can write to GitHub. $(...) and <(...) always stop at a prompt;
+        write `git show x:f | nl -ba` instead. The
         workspace-write rules cover git add/commit/diff/log/show (no
         checkout, switch, branch or fetch: they can discard changes or
         delete branches), gh pr
@@ -429,8 +438,11 @@ public enum ControlCommandLineParser {
         antigravity
           launch: agy --mode accept-edits (agent spawn adds --settings with
           trustedWorkspaces and shell allow rules; --access review uses
-          --mode plan with read-only rules instead, which still include
-          `gh api` so it can post a review)
+          --mode plan with broad review rules plus a deny list instead;
+          they include `gh api` and python3, so plan mode is no write
+          barrier. Tell the worker to pipe (`git show x:f | nl -ba`)
+          instead of $(...) or <(...), which always prompt, and to leave
+          its /tmp files in place: rm is denied)
           The task is passed with `-i` as the initial prompt. Its hooks never
           emit approval/input events, so only `wait --until idle` ever
           resolves for it; `wait --until attention` always times out. A shell
