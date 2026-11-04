@@ -139,7 +139,9 @@ public enum ControlCommandLineParser {
         so the review worker's rules are read-only commands only -- but
         they include `gh api`, which a review needs to post its review
         and which can also write to GitHub (merge, delete, ...). The
-        workspace-write rules cover git add/commit/diff/log/show, gh pr
+        workspace-write rules cover git add/commit/diff/log/show (no
+        checkout, switch, branch or fetch: they can discard changes or
+        delete branches), gh pr
         create/comment, swift and make, but not push, merge or reset.
         --access workspace-write lets the worker edit files, but for a
         claude worker it always launches with

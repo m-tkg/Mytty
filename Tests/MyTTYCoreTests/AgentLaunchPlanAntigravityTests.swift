@@ -104,6 +104,10 @@ struct AgentLaunchPlanAntigravityTests {
         for forbidden in [
             "git", "gh", "git push", "git reset", "gh pr merge", "gh api",
             "mv", "cp", "mytty-ctl", "rg",
+            // Prefix matching lets these discard changes or delete and
+            // overwrite branches (`checkout -- .`, `branch -D`,
+            // `fetch origin +ref:refs/heads/x`).
+            "git checkout", "git switch", "git branch", "git fetch",
         ] {
             #expect(!rules.contains("command(\(forbidden))"), "\(forbidden)")
         }

@@ -154,7 +154,6 @@ public enum AgentLaunchPlan {
         .filter { $0 != "gh api" }
         + [
             "git add", "git commit", "git diff", "git log", "git show",
-            "git branch", "git checkout", "git switch", "git fetch",
             "gh pr create", "gh pr comment", "gh issue list",
             "swift", "make", "mkdir", "touch",
         ]
