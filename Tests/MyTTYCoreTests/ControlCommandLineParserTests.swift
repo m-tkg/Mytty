@@ -479,6 +479,59 @@ struct ControlCommandLineParserTests {
         ))
     }
 
+    @Test("agent spawn --notify is off by default and on with the flag")
+    func agentSpawnNotifyFlag() throws {
+        let env = ["MYTTY_SURFACE_ID": "anchor-1"]
+        let base = ["agent", "spawn", "--provider", "codex", "--task", "x"]
+        let off = try ControlCommandLineParser.parse(base, environment: env)
+        let on = try ControlCommandLineParser.parse(
+            base + ["--notify"],
+            environment: env
+        )
+        let onTab = try ControlCommandLineParser.parse(
+            base + ["--new-tab", "--notify"],
+            environment: env
+        )
+        guard case let .spawnAgent(_, _, _, _, _, _, _, _, _, _, offNotify) = off,
+              case let .spawnAgent(_, _, _, _, _, _, _, _, _, _, onNotify) = on,
+              case let .spawnAgentInNewTab(
+                  _, _, _, _, _, _, _, _, _, _, tabNotify
+              ) = onTab
+        else {
+            Issue.record("unexpected requests")
+            return
+        }
+        #expect(offNotify == false)
+        #expect(onNotify == true)
+        #expect(tabNotify == true)
+    }
+
+    @Test("agent spawn --notify survives --task-file")
+    func agentSpawnNotifyTaskFile() throws {
+        let invocation = try ControlCommandLineParser.parseInvocation(
+            [
+                "agent", "spawn", "--anchor", "pane-1", "--provider", "codex",
+                "--notify", "--task-file", "/nonexistent/task.txt",
+            ],
+            environment: [:]
+        )
+        guard case let .agentSpawnPendingTaskFile(pending) = invocation else {
+            Issue.record("expected pending task file")
+            return
+        }
+        #expect(pending.notify == true)
+        let request = try ControlCommandLineParser.spawnAgentRequest(
+            from: pending,
+            task: "t"
+        )
+        guard case let .spawnAgent(_, _, _, _, _, _, _, _, _, _, notify) = request
+        else {
+            Issue.record("expected .spawnAgent")
+            return
+        }
+        #expect(notify == true)
+    }
+
     @Test("agent spawn accepts an explicit --direction auto")
     func agentSpawnExplicitAuto() throws {
         let request = try ControlCommandLineParser.parse(
@@ -490,7 +543,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, direction, _, _, _, _, _, _, _, _) = request
+        guard case let .spawnAgent(_, direction, _, _, _, _, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -508,7 +561,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -527,7 +580,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, access, _, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -599,7 +652,7 @@ struct ControlCommandLineParserTests {
             ],
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
-        guard case let .spawnAgent(_, _, _, _, _, model, _, _, _, _) = request
+        guard case let .spawnAgent(_, _, _, _, _, model, _, _, _, _, _) = request
         else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
@@ -614,8 +667,7 @@ struct ControlCommandLineParserTests {
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, _, effort
-        ) = request else {
+            _, _, _, _, _, _, _, _, _, effort, _) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }
@@ -638,8 +690,7 @@ struct ControlCommandLineParserTests {
                 environment: ["MYTTY_SURFACE_ID": "anchor-1"]
             )
             guard case let .spawnAgent(
-                _, _, _, _, _, _, _, _, _, effort
-            ) = request else {
+                _, _, _, _, _, _, _, _, _, effort, _) = request else {
                 Issue.record("expected .spawnAgent, got \(request)")
                 return
             }
@@ -657,8 +708,7 @@ struct ControlCommandLineParserTests {
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
         guard case let .spawnAgentInNewTab(
-            _, _, _, _, _, _, _, _, _, effort
-        ) = request else {
+            _, _, _, _, _, _, _, _, _, effort, _) = request else {
             Issue.record("expected .spawnAgentInNewTab, got \(request)")
             return
         }
@@ -685,8 +735,7 @@ struct ControlCommandLineParserTests {
             task: "do it"
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, _, effort
-        ) = request else {
+            _, _, _, _, _, _, _, _, _, effort, _) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }
@@ -728,8 +777,7 @@ struct ControlCommandLineParserTests {
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
         guard case let .spawnAgentInNewTab(
-            _, provider, _, _, model, _, _, _, tabTitle, effort
-        ) = request else {
+            _, provider, _, _, model, _, _, _, tabTitle, effort, _) = request else {
             Issue.record("expected .spawnAgentInNewTab, got \(request)")
             return
         }
@@ -750,8 +798,7 @@ struct ControlCommandLineParserTests {
             environment: ["MYTTY_SURFACE_ID": "anchor-1"]
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, worktreeBranch, _
-        ) = request else {
+            _, _, _, _, _, _, _, _, worktreeBranch, _, _) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }
@@ -815,8 +862,7 @@ struct ControlCommandLineParserTests {
             task: "do it"
         )
         guard case let .spawnAgent(
-            _, _, _, _, _, _, _, _, worktreeBranch, _
-        ) = request else {
+            _, _, _, _, _, _, _, _, worktreeBranch, _, _) = request else {
             Issue.record("expected .spawnAgent, got \(request)")
             return
         }

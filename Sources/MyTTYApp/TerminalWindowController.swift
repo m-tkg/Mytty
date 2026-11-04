@@ -649,11 +649,15 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// True when `surfaceID` was created through the mytty-ctl control
-    /// surface (`new-tab`, `split`, `agent spawn`). Such panes never raise
-    /// attention notifications — see `AppDelegate.receiveAgentEvent`.
-    func isOrchestratedSurface(_ surfaceID: TerminalSurfaceID) -> Bool {
+    /// surface (`new-tab`, `split`, `agent spawn`) and was not opted back
+    /// in with `agent spawn --notify`. Such panes never raise attention
+    /// notifications — see `AppDelegate.receiveAgentEvent`.
+    func suppressesAttentionNotifications(
+        for surfaceID: TerminalSurfaceID
+    ) -> Bool {
         session.tabs.contains {
-            $0.root.surfaceState(with: surfaceID)?.isOrchestrated == true
+            $0.root.surfaceState(with: surfaceID)?
+                .suppressesAttentionNotifications == true
         }
     }
 
@@ -662,11 +666,13 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
         orchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false,
         tabTitle: String? = nil
     ) -> TerminalSurfaceID? {
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
-            isOrchestrated: orchestrated
+            isOrchestrated: orchestrated,
+            notifiesWhenOrchestrated: notifiesWhenOrchestrated
         )
         // Orchestrated tabs (mytty-ctl / agent-created) open in the
         // background so an agent spawning workers never yanks the user
@@ -995,14 +1001,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         direction: SplitDirection,
         workingDirectory: URL? = nil,
         initialInput: String? = nil,
-        orchestrated: Bool = false
+        orchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false
     ) -> TerminalSurfaceID? {
         if orchestrated {
             return splitPaneInBackground(
                 paneID,
                 direction: direction,
                 workingDirectory: workingDirectory,
-                initialInput: initialInput
+                initialInput: initialInput,
+                notifiesWhenOrchestrated: notifiesWhenOrchestrated
             )
         }
         guard focus(pane: paneID) else { return nil }
@@ -1021,14 +1029,16 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         _ paneID: TerminalSurfaceID,
         direction: SplitDirection,
         workingDirectory: URL?,
-        initialInput: String?
+        initialInput: String?,
+        notifiesWhenOrchestrated: Bool
     ) -> TerminalSurfaceID? {
         guard session.tabs.contains(where: {
             $0.paneIDs.contains(paneID)
         }) else { return nil }
         let state = TerminalSurfaceState(
             workingDirectory: workingDirectory ?? currentWorkingDirectory,
-            isOrchestrated: true
+            isOrchestrated: true,
+            notifiesWhenOrchestrated: notifiesWhenOrchestrated
         )
         let initialSize = paneLayout.host(for: paneID).map {
             Self.initialSurfaceSize(
@@ -2843,6 +2853,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func refreshSidebarRows() {
+        // Register before counting so a restored or freshly spawned
+        // silenced pane never flashes in the bell; see
+        // `AttentionCenter.hideFromDisplay`.
+        attentionCenter.hideFromDisplay(
+            session.tabs.flatMap { $0.root.surfaceStates }
+                .filter(\.suppressesAttentionNotifications)
+                .map(\.id)
+        )
         let lifecycleBySurface = agentLifecycleBySurface
         sidebarModel.rows = session.tabs.enumerated().map { offset, tab in
             let state = tab.root.surfaceState(with: tab.focusedSurfaceID)
@@ -2853,7 +2871,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 title: title,
                 paneCount: tab.paneIDs.count,
                 attentionCount: attentionCenter.actionableCount(
-                    for: tab.surfaceIDs
+                    for: tab.unreadBadgeSurfaceIDs
                 ) + remoteAttentionCount(in: tab),
                 hasRunningAgent: TerminalTabAgentActivity.isProcessing(
                     surfaceIDs: tab.surfaceIDs,
@@ -2870,7 +2888,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             )
         }
         sidebarModel.selectedTabID = session.selectedTabID
-        sidebarModel.actionableAttentionCount = attentionCenter.actionableCount
+        sidebarModel.actionableAttentionCount = attentionCenter.displayedActionableCount
             + session.tabs.reduce(0) { $0 + remoteAttentionCount(in: $1) }
     }
 
@@ -4406,17 +4424,6 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 }
 
 private extension SplitNode {
-    var surfaceStates: [TerminalSurfaceState] {
-        switch self {
-        case let .surface(state):
-            [state]
-        case .browser, .remote:
-            []
-        case let .split(_, _, first, second):
-            first.surfaceStates + second.surfaceStates
-        }
-    }
-
     var browserStates: [BrowserPaneState] {
         switch self {
         case .surface, .remote:

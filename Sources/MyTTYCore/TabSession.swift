@@ -49,20 +49,37 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
     /// True when this pane was created through the mytty-ctl control surface
     /// by an orchestrating agent; attention notifications for it are
     /// suppressed because the orchestrator handles its approvals/results.
+    /// `agent spawn --notify` sets `notifiesWhenOrchestrated` to opt back in.
     public var isOrchestrated: Bool
+    /// Opt-in set by `agent spawn --notify`: an orchestrated pane whose
+    /// human also wants Mac banners / iOS pushes for it.
+    public var notifiesWhenOrchestrated: Bool
+
+    /// True when attention notifications (Mac banner, sound, iOS push)
+    /// must stay silent: orchestrated panes are watched by the
+    /// orchestrating agent unless `--notify` opted them back in. Covers
+    /// the Mac banner, sound, iOS push, the tab's unread count badge
+    /// (`TabSession.unreadBadgeSurfaceIDs`) and the Attention bell/list
+    /// (`AttentionCenter.hideFromDisplay`); never run state or
+    /// status indicators.
+    public var suppressesAttentionNotifications: Bool {
+        isOrchestrated && !notifiesWhenOrchestrated
+    }
 
     public init(
         id: TerminalSurfaceID = TerminalSurfaceID(),
         workingDirectory: URL,
         agentResume: AgentResumeDescriptor? = nil,
         terminalHistory: String? = nil,
-        isOrchestrated: Bool = false
+        isOrchestrated: Bool = false,
+        notifiesWhenOrchestrated: Bool = false
     ) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.agentResume = agentResume
         self.terminalHistory = terminalHistory
         self.isOrchestrated = isOrchestrated
+        self.notifiesWhenOrchestrated = notifiesWhenOrchestrated
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -71,6 +88,7 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
         case agentResume
         case terminalHistory
         case isOrchestrated
+        case notifiesWhenOrchestrated
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,6 +107,10 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .isOrchestrated
         ) ?? false
+        notifiesWhenOrchestrated = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .notifiesWhenOrchestrated
+        ) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -98,6 +120,10 @@ public struct TerminalSurfaceState: Codable, Equatable, Sendable {
         try container.encodeIfPresent(agentResume, forKey: .agentResume)
         try container.encodeIfPresent(terminalHistory, forKey: .terminalHistory)
         try container.encode(isOrchestrated, forKey: .isOrchestrated)
+        try container.encode(
+            notifiesWhenOrchestrated,
+            forKey: .notifiesWhenOrchestrated
+        )
     }
 }
 
@@ -192,6 +218,17 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
             []
         case let .split(_, _, first, second):
             first.surfaceIDs + second.surfaceIDs
+        }
+    }
+
+    public var surfaceStates: [TerminalSurfaceState] {
+        switch self {
+        case let .surface(surface):
+            [surface]
+        case .browser, .remote:
+            []
+        case let .split(_, _, first, second):
+            first.surfaceStates + second.surfaceStates
         }
     }
 
@@ -850,6 +887,17 @@ public struct TabSession: Codable, Equatable, Sendable {
 
     public var paneIDs: [TerminalSurfaceID] {
         root.paneIDs
+    }
+
+    /// The terminal panes whose unresolved Attention items count toward
+    /// this tab's unread badge. Panes silenced by
+    /// `suppressesAttentionNotifications` (`mytty-ctl` panes -- `agent
+    /// spawn`, `new-tab`, `split` -- without `--notify`) are left out; their items still exist for the Attention
+    /// inbox, `mytty-ctl list/events/wait` and the status indicators.
+    public var unreadBadgeSurfaceIDs: [TerminalSurfaceID] {
+        root.surfaceStates
+            .filter { !$0.suppressesAttentionNotifications }
+            .map(\.id)
     }
 
     public init(

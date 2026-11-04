@@ -146,3 +146,36 @@ extension AttentionItem {
         return message ?? kind.notificationBody(localizer: localizer)
     }
 }
+
+/// What `AppDelegate.receiveAgentEvent` does with a freshly recorded
+/// Attention item. A pure function of the pane/app state so the
+/// suppression rules (`agent spawn` without `--notify`) are testable
+/// without an app delegate.
+struct AttentionNotificationRouting: Equatable {
+    var pushToPhone = false
+    var banner = false
+    /// The pane is being looked at: its actionable items are
+    /// acknowledged instead of notified.
+    var acknowledgeItems = false
+
+    static let none = AttentionNotificationRouting()
+
+    static func decide(
+        isSuppressed: Bool,
+        isAppActive: Bool,
+        isActivelyFocused: Bool,
+        isVisible: Bool
+    ) -> AttentionNotificationRouting {
+        guard !isSuppressed else { return .none }
+        // The phone is gated on the Mac being unattended rather than on
+        // pane visibility: the case it exists for is walking away from a
+        // running agent whose pane is still focused on screen.
+        var result = AttentionNotificationRouting(pushToPhone: !isAppActive)
+        if isActivelyFocused {
+            result.acknowledgeItems = true
+        } else if !isVisible {
+            result.banner = true
+        }
+        return result
+    }
+}

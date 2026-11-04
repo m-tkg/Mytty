@@ -16,7 +16,9 @@ struct AttentionDrawerView: View {
     let onAcknowledgeAll: () -> Void
 
     private var visibleItems: [AttentionItem] {
-        showsUnreadOnly ? center.items.filter(\.isActionable) : center.items
+        showsUnreadOnly
+            ? center.displayedItems.filter(\.isActionable)
+            : center.displayedItems
     }
 
     var body: some View {
@@ -46,8 +48,8 @@ struct AttentionDrawerView: View {
             Image(systemName: "bell")
             Text(localizer[.attention])
                 .font(.headline)
-            if center.actionableCount > 0 {
-                Text("\(center.actionableCount)")
+            if center.displayedActionableCount > 0 {
+                Text("\(center.displayedActionableCount)")
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 6)
                     .frame(minWidth: 20, minHeight: 18)
@@ -55,11 +57,11 @@ struct AttentionDrawerView: View {
                     .foregroundStyle(.white)
                     .clipShape(Capsule())
                     .accessibilityLabel(
-                        localizer.attentionCount(center.actionableCount)
+                        localizer.attentionCount(center.displayedActionableCount)
                     )
             }
             Spacer(minLength: 8)
-            if center.actionableCount > 0 {
+            if center.displayedActionableCount > 0 {
                 Button(action: onAcknowledgeAll) {
                     Image(systemName: "checkmark.circle")
                         .frame(width: 20, height: 20)

@@ -1495,36 +1495,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .first
 
         // Panes spawned through mytty-ctl (new-tab/split/agent spawn) are
-        // watched by the orchestrating agent, not the human — the human is
-        // notified by the orchestrator's own pane instead, so both the
-        // phone push and the Mac banner stay silent for these panes
-        // regardless of visibility/focus/app-active state.
-        let orchestrated = windowSessionCoordinator.controllers.contains {
-            $0.isOrchestratedSurface(event.surfaceID)
-        }
-
-        // The phone is gated on the Mac being unattended rather than on
-        // pane visibility: the case this exists for is walking away from a
-        // running agent, where the pane is still focused on screen and the
-        // Mac deliberately stays silent.
-        if !orchestrated, !NSApplication.shared.isActive {
+        // watched by the orchestrating agent, not the human, so both the
+        // phone push and the Mac banner stay silent for them regardless of
+        // visibility/focus/app-active state. `agent spawn --notify` opts a
+        // pane back in; it then follows the normal gating.
+        let controllers = windowSessionCoordinator.controllers
+        let routing = AttentionNotificationRouting.decide(
+            isSuppressed: controllers.contains {
+                $0.suppressesAttentionNotifications(for: event.surfaceID)
+            },
+            isAppActive: NSApplication.shared.isActive,
+            isActivelyFocused: controllers.contains {
+                $0.isSurfaceActivelyFocused(event.surfaceID)
+            },
+            isVisible: controllers.contains {
+                $0.isSurfaceVisible(event.surfaceID)
+            }
+        )
+        if routing.pushToPhone {
             remotePushNotifier?.notify(item, tabTitle: tabTitle)
         }
-
-        guard !orchestrated else { return inserted }
-
-        guard !windowSessionCoordinator.controllers.contains(where: {
-            $0.isSurfaceActivelyFocused(event.surfaceID)
-        }) else {
+        if routing.acknowledgeItems {
             try attentionCenter.acknowledgeActionableItems(for: event.surfaceID)
-            return inserted
         }
-
-        guard !windowSessionCoordinator.controllers.contains(where: {
-            $0.isSurfaceVisible(event.surfaceID)
-        }) else { return inserted }
-
-        attentionNotifier?.notify(item, tabTitle: tabTitle)
+        if routing.banner {
+            attentionNotifier?.notify(item, tabTitle: tabTitle)
+        }
         return inserted
     }
 

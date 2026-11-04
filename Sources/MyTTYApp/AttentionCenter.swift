@@ -20,6 +20,24 @@ final class AttentionCenter: ObservableObject {
     @Published private(set) var paneStatusNotes:
         [TerminalSurfaceID: PaneStatusNote] = [:]
 
+    /// Display-only registry for the toolbar bell and Attention list:
+    /// panes registered here (`mytty-ctl` panes -- `agent spawn`,
+    /// `new-tab`, `split` -- without `--notify`) are watched by their
+    /// orchestrator, so the human's inbox leaves them out. It never
+    /// touches `items`, `runs` or acknowledgements, which `mytty-ctl
+    /// wait/events/list` keep reading. Entries are never removed: surface
+    /// IDs are unique, and the history of a closed pane must stay hidden
+    /// too. Not persisted; window controllers re-register restored panes.
+    private var hiddenSurfaceIDs: Set<TerminalSurfaceID> = []
+
+    func hideFromDisplay(_ surfaceIDs: some Sequence<TerminalSurfaceID>) {
+        let new = Set(surfaceIDs).subtracting(hiddenSurfaceIDs)
+        guard !new.isEmpty else { return }
+        hiddenSurfaceIDs.formUnion(new)
+        // Items are unchanged, so nudge observers to redraw.
+        objectWillChange.send()
+    }
+
     private let repository: SQLiteAgentEventRepository
     private let policy: AttentionPolicy
     private var events: [AgentEvent] = []
@@ -212,7 +230,9 @@ final class AttentionCenter: ObservableObject {
     func acknowledgeAllActionableItems(
         at acknowledgedAt: Date = Date()
     ) throws -> Int {
-        let actionableItems = items.filter(\.isActionable)
+        // Hidden panes' items are not on screen, so a clear-all must not
+        // acknowledge them behind the orchestrator's back.
+        let actionableItems = displayedItems.filter(\.isActionable)
         guard !actionableItems.isEmpty else { return 0 }
 
         var acknowledgedCount = 0
@@ -419,6 +439,15 @@ final class AttentionCenter: ObservableObject {
 
     var actionableCount: Int {
         items.lazy.filter(\.isActionable).count
+    }
+
+    /// `items` minus the panes hidden from the human's inbox.
+    var displayedItems: [AttentionItem] {
+        items.filter { !hiddenSurfaceIDs.contains($0.surfaceID) }
+    }
+
+    var displayedActionableCount: Int {
+        displayedItems.lazy.filter(\.isActionable).count
     }
 
     func actionableCount(for surfaceIDs: [TerminalSurfaceID]) -> Int {

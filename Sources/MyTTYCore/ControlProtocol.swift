@@ -238,7 +238,8 @@ public enum ControlRequest: Equatable, Sendable {
         task: String,
         label: String?,
         worktreeBranch: String?,
-        reasoningEffort: AgentReasoningEffort? = nil
+        reasoningEffort: AgentReasoningEffort? = nil,
+        notify: Bool = false
     )
     /// `agent spawn --new-tab` — like `spawnAgent`, but the worker gets a
     /// tab of its own (in the anchor pane's window) instead of a split
@@ -261,7 +262,8 @@ public enum ControlRequest: Equatable, Sendable {
         label: String?,
         worktreeBranch: String?,
         tabTitle: String?,
-        reasoningEffort: AgentReasoningEffort? = nil
+        reasoningEffort: AgentReasoningEffort? = nil,
+        notify: Bool = false
     )
     case waitAgent(
         jobID: AgentJobID,
@@ -364,6 +366,7 @@ extension ControlRequest: Codable {
         case access
         case model
         case reasoningEffort
+        case notify
         case task
         case label
         case jobID
@@ -511,7 +514,11 @@ extension ControlRequest: Codable {
                 reasoningEffort: try container.decodeIfPresent(
                     AgentReasoningEffort.self,
                     forKey: .reasoningEffort
-                )
+                ),
+                notify: try container.decodeIfPresent(
+                    Bool.self,
+                    forKey: .notify
+                ) ?? false
             )
         case .spawnAgentInNewTab:
             self = .spawnAgentInNewTab(
@@ -551,7 +558,11 @@ extension ControlRequest: Codable {
                 reasoningEffort: try container.decodeIfPresent(
                     AgentReasoningEffort.self,
                     forKey: .reasoningEffort
-                )
+                ),
+                notify: try container.decodeIfPresent(
+                    Bool.self,
+                    forKey: .notify
+                ) ?? false
             )
         case .renameTab:
             self = .renameTab(
@@ -672,7 +683,7 @@ extension ControlRequest: Codable {
             try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
         case let .spawnAgent(
             anchorPaneID, direction, provider, cwd, access, model, task,
-            label, worktreeBranch, reasoningEffort
+            label, worktreeBranch, reasoningEffort, notify
         ):
             try container.encode(RequestType.spawnAgent, forKey: .type)
             try container.encode(anchorPaneID, forKey: .anchorPaneID)
@@ -691,9 +702,10 @@ extension ControlRequest: Codable {
                 reasoningEffort,
                 forKey: .reasoningEffort
             )
+            if notify { try container.encode(true, forKey: .notify) }
         case let .spawnAgentInNewTab(
             anchorPaneID, provider, cwd, access, model, task, label,
-            worktreeBranch, tabTitle, reasoningEffort
+            worktreeBranch, tabTitle, reasoningEffort, notify
         ):
             try container.encode(RequestType.spawnAgentInNewTab, forKey: .type)
             try container.encode(anchorPaneID, forKey: .anchorPaneID)
@@ -712,6 +724,7 @@ extension ControlRequest: Codable {
                 reasoningEffort,
                 forKey: .reasoningEffort
             )
+            if notify { try container.encode(true, forKey: .notify) }
         case let .renameTab(paneID, title):
             try container.encode(RequestType.renameTab, forKey: .type)
             try container.encode(paneID, forKey: .paneID)
