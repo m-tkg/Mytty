@@ -24,6 +24,14 @@ private final class StubSocketServer: @unchecked Sendable {
     private var thread: Thread?
     private let lock = NSLock()
     private var _connectionCount = 0
+    private var _stopped = false
+    private let loopDone = DispatchSemaphore(value: 0)
+
+    private var isStopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _stopped
+    }
 
     /// How many times a client connected. The retry is only observable
     /// from the outside as a second connection.
@@ -33,7 +41,10 @@ private final class StubSocketServer: @unchecked Sendable {
         return _connectionCount
     }
 
-    init(behavior: Behavior) throws {
+    /// `acceptDelay` pauses the accept loop before every `accept`, which is
+    /// what a thread starved by a loaded machine looks like. It lets a test
+    /// hit the descriptor-reuse window deterministically.
+    init(behavior: Behavior, acceptDelay: TimeInterval = 0) throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
@@ -71,11 +82,18 @@ private final class StubSocketServer: @unchecked Sendable {
         // compilers (the CI runner's) reject as a capture before
         // declaration.
         let acceptSocket = self.listener
+        let loopDone = self.loopDone
         let thread = Thread { [weak self] in
+            defer { loopDone.signal() }
             while true {
+                if acceptDelay > 0 { Thread.sleep(forTimeInterval: acceptDelay) }
+                // Checked before every accept: once `stop()` has run, the
+                // descriptor number may belong to another server, and
+                // accepting on it would steal that server's connection.
+                guard let self, !self.isStopped else { return }
                 let client = Darwin.accept(acceptSocket, nil, nil)
                 guard client >= 0 else { return }
-                guard let self else {
+                guard !self.isStopped else {
                     Darwin.close(client)
                     return
                 }
@@ -121,11 +139,52 @@ private final class StubSocketServer: @unchecked Sendable {
     }
 
     func stop() {
+        lock.lock()
+        let alreadyStopped = _stopped
+        _stopped = true
+        lock.unlock()
+        guard !alreadyStopped else { return }
+
+        // Closing the listener while the accept loop may still call
+        // `accept` on that number is a race: the number can be handed to
+        // the next test's socket, and the stale loop then steals its
+        // connections and drops them (the client sees `emptyResponse`).
+        // So wake the loop with a throwaway connection, wait until it has
+        // exited, and only then release the descriptor.
+        wakeAcceptLoop()
+        // Bounded so a failed wake-up cannot hang the whole suite. On a
+        // timeout the descriptor is leaked on purpose: closing it under a
+        // live loop is exactly the reuse hazard this guards against.
+        guard loopDone.wait(timeout: .now() + 5) == .success else { return }
         if listener >= 0 {
             Darwin.close(listener)
             listener = -1
         }
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func wakeAcceptLoop() {
+        let probe = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard probe >= 0 else { return }
+        defer { Darwin.close(probe) }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let pathBytes = Array(url.path.utf8CString)
+        withUnsafeMutableBytes(of: &address.sun_path) { destination in
+            pathBytes.withUnsafeBytes { source in
+                destination.copyBytes(from: source)
+            }
+        }
+        _ = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(
+                    probe,
+                    $0,
+                    socklen_t(MemoryLayout<sockaddr_un>.size)
+                )
+            }
+        }
     }
 }
 
@@ -185,6 +244,29 @@ struct AgentEventSocketClientRetryTests {
         #expect(response.ok)
         #expect(response.inserted == true)
         #expect(server.connectionCount == 1)
+    }
+
+    @Test("a stopped stub server never steals a reused descriptor")
+    func stoppedServerReleasesItsDescriptor() throws {
+        // The first server's accept loop is held back the way a starved
+        // thread on a loaded machine is. Stopping it must wait for that
+        // loop; otherwise the descriptor number is reused by the second
+        // server and the stale loop accepts (and drops) its connection,
+        // which the client reports as `emptyResponse`.
+        let stale = try StubSocketServer(behavior: .hang, acceptDelay: 0.3)
+        stale.stop()
+
+        let server = try StubSocketServer(behavior: .reply, acceptDelay: 0.7)
+        defer { server.stop() }
+
+        // Let a stale loop, if there is one, wake up and block in accept.
+        Thread.sleep(forTimeInterval: 0.5)
+
+        let response = try AgentEventSocketClient(operationTimeout: 2)
+            .send(envelope(), to: server.url)
+        #expect(response.ok)
+        #expect(server.connectionCount == 1)
+        #expect(stale.connectionCount == 0)
     }
 
     @Test("only transient failures are worth a second attempt")
