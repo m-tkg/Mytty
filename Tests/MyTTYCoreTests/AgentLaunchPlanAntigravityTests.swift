@@ -68,24 +68,69 @@ struct AgentLaunchPlanAntigravityTests {
         String(input.dropFirst(AgentLaunchPlan.historySuppressionPrefix.count))
     }
 
-    @Test("review launches in plan mode with only side-effect-free allow rules")
+    private func denyRules(_ input: String) throws -> [String] {
+        let permissions = try #require(
+            try settings(input)["permissions"] as? [String: Any]
+        )
+        return try #require(permissions["deny"] as? [String])
+    }
+
+    @Test("review launches in plan mode with broad read-oriented allow rules")
     func reviewUsesPlanMode() throws {
         let launch = input(access: .review)
         #expect(command(launch).hasPrefix("command agy --mode plan --settings "))
         let rules = try allowRules(launch)
-        #expect(rules.contains("command(gh pr view)"))
-        #expect(rules.contains("command(gh pr diff)"))
-        #expect(rules.contains("command(gh api)"))
-        #expect(rules.contains("command(mytty-ctl status)"))
-        // `rg --pre <cmd>` runs arbitrary commands; `git diff|log|show
-        // --output=<path>` writes files. agy matches the rule as a command
-        // prefix, so those flags cannot be fenced off: drop the commands.
+        for expected in [
+            "command(gh pr view)", "command(gh pr diff)", "command(gh pr list)",
+            "command(gh pr checks)", "command(gh api)",
+            "command(git fetch)", "command(git show)", "command(git diff)",
+            "command(git log)", "command(git rev-parse)", "command(git grep)",
+            "command(python3)", "command(mytty-ctl status)",
+            "command(cat)", "command(nl)", "command(head)", "command(tail)",
+            "command(rg)", "command(grep)", "command(sed)", "command(awk)",
+            "command(jq)", "command(wc)", "command(sort)", "command(uniq)",
+            "command(diff)", "command(ls)", "command(find)",
+            // `>` redirects into /tmp (a diff saved for later reading).
+            "write_file(/tmp)",
+        ] {
+            #expect(rules.contains(expected), "\(expected)")
+        }
+        // Rules match whole-word command prefixes and agy has no wildcard,
+        // so a bare mutating command must never be allowed: that would
+        // allow every subcommand of it. rm is left out on purpose (a rule
+        // cannot be scoped to /tmp), as is anything that moves or deletes.
         for forbidden in [
-            "rg", "git diff", "git log", "git show", "git", "gh",
-            "git push", "swift", "make", "mv", "cp", "mytty-ctl",
+            "git", "gh", "git push", "git commit", "git checkout", "git reset",
+            "git merge", "git rebase", "gh pr merge", "gh repo", "curl",
+            "wget", "sudo", "rm", "mv", "cp", "mytty-ctl", "swift", "make",
         ] {
             #expect(!rules.contains("command(\(forbidden))"), "\(forbidden)")
         }
+    }
+
+    @Test("review denies mutating commands explicitly")
+    func reviewDeniesMutations() throws {
+        let deny = try denyRules(input(access: .review))
+        for expected in [
+            "command(git push)", "command(git commit)", "command(git checkout)",
+            "command(git reset)", "command(git merge)", "command(git rebase)",
+            "command(gh pr merge)", "command(gh pr close)", "command(gh pr edit)",
+            "command(gh repo)", "command(gh release)",
+            "command(curl)", "command(wget)", "command(sudo)",
+            "command(rm)", "command(mv)",
+        ] {
+            #expect(deny.contains(expected), "\(expected)")
+        }
+        // deny wins over allow in agy, so nothing denied may also be allowed.
+        let allow = Set(try allowRules(input(access: .review)))
+        #expect(allow.isDisjoint(with: Set(deny)))
+    }
+
+    @Test("workspace-write launches have no deny rules")
+    func writerHasNoDeny() throws {
+        let object = try settings(input(access: .workspaceWrite))
+        let permissions = try #require(object["permissions"] as? [String: Any])
+        #expect(permissions["deny"] == nil)
     }
 
     @Test("workspace-write launches in accept-edits mode with subcommand-scoped rules")

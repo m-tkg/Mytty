@@ -129,15 +129,9 @@ public enum AgentLaunchPlan {
         }
     }
 
-    /// Commands a review worker may run without an approval prompt. agy
-    /// matches a rule as a whole-word command prefix and judges `;`, `&&`,
-    /// pipes, `$(...)` and redirects per sub-command, but it cannot fence
-    /// off flags: `rg --pre <cmd>` runs arbitrary commands and
-    /// `git diff|log|show --output=<path>` writes files, so neither `rg`
-    /// nor those git subcommands are listed (a review worker uses `gh pr
-    /// diff` and `cat`; anything else stops at a prompt). `gh api` stays
-    /// because posting the review is a `gh api ... -X POST`; that also lets
-    /// the worker write to GitHub, which is documented, not prevented.
+    /// Base rules shared by every agy worker (the writer extends these).
+    /// agy matches `command(x)` as a whole-word command prefix and judges
+    /// `;`, `&&`, pipes and `2>&1` per sub-command.
     private static let antigravityReadAllowRules = [
         "gh pr view", "gh pr diff", "gh pr list", "gh pr checks",
         "gh issue view", "gh api",
@@ -145,6 +139,41 @@ public enum AgentLaunchPlan {
         "cat", "ls", "grep", "head", "tail", "wc", "pwd",
         "mytty-ctl status",
     ]
+
+    /// Allow rules for a review worker: broad, so that a review does not
+    /// stop at a prompt nobody is told about. agy has no wildcard in rules,
+    /// so a rule is always a command prefix and cannot fence off flags:
+    /// `git diff|log|show --output=<path>` writes files, `rg --pre`,
+    /// `find -exec`, `awk system()` and `python3` run arbitrary commands,
+    /// and `gh api` can write to GitHub (`-X POST`). plan mode does not stop
+    /// any of that (it only steers the model). `$(...)` and `<(...)` are
+    /// never auto-approved: pipe instead (`git show x:f | nl -ba`).
+    /// `rm`/`mv` are not listed because a rule cannot be scoped to /tmp.
+    private static let antigravityReviewAllowRules: [String] =
+        [
+            "gh pr view", "gh pr diff", "gh pr list", "gh pr checks",
+            "gh issue view", "gh issue list", "gh api",
+            "git status", "git fetch", "git show", "git diff", "git log",
+            "git blame", "git rev-parse", "git rev-list", "git grep",
+            "git ls-files", "git ls-tree", "git cat-file", "git merge-base",
+            "git show-ref", "git describe", "git diff-tree", "git shortlog",
+            "git for-each-ref", "git name-rev",
+            "python3", "mytty-ctl status",
+            "cat", "nl", "head", "tail", "rg", "grep", "sed", "awk", "jq",
+            "wc", "sort", "uniq", "diff", "ls", "find", "pwd",
+        ].map { "command(\($0))" }
+        // Redirects (`gh pr diff > /tmp/x.diff`) need a file-write grant.
+        + ["write_file(/tmp)", "write_file(/private/tmp)"]
+
+    /// Explicit denials for a review worker (deny beats allow in agy). A
+    /// second layer, not a security boundary: matching is by prefix, so
+    /// `git -C . push` or `gh api -X POST` are not caught.
+    private static let antigravityReviewDenyRules = [
+        "git push", "git commit", "git checkout", "git switch", "git reset",
+        "git merge", "git rebase", "git clean", "git restore",
+        "gh pr merge", "gh pr close", "gh pr edit", "gh repo", "gh release",
+        "curl", "wget", "sudo", "rm", "rmdir", "mv",
+    ].map { "command(\($0))" }
 
     /// Rules for a worker that edits and builds in its workspace. Scoped to
     /// subcommands so that push, merge, reset and deletions still stop at a
@@ -171,12 +200,17 @@ public enum AgentLaunchPlan {
         writable: Bool,
         workingDirectory: String?
     ) -> String {
-        let rules = (writable
-            ? antigravityWriteAllowRules : antigravityReadAllowRules)
-            .map { "command(\($0))" }
-        var settings: [String: Any] = [
-            "permissions": ["allow": rules],
-        ]
+        var permissions: [String: Any]
+        if writable {
+            permissions = ["allow": antigravityWriteAllowRules
+                .map { "command(\($0))" }]
+        } else {
+            permissions = [
+                "allow": antigravityReviewAllowRules,
+                "deny": antigravityReviewDenyRules,
+            ]
+        }
+        var settings: [String: Any] = ["permissions": permissions]
         if let workingDirectory {
             settings["trustedWorkspaces"] = [workingDirectory]
         }
