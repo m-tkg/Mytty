@@ -2863,7 +2863,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 title: title,
                 paneCount: tab.paneIDs.count,
                 attentionCount: attentionCenter.actionableCount(
-                    for: tab.surfaceIDs
+                    for: tab.unreadBadgeSurfaceIDs
                 ) + remoteAttentionCount(in: tab),
                 hasRunningAgent: TerminalTabAgentActivity.isProcessing(
                     surfaceIDs: tab.surfaceIDs,

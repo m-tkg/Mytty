@@ -217,6 +217,17 @@ public indirect enum SplitNode: Codable, Equatable, Sendable {
         }
     }
 
+    public var surfaceStates: [TerminalSurfaceState] {
+        switch self {
+        case let .surface(surface):
+            [surface]
+        case .browser, .remote:
+            []
+        case let .split(_, _, first, second):
+            first.surfaceStates + second.surfaceStates
+        }
+    }
+
     public var paneIDs: [TerminalSurfaceID] {
         switch self {
         case let .surface(surface):
@@ -872,6 +883,17 @@ public struct TabSession: Codable, Equatable, Sendable {
 
     public var paneIDs: [TerminalSurfaceID] {
         root.paneIDs
+    }
+
+    /// The terminal panes whose unresolved Attention items count toward
+    /// this tab's unread badge. Panes silenced by
+    /// `suppressesAttentionNotifications` (`agent spawn` without
+    /// `--notify`) are left out; their items still exist for the Attention
+    /// inbox, `mytty-ctl list/events/wait` and the status indicators.
+    public var unreadBadgeSurfaceIDs: [TerminalSurfaceID] {
+        root.surfaceStates
+            .filter { !$0.suppressesAttentionNotifications }
+            .map(\.id)
     }
 
     public init(

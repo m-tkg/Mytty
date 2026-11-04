@@ -447,6 +447,32 @@ struct TabSessionTests {
         #expect(state.suppressesAttentionNotifications == true)
     }
 
+    @Test("unread badge counts every pane except silenced orchestrated ones")
+    func unreadBadgeSurfaceIDs() throws {
+        let human = makeSurface(id: 1, path: "/repo")
+        var silenced = makeSurface(id: 2, path: "/repo")
+        silenced.isOrchestrated = true
+        var notifying = makeSurface(id: 3, path: "/repo")
+        notifying.isOrchestrated = true
+        notifying.notifiesWhenOrchestrated = true
+        var tab = TabSession(id: makeTabID(1), initialSurface: human)
+        try tab.split(surface: human.id, adding: silenced, direction: .right)
+        try tab.split(surface: silenced.id, adding: notifying, direction: .down)
+
+        #expect(tab.surfaceIDs.count == 3)
+        #expect(
+            Set(tab.unreadBadgeSurfaceIDs) == [human.id, notifying.id]
+        )
+    }
+
+    @Test("a tab holding only a silenced orchestrated pane has no unread source")
+    func silencedOnlyTabHasNoUnreadSource() {
+        var silenced = makeSurface(id: 1, path: "/repo")
+        silenced.isOrchestrated = true
+        let tab = TabSession(id: makeTabID(1), initialSurface: silenced)
+        #expect(tab.unreadBadgeSurfaceIDs.isEmpty)
+    }
+
     @Test("round-trips createdAt through encode/decode")
     func roundTripsCreatedAt() throws {
         let createdAt = Date(timeIntervalSinceReferenceDate: 700_000_000)
