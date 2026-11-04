@@ -229,15 +229,16 @@ public enum CodexSessionInspector {
                       let window = positiveDouble(
                           info["model_context_window"]
                       ),
-                      let usage = (info["last_token_usage"]
-                          ?? info["total_token_usage"])
-                          as? [String: Any],
+                      let usage = info["last_token_usage"] as? [String: Any],
                       let tokens = tokenCount(from: usage)
                 else { continue }
-                contextRemainingPercent = min(
-                    100,
-                    max(0, (1 - tokens / window) * 100)
-                )
+                // `total_token_usage` is cumulative over the whole session
+                // (easily tens of millions), not the live context size, so
+                // a row without `last_token_usage` leaves the meter as it was.
+                contextRemainingPercent = AgentContextUsage.remainingPercent(
+                    used: tokens,
+                    total: window
+                ) ?? contextRemainingPercent
             default:
                 continue
             }

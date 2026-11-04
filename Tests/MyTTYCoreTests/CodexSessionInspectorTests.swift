@@ -45,6 +45,37 @@ struct CodexSessionInspectorTests {
         )
     }
 
+    @Test("treats context as unknown when only cumulative usage is reported")
+    func cumulativeUsageIsNotContextUsage() {
+        let data = Data("""
+        {"type":"session_meta","payload":{"session_id":"codex-session-id"}}
+        {"type":"turn_context","payload":{"model":"gpt-5.4-mini"}}
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":40000000},"model_context_window":258000}}}
+        """.utf8)
+
+        #expect(
+            CodexSessionInspector.status(from: data)
+                == AgentSessionStatus(
+                    sessionID: "codex-session-id",
+                    modelName: "gpt-5.4-mini",
+                    contextRemainingPercent: nil
+                )
+        )
+    }
+
+    @Test("rounds the remaining context like Claude Code")
+    func roundsUsedShare() {
+        let data = Data("""
+        {"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":118400},"model_context_window":258000}}}
+        """.utf8)
+
+        // 45.89% used -> 46% used -> 54% remaining.
+        #expect(
+            CodexSessionInspector.status(from: data)?
+                .contextRemainingPercent == 54
+        )
+    }
+
     @Test("finds the transcript opened by the exact Codex process")
     func openTranscript() throws {
         let root = FileManager.default.temporaryDirectory

@@ -61,8 +61,11 @@ public enum ClaudeCodeSessionInspector {
     /// reporting far less context than it had and pinning the meter at 0%
     /// past 200k.
     ///
-    /// Mythos-class models (claude-fable-5 etc.) are natively 1M, so they
-    /// keep the large window whatever the selection says.
+    /// Mythos-class models (claude-fable-5 etc.) and the Opus 5 family
+    /// (claude-opus-5, claude-opus-5-5, ...) are natively 1M, so they keep
+    /// the large window whatever the selection says. Other models that
+    /// default to 1M are not known here; `status(from:)` still upgrades the
+    /// window when the transcript shows more than 200k in use.
     static func contextWindow(
         forModel model: String?,
         selection: String? = nil
@@ -76,7 +79,8 @@ public enum ClaudeCodeSessionInspector {
         }
         if model.contains("[1m]")
             || model.contains("fable")
-            || model.contains("mythos") {
+            || model.contains("mythos")
+            || model.contains("claude-opus-5") {
             return largeContextWindow
         }
         return defaultContextWindow
@@ -419,34 +423,60 @@ public enum ClaudeCodeSessionInspector {
     ) -> AgentSessionStatus? {
         var sessionID: String?
         var modelName: String?
-        var contextRemainingPercent: Double?
+        var lastTokens: Double?
+        var lastWindow = defaultContextWindow
+        // Largest context size seen in the tail. Past 200k the window can
+        // only be 1M, whatever the model name says.
+        var maximumObservedTokens: Double = 0
 
         for line in data.split(separator: 0x0A) {
             guard let object = try? JSONSerialization.jsonObject(
                 with: Data(line)
             ) as? [String: Any],
-                  object["type"] as? String == "assistant",
-                  (object["isSidechain"] as? Bool) != true,
-                  let message = object["message"] as? [String: Any],
-                  let usage = message["usage"] as? [String: Any],
-                  let tokens = tokenCount(from: usage)
+                  (object["isSidechain"] as? Bool) != true
             else { continue }
 
-            let model = AgentSessionValidation.label(
-                message["model"] as? String
+            switch object["type"] as? String {
+            case "assistant":
+                guard let message = object["message"] as? [String: Any],
+                      let usage = message["usage"] as? [String: Any],
+                      let tokens = tokenCount(from: usage)
+                else { continue }
+                let model = AgentSessionValidation.label(
+                    message["model"] as? String
+                )
+                modelName = model ?? modelName
+                lastTokens = tokens
+                lastWindow = contextWindow(forModel: model, selection: selection)
+                maximumObservedTokens = max(maximumObservedTokens, tokens)
+                sessionID = AgentSessionValidation.identifier(
+                    object["sessionId"] as? String
+                ) ?? sessionID
+            case "system":
+                guard object["subtype"] as? String == "compact_boundary"
+                else { continue }
+                // Compacting adds no assistant row, so the last usage still
+                // describes the pre-compact context until the next response.
+                // Treat the size as unknown rather than show that stale value.
+                lastTokens = nil
+                if let metadata = object["compactMetadata"] as? [String: Any],
+                   let pre = positiveTokens(metadata["preTokens"]) {
+                    maximumObservedTokens = max(maximumObservedTokens, pre)
+                }
+            default:
+                continue
+            }
+        }
+
+        var contextRemainingPercent: Double?
+        if let lastTokens {
+            let window = maximumObservedTokens > defaultContextWindow
+                ? max(lastWindow, largeContextWindow)
+                : lastWindow
+            contextRemainingPercent = AgentContextUsage.remainingPercent(
+                used: lastTokens,
+                total: window
             )
-            let window = contextWindow(forModel: model, selection: selection)
-            modelName = model ?? modelName
-            // Claude Code rounds the *used* share to a whole percent and
-            // subtracts it, so rounding the remainder instead would report
-            // one percent more than the CLI does on half-percent usage.
-            contextRemainingPercent = 100 - min(
-                100,
-                max(0, (tokens / window * 100).rounded())
-            )
-            sessionID = AgentSessionValidation.identifier(
-                object["sessionId"] as? String
-            ) ?? sessionID
         }
 
         guard sessionID != nil || modelName != nil
@@ -457,6 +487,12 @@ public enum ClaudeCodeSessionInspector {
             modelName: modelName,
             contextRemainingPercent: contextRemainingPercent
         )
+    }
+
+    private static func positiveTokens(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber else { return nil }
+        let double = number.doubleValue
+        return double.isFinite && double > 0 ? double : nil
     }
 
     /// Converts a working directory into the slug Claude Code uses for its

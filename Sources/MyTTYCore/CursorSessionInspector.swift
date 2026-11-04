@@ -83,14 +83,10 @@ public enum CursorSessionInspector {
             AgentSessionStatus(
                 sessionID: resolvedSessionID,
                 modelName: modelName,
-                contextRemainingPercent: details.contextUsage.map { usage in
-                    // Match Claude Code's convention: round the *used*
-                    // share to a whole percent and subtract it, rather
-                    // than rounding the remainder (see
-                    // ClaudeCodeSessionInspector.status(from:)).
-                    100 - min(
-                        100,
-                        max(0, (usage.used / usage.total * 100).rounded())
+                contextRemainingPercent: details.contextUsage.flatMap { usage in
+                    AgentContextUsage.remainingPercent(
+                        used: usage.used,
+                        total: usage.total
                     )
                 }
             )
