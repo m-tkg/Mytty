@@ -13,7 +13,7 @@ public enum ControlCommandLineParser {
     mytty-ctl <command> [arguments]
 
     Commands:
-      agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
+      agent spawn --provider <codex|claude|cursor|antigravity> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--reasoning-effort <level>]
@@ -102,7 +102,7 @@ public enum ControlCommandLineParser {
     the low-level pane commands below for anything shaped like "run N
     agents and collect their output."
 
-      agent spawn --provider <codex|claude|cursor> (--task <text> | --task-file <path>)
+      agent spawn --provider <codex|claude|cursor|antigravity> (--task <text> | --task-file <path>)
                   [--anchor <pane-id>] [--direction <left|right|up|down|auto>]
                   [--cwd <path>] [--access <review|workspace-write|inherit>]
                   [--model <text>] [--reasoning-effort <level>]
@@ -129,6 +129,20 @@ public enum ControlCommandLineParser {
         inherit-unavailable when the anchor pane's foreground process is
         a different provider, rather than silently falling back to
         workspace-write. --access review is read-only investigation.
+        For antigravity, review launches agy in --mode plan and the other
+        values in --mode accept-edits (inherit copies your --mode,
+        --sandbox and --dangerously-skip-permissions). agent spawn also
+        passes a session-only --settings that pre-trusts the working
+        directory and allows a fixed set of shell commands, because agy
+        reports no approval events and an unanswered prompt would stall
+        the pane silently. Plan mode does not block an allowed command,
+        so the review worker's rules are read-only commands only -- but
+        they include `gh api`, which a review needs to post its review
+        and which can also write to GitHub (merge, delete, ...). The
+        workspace-write rules cover git add/commit/diff/log/show (no
+        checkout, switch, branch or fetch: they can discard changes or
+        delete branches), gh pr
+        create/comment, swift and make, but not push, merge or reset.
         --access workspace-write lets the worker edit files, but for a
         claude worker it always launches with
         --permission-mode acceptEdits regardless of your own mode -- so a
@@ -143,8 +157,13 @@ public enum ControlCommandLineParser {
         sets the worker's reasoning effort: codex takes minimal, low,
         medium, high or xhigh (passed as -c model_reasoning_effort=...),
         claude takes low, medium, high, xhigh or max (passed as
-        --effort); cursor has no such setting, so the flag is an error
-        there. Omitted, the provider's own configured default applies. --cwd
+        --effort), antigravity takes low, medium, high, xhigh or max (also
+        --effort, but agy rejects it together with a model name that
+        already carries a level such as gemini-4-argon-medium: use that
+        name alone, or the base name gemini-4-argon plus the flag; see
+        `agy models`); cursor has no such setting, so the flag is an
+        error there. Omitted, the provider's own configured default
+        applies. --cwd
         defaults to the anchor pane's shell-reported working directory,
         not your own process cwd -- if you were started somewhere the
         pane's shell never cd'd into (e.g. `claude --worktree` chdirs
@@ -395,9 +414,17 @@ public enum ControlCommandLineParser {
           unless the pane's job is read-only investigation -- it disables edits.
 
         antigravity
-          launch: normal, no extra flags
-          Its hooks never emit approval/input events, so only `wait --until
-          idle` ever resolves for it; `wait --until attention` always times out.
+          launch: agy --mode accept-edits (agent spawn adds --settings with
+          trustedWorkspaces and shell allow rules; --access review uses
+          --mode plan with read-only rules instead, which still include
+          `gh api` so it can post a review)
+          The task is passed with `-i` as the initial prompt. Its hooks never
+          emit approval/input events, so only `wait --until idle` ever
+          resolves for it; `wait --until attention` always times out. A shell
+          command outside the allow rules stops at an approval prompt that
+          nothing reports: read the pane when a worker looks stuck, and
+          approve with `send-key`. git push, gh pr merge and similar are
+          not in the rules either, so they always wait for you.
 
       WAIT PITFALLS
 
@@ -1017,7 +1044,7 @@ public enum ControlCommandLineParser {
     """
 
     private static let agentSpawnUsage = """
-    mytty-ctl agent spawn --provider <codex|claude|cursor> \
+    mytty-ctl agent spawn --provider <codex|claude|cursor|antigravity> \
     (--task <text> | --task-file <path>) [--anchor <pane-id>] \
     [--direction <left|right|up|down|auto>] [--cwd <path>] \
     [--access <review|workspace-write|inherit>] [--model <text>] \

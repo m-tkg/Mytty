@@ -28,6 +28,7 @@ public enum AgentWorkerProvider: String, Codable, Equatable, Sendable {
     case codex
     case claude
     case cursor
+    case antigravity
 
     /// The corresponding hook-integration/event provider this worker
     /// reports as, once launched — used to look up integration status and
@@ -37,6 +38,7 @@ public enum AgentWorkerProvider: String, Codable, Equatable, Sendable {
         case .codex: .codex
         case .claude: .claudeCode
         case .cursor: .cursor
+        case .antigravity: .antigravity
         }
     }
 }

@@ -49,11 +49,20 @@ public enum AgentModeInheritance {
         FlagSpec(names: ["--sandbox"], takesValue: true),
     ]
 
+    /// `agy --help` (1.4.12): `--mode` takes a value; `--sandbox` and
+    /// `--dangerously-skip-permissions` are plain switches.
+    private static let antigravityFlags: [FlagSpec] = [
+        FlagSpec(names: ["--mode"], takesValue: true),
+        FlagSpec(names: ["--sandbox"], takesValue: false),
+        FlagSpec(names: ["--dangerously-skip-permissions"], takesValue: false),
+    ]
+
     private static func flags(for provider: AgentWorkerProvider) -> [FlagSpec] {
         switch provider {
         case .claude: claudeFlags
         case .codex: codexFlags
         case .cursor: cursorFlags
+        case .antigravity: antigravityFlags
         }
     }
 

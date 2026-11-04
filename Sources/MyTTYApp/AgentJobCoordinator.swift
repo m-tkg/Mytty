@@ -362,6 +362,7 @@ extension AgentJobCoordinator: ControlServerAgentDelegate {
             model: model,
             reasoningEffort: reasoningEffort,
             inheritedModeArguments: inheritedModeArguments,
+            workingDirectory: resolvedWorkingDirectory.path,
             task: task
         )
 

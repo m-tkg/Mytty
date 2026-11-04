@@ -25,6 +25,7 @@ public enum AgentReasoningEffort: String, Codable, CaseIterable, Equatable, Send
         case .codex: [.minimal, .low, .medium, .high, .xhigh]
         case .claude: [.low, .medium, .high, .xhigh, .max]
         case .cursor: []
+        case .antigravity: [.low, .medium, .high, .xhigh, .max]
         }
     }
 
