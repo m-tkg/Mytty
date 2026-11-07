@@ -206,6 +206,17 @@ struct AntigravityUsageSource: AgentProviderUsageSource {
         pathProfile: ApplicationPathProfile,
         environment: [String: String]
     ) async -> AgentUsageSummary? {
+        // The status-line snapshot is the supported source; the local
+        // language-server probe only still works on older agy builds.
+        if let summary = AntigravityStatusLineStore(
+            socketDirectory: ApplicationPaths(
+                homeDirectory: homeDirectory,
+                temporaryDirectory: FileManager.default.temporaryDirectory,
+                profile: pathProfile
+            ).controlSocket.deletingLastPathComponent()
+        ).latest(maxAge: 6 * 60 * 60)?.usageSummary {
+            return summary
+        }
         guard let data = await AntigravityUsageProbe.fetch() else {
             return nil
         }

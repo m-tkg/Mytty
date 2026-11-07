@@ -390,7 +390,10 @@ struct AntigravityProviderRuntime: AgentProviderRuntime {
             surfaceID: context.surfaceID,
             sessionID: hookSessionID
         ) {
-            AntigravitySessionInspector.status(sessionID: hookSessionID)
+            AntigravitySessionInspector.status(
+                sessionID: hookSessionID,
+                statusLine: AntigravityStatusLineStore.forCurrentApplication
+            )
         })
     }
 }

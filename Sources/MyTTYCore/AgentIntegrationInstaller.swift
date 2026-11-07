@@ -190,8 +190,10 @@ public struct AgentIntegrationInstaller {
             guard let currentManifest = try? Data(contentsOf: manifest),
                   let currentHooks = try? Data(contentsOf: hooks)
             else { return .needsRepair }
-            return currentManifest == antigravityManifestData()
-                    && currentHooks == antigravityHooksData()
+            guard currentManifest == antigravityManifestData(),
+                  currentHooks == antigravityHooksData()
+            else { return .needsRepair }
+            return try antigravityStatusLineIsCurrent()
                 ? .installed
                 : .needsRepair
 
@@ -231,6 +233,7 @@ public struct AgentIntegrationInstaller {
                     .appendingPathComponent("hooks.json"),
                 defaultMode: 0o600
             )
+            try installAntigravityStatusLine()
             return
         }
 
@@ -267,10 +270,12 @@ public struct AgentIntegrationInstaller {
 
     public func remove(_ provider: AgentProvider) throws {
         if provider == .antigravity {
-            guard fileManager.fileExists(
+            if fileManager.fileExists(
                 atPath: antigravityPluginDirectory.path
-            ) else { return }
-            try fileManager.removeItem(at: antigravityPluginDirectory)
+            ) {
+                try fileManager.removeItem(at: antigravityPluginDirectory)
+            }
+            try removeAntigravityStatusLine()
             return
         }
 
@@ -644,6 +649,85 @@ public struct AgentIntegrationInstaller {
                 .appendingPathComponent(".cursor", isDirectory: true)
                 .appendingPathComponent("hooks.json", isDirectory: false)
         }
+    }
+
+    private var antigravitySettingsURL: URL {
+        homeDirectory
+            .appendingPathComponent(".gemini/antigravity-cli", isDirectory: true)
+            .appendingPathComponent("settings.json", isDirectory: false)
+    }
+
+    private func antigravityStatusLineIsCurrent() throws -> Bool {
+        guard let settings = try readConfiguration(at: antigravitySettingsURL),
+              let statusLine = settings["statusLine"] as? JSONObject,
+              let command = statusLine["command"] as? String,
+              case let .owned(wrapped) = AntigravityStatusLineCommand.parse(
+                  command,
+                  hookExecutable: installedHookExecutable
+              )
+        else { return false }
+        return statusLine["type"] as? String == "command"
+            && statusLine["enabled"] as? Bool != false
+            && command == AntigravityStatusLineCommand.command(
+                hookExecutable: installedHookExecutable,
+                wrapping: wrapped
+            )
+    }
+
+    /// Points agy's single `statusLine` slot at mytty's recorder. A command
+    /// the user already had is kept by wrapping it, so their status line
+    /// still renders; `remove` unwraps it again. Other settings (and other
+    /// keys inside `statusLine`) are left untouched, and a malformed
+    /// settings file is never overwritten.
+    private func installAntigravityStatusLine() throws {
+        var settings = try readConfiguration(at: antigravitySettingsURL) ?? [:]
+        var statusLine = settings["statusLine"] as? JSONObject ?? [:]
+        let current = statusLine["command"] as? String ?? ""
+        let wrapped: String?
+        switch AntigravityStatusLineCommand.parse(
+            current,
+            hookExecutable: installedHookExecutable
+        ) {
+        case let .owned(inner):
+            wrapped = inner
+        case .notOwned:
+            wrapped = current
+        }
+        statusLine["type"] = "command"
+        statusLine["enabled"] = true
+        statusLine["command"] = AntigravityStatusLineCommand.command(
+            hookExecutable: installedHookExecutable,
+            wrapping: wrapped
+        )
+        settings["statusLine"] = statusLine
+        try writeAtomically(
+            try encodedConfiguration(settings),
+            to: antigravitySettingsURL,
+            defaultMode: 0o644
+        )
+    }
+
+    private func removeAntigravityStatusLine() throws {
+        guard var settings = try readConfiguration(at: antigravitySettingsURL),
+              var statusLine = settings["statusLine"] as? JSONObject,
+              let command = statusLine["command"] as? String,
+              case let .owned(wrapped) = AntigravityStatusLineCommand.parse(
+                  command,
+                  hookExecutable: installedHookExecutable
+              )
+        else { return }
+        if let wrapped {
+            statusLine["command"] = wrapped
+        } else {
+            statusLine["command"] = ""
+            statusLine["type"] = ""
+        }
+        settings["statusLine"] = statusLine
+        try writeAtomically(
+            try encodedConfiguration(settings),
+            to: antigravitySettingsURL,
+            defaultMode: 0o644
+        )
     }
 
     private var antigravityPluginDirectory: URL {

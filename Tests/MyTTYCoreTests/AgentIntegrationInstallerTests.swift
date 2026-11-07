@@ -251,6 +251,73 @@ struct AgentIntegrationInstallerTests {
         #expect(FileManager.default.fileExists(atPath: unrelatedURL.path))
     }
 
+    @Test("installs Antigravity's status line, wrapping an existing one and restoring it on removal")
+    func antigravityStatusLine() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let settingsURL = harness.home
+            .appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        try harness.writeJSON(
+            [
+                "model": "Gemini X",
+                "statusLine": [
+                    "type": "command",
+                    "command": "echo it's mine",
+                    "enabled": true,
+                ],
+            ],
+            to: settingsURL
+        )
+        let installer = harness.installer
+
+        try installer.install(.antigravity)
+        try installer.install(.antigravity)
+
+        #expect(try installer.status(for: .antigravity) == .installed)
+        let installed = try harness.readJSON(settingsURL)
+        #expect(installed["model"] as? String == "Gemini X")
+        let statusLine = try #require(installed["statusLine"] as? [String: Any])
+        let command = try #require(statusLine["command"] as? String)
+        #expect(command.contains("mytty-agent-hook' antigravity-statusline --wrap "))
+        #expect(statusLine["type"] as? String == "command")
+
+        try installer.remove(.antigravity)
+
+        let restored = try harness.readJSON(settingsURL)
+        let restoredLine = try #require(restored["statusLine"] as? [String: Any])
+        #expect(restoredLine["command"] as? String == "echo it's mine")
+        #expect(restored["model"] as? String == "Gemini X")
+    }
+
+    @Test("an Antigravity status line with no prior command is cleared on removal, and malformed settings are never overwritten")
+    func antigravityStatusLineEmptyAndMalformed() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let settingsURL = harness.home
+            .appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        let installer = harness.installer
+
+        try installer.install(.antigravity)
+        let line = try #require(
+            try harness.readJSON(settingsURL)["statusLine"] as? [String: Any]
+        )
+        #expect(
+            (line["command"] as? String)?
+                .hasSuffix("mytty-agent-hook' antigravity-statusline") == true
+        )
+        try installer.remove(.antigravity)
+        let cleared = try #require(
+            try harness.readJSON(settingsURL)["statusLine"] as? [String: Any]
+        )
+        #expect(cleared["command"] as? String == "")
+
+        try Data("{not json".utf8).write(to: settingsURL)
+        #expect(throws: (any Error).self) { try installer.install(.antigravity) }
+        #expect(
+            try Data(contentsOf: settingsURL) == Data("{not json".utf8)
+        )
+    }
+
     @Test("merges Cursor hooks without changing other handlers")
     func cursorHooks() throws {
         let harness = try Harness()

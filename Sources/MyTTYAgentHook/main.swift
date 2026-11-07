@@ -19,6 +19,51 @@ private enum AgentHookCommandError: Error, CustomStringConvertible {
     }
 }
 
+/// `mytty-agent-hook antigravity-statusline [--wrap <command>]` is installed
+/// as Antigravity's `statusLine.command`. It records the context/quota
+/// numbers agy pipes in, then (if the user already had a status line) runs
+/// that command with the same input and passes its output through. It never
+/// fails loudly: whatever goes to stdout/stderr is drawn in agy's UI.
+private func runAntigravityStatusLine(arguments: [String]) -> Never {
+    let payload = FileHandle.standardInput.readDataToEndOfFile()
+    if let socket = ProcessInfo.processInfo
+        .environment[AgentHookBridge.socketEnvironmentKey],
+        socket.hasPrefix("/") {
+        let store = AntigravityStatusLineStore(
+            socketDirectory: URL(fileURLWithPath: socket)
+                .deletingLastPathComponent()
+        )
+        _ = try? store.record(payload: payload)
+    }
+
+    guard arguments.count == 2, arguments[0] == "--wrap" else {
+        exit(EXIT_SUCCESS)
+    }
+    // A wrapped command that exits without reading would raise SIGPIPE.
+    signal(SIGPIPE, SIG_IGN)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", arguments[1]]
+    let input = Pipe()
+    process.standardInput = input
+    do {
+        try process.run()
+    } catch {
+        exit(EXIT_FAILURE)
+    }
+    try? input.fileHandleForWriting.write(contentsOf: payload)
+    try? input.fileHandleForWriting.close()
+    process.waitUntilExit()
+    exit(process.terminationStatus)
+}
+
+if CommandLine.arguments.count >= 2,
+   CommandLine.arguments[1] == AntigravityStatusLineCommand.subcommand {
+    runAntigravityStatusLine(
+        arguments: Array(CommandLine.arguments.dropFirst(2))
+    )
+}
+
 do {
     guard CommandLine.arguments.count == 2,
           let provider = AgentProvider(rawValue: CommandLine.arguments[1])
