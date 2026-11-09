@@ -1453,8 +1453,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         })
     }
 
-    private func receiveAgentEvent(_ event: AgentEvent) throws -> Bool {
+    private func receiveAgentEvent(_ incoming: AgentEvent) throws -> Bool {
         guard let attentionCenter else { return false }
+        // agy reuses one conversationId for every prompt; give each turn
+        // its own run (see AntigravityTurnRunResolver).
+        let event = AntigravityTurnRunResolver.resolve(
+            incoming,
+            existingRuns: attentionCenter.runs(
+                forPane: incoming.surfaceID, provider: .antigravity)
+        )
         cursorApprovalCoordinator.observe(event)
         nativeAgentRunCoordinator.observe(event)
 
