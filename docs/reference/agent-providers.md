@@ -25,10 +25,10 @@ The shared hook helper binary lives at `~/Library/Application Support/mytty/bin/
 | Codex | `~/.codex/hooks.json` | Command handlers for prompt, permission, post-tool, and stop events |
 | Claude Code | `~/.claude/settings.json` | Command handlers for prompt, permission, post-tool, notification, stop, and failure events |
 | OpenCode | `~/.config/opencode/plugins/mytty.js` | One mytty-owned global plugin file |
-| Antigravity | `~/.gemini/config/plugins/mytty/` | One mytty-owned plugin directory with invocation and stop hooks |
+| Antigravity | `~/.gemini/config/plugins/mytty/`, and `statusLine` in `~/.gemini/antigravity-cli/settings.json` | One mytty-owned plugin directory with invocation and stop hooks, plus mytty's status-line command (below) |
 | Cursor | `~/.cursor/hooks.json` | Command handlers for prompt, pre-tool, post-tool, and stop events |
 
-Codex, Claude Code, and Cursor configuration is JSON, parsed structurally and rewritten atomically; unrelated top-level values, matcher groups, and handlers are left untouched. Removal deletes only the handlers whose command invokes mytty's own helper path with the matching provider argument. Disabling OpenCode deletes only `mytty.js`; disabling Antigravity deletes only mytty's plugin directory. Malformed JSON is never overwritten. Settings reports the provider's configuration as invalid and leaves the file as-is.
+Codex, Claude Code, and Cursor configuration is JSON, parsed structurally and rewritten atomically; unrelated top-level values, matcher groups, and handlers are left untouched. Removal deletes only the handlers whose command invokes mytty's own helper path with the matching provider argument. Disabling OpenCode deletes only `mytty.js`; disabling Antigravity deletes mytty's plugin directory and unwraps its `statusLine` command (restoring the user's own command if there was one; see Antigravity status line below). Malformed JSON is never overwritten. Settings reports the provider's configuration as invalid and leaves the file as-is.
 
 Each provider's Settings row derives **Installed** / **Needs Repair** / **Not Installed** from the actual file contents, not from whether the toggle was clicked. A hand-edited or partially removed installation shows **Needs Repair**.
 
@@ -67,6 +67,14 @@ Mytty no longer installs handlers on Cursor's `beforeShellExecution` / `afterShe
 
 Provider-native identifiers are converted to Mytty run identifiers as follows: Codex `turn_id`, Claude Code `prompt_id`, the active OpenCode user message ID, Antigravity `conversationId`, Cursor `generation_id`. Hook payloads themselves are never stored or parsed from human-readable terminal output.
 
+## Antigravity status line
+
+Antigravity pipes a JSON document (context window usage, quota buckets, model, session ID) to its configured `statusLine.command` on every refresh. That is the only supported source of its context and quota figures: the conversation database is protobuf and the local language server's quota endpoint now requires a CSRF token that agy does not expose.
+
+Enabling Antigravity sets `statusLine.command` in `~/.gemini/antigravity-cli/settings.json` to `mytty-agent-hook antigravity-statusline`, and removing the integration clears it again. agy has a single status-line slot, so a command already there is kept: Mytty installs `mytty-agent-hook antigravity-statusline --wrap '<your command>'`, which feeds your command the same input and passes its output through, and removal puts your command back. Other settings are untouched and malformed JSON is never overwritten. The Antigravity row shows **Needs Repair** until the status line is installed, so existing users get it from a repair.
+
+The command stores a reduced snapshot (session ID, model, remaining context percent, quota fractions, plan; no email) as `agy-statusline/<session-id>.json` next to the app's event socket, located through the pane's `MYTTY_EVENT_SOCKET`. A dev build and an installed release therefore each read only the panes they started. The status bar's context meter reads the snapshot for the pane's session. The usage meters read the newest snapshot under six hours old and show one meter per model family (Gemini, Claude/GPT) at its tightest window; the old language-server probe is only a fallback for older agy builds. Panes where agy does not run under Mytty get nothing, and the command exits quietly.
+
 ## Status bar session identifier
 
 Both status bars read the same per-pane state: the window's bar describes the
@@ -95,7 +103,7 @@ The status bar's model name and, where available, remaining-context meter come f
 | Claude Code | `ClaudeCodeSessionInspector` | `~/.claude/projects/<session-id>.jsonl` (searched across project dirs), or without a hook session ID, the most recently modified transcript under `~/.claude/projects/<slug>/`; last `assistant` line's `message.model`, tokens summed as `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` | 1,000,000 for `[1m]` models, 200,000 otherwise |
 | OpenCode | `OpenCodeSessionInspector` | `message` table in `opencode.db`, newest assistant row's `modelID` for the hook session ID | not exposed locally |
 | Cursor | `CursorSessionInspector` | Chat directory under `~/.cursor/chats/<workspace-hash>/<session-id>/` (by hook session ID, or newest `meta.json` whose `cwd` matches the pane); `store.db`'s `blobs` table, newest row first, text-scanned for `providerOptions.cursor.modelName` | Newest "root" blob's protobuf record: top-level field 5 holds used/total token counts; `nil` on older Cursor CLI versions that never write that blob |
-| Antigravity | `AntigravitySessionInspector` | Globally selected `model` in `~/.gemini/antigravity-cli/settings.json`; requires a hook session ID first, since the setting isn't scoped to a session | not exposed locally (conversation DB is protobuf-encoded with no stable schema) |
+| Antigravity | `AntigravitySessionInspector` | The per-session snapshot that Mytty's `statusLine` command records (see below): `model.display_name`. Falls back to the globally selected `model` in `~/.gemini/antigravity-cli/settings.json` until agy has refreshed its status line; both need a hook session ID first, since neither is scoped to a pane | `context_window.remaining_percentage` from the snapshot; `nil` without one (the conversation DB is protobuf-encoded with no stable schema) |
 
 The context meter turns red once the remaining context falls below a threshold, so a pane that is about to run out stands out without a notification. **Settings > Agents > Warn on low context** turns the warning off or moves the threshold (default 30%); the comparison uses the rounded remaining percentage, whichever side the meter displays.
 

@@ -38,3 +38,18 @@ enum ApplicationIdentity {
         return ApplicationVersion(value ?? "0.1.0")!
     }
 }
+
+extension AntigravityStatusLineStore {
+    /// The store the running app reads: beside its own event socket, which
+    /// is where the status-line command (told the socket path through the
+    /// pane's environment) writes.
+    static var forCurrentApplication: AntigravityStatusLineStore {
+        AntigravityStatusLineStore(
+            socketDirectory: ApplicationPaths(
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+                temporaryDirectory: FileManager.default.temporaryDirectory,
+                profile: ApplicationIdentity.pathProfile
+            ).controlSocket.deletingLastPathComponent()
+        )
+    }
+}
