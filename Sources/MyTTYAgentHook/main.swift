@@ -39,8 +39,6 @@ private func runAntigravityStatusLine(arguments: [String]) -> Never {
     guard arguments.count == 2, arguments[0] == "--wrap" else {
         exit(EXIT_SUCCESS)
     }
-    // A wrapped command that exits without reading would raise SIGPIPE.
-    signal(SIGPIPE, SIG_IGN)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
     process.arguments = ["-c", arguments[1]]
@@ -51,6 +49,10 @@ private func runAntigravityStatusLine(arguments: [String]) -> Never {
     } catch {
         exit(EXIT_FAILURE)
     }
+    // A wrapped command that exits without reading must not kill us with
+    // SIGPIPE. Mark just this descriptor instead of ignoring the signal,
+    // which the child shell and its pipelines would inherit.
+    _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
     try? input.fileHandleForWriting.write(contentsOf: payload)
     try? input.fileHandleForWriting.close()
     process.waitUntilExit()

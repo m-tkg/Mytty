@@ -214,7 +214,10 @@ struct AntigravityUsageSource: AgentProviderUsageSource {
                 temporaryDirectory: FileManager.default.temporaryDirectory,
                 profile: pathProfile
             ).controlSocket.deletingLastPathComponent()
-        ).latest(maxAge: 6 * 60 * 60)?.usageSummary {
+        ).latest(
+            maxAge: 6 * 60 * 60,
+            matching: { $0.usageSummary != nil }
+        )?.usageSummary {
             return summary
         }
         guard let data = await AntigravityUsageProbe.fetch() else {

@@ -38,6 +38,7 @@ struct AntigravityStatusLineTests {
         #expect(snapshot.planName == "Google AI Pro")
         #expect(snapshot.quota.count == 4)
         let summary = try #require(snapshot.usageSummary)
+        #expect(summary.planName == "Google AI Pro")
         #expect(summary.limits.map(\.title) == ["Gemini", "Claude/GPT"])
         #expect(summary.limits[0].remainingPercent == 50)
         #expect(abs(summary.limits[1].remainingPercent - 99.33576) < 0.0001)
@@ -62,6 +63,7 @@ struct AntigravityStatusLineTests {
     @Test("store records per session and returns the newest fresh snapshot")
     func store() throws {
         let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
         let store = AntigravityStatusLineStore(socketDirectory: root)
 
         #expect(try store.record(payload: Self.payload))
@@ -85,9 +87,32 @@ struct AntigravityStatusLineTests {
         #expect(written[.posixPermissions] as? Int == 0o600)
     }
 
+    @Test("latest skips a newer snapshot that doesn't match")
+    func latestSkipsUnusable() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = AntigravityStatusLineStore(socketDirectory: root)
+        try store.record(payload: Self.payload)
+        // Newer, but without quota.
+        try store.record(payload: Data(#"{"session_id":"newer"}"#.utf8))
+        let older = store.directory
+            .appendingPathComponent("d3723fd1-d84a-4c0b-8e69-0cd7a6163f0d.json")
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-60)],
+            ofItemAtPath: older.path
+        )
+
+        #expect(store.latest(maxAge: 3600)?.sessionID == "newer")
+        #expect(
+            store.latest(maxAge: 3600, matching: { $0.usageSummary != nil })?
+                .sessionID == "d3723fd1-d84a-4c0b-8e69-0cd7a6163f0d"
+        )
+    }
+
     @Test("the inspector reports the per-session model and context from the snapshot")
     func inspector() throws {
         let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
         let store = AntigravityStatusLineStore(socketDirectory: root)
         try store.record(payload: Self.payload)
 

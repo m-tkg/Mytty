@@ -311,11 +311,56 @@ struct AgentIntegrationInstallerTests {
         )
         #expect(cleared["command"] as? String == "")
 
+        try installer.remove(.antigravity)
         try Data("{not json".utf8).write(to: settingsURL)
         #expect(throws: (any Error).self) { try installer.install(.antigravity) }
         #expect(
             try Data(contentsOf: settingsURL) == Data("{not json".utf8)
         )
+        // Nothing half-installed: the plugin directory was never written.
+        #expect(!FileManager.default.fileExists(
+            atPath: harness.home
+                .appendingPathComponent(".gemini/config/plugins/mytty").path
+        ))
+    }
+
+    @Test("keeps a disabled user status line disabled, rejects wrongly typed statusLine, and still reports a leftover status line")
+    func antigravityStatusLineEdgeCases() throws {
+        let harness = try Harness()
+        defer { harness.remove() }
+        let settingsURL = harness.home
+            .appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        let installer = harness.installer
+
+        try harness.writeJSON(
+            ["statusLine": ["type": "command", "command": "echo mine", "enabled": false]],
+            to: settingsURL
+        )
+        try installer.install(.antigravity)
+        #expect(try installer.status(for: .antigravity) == .installed)
+        let line = try #require(
+            try harness.readJSON(settingsURL)["statusLine"] as? [String: Any]
+        )
+        #expect(line["enabled"] as? Bool == false)
+
+        // Plugin directory gone but our status line remains: repairable.
+        try FileManager.default.removeItem(
+            at: harness.home.appendingPathComponent(".gemini/config/plugins/mytty")
+        )
+        #expect(try installer.status(for: .antigravity) == .needsRepair)
+        try installer.remove(.antigravity)
+        #expect(try installer.status(for: .antigravity) == .notInstalled)
+        let restored = try #require(
+            try harness.readJSON(settingsURL)["statusLine"] as? [String: Any]
+        )
+        #expect(restored["command"] as? String == "echo mine")
+
+        for bad: Any in ["text", ["command": 5]] {
+            try harness.writeJSON(["statusLine": bad], to: settingsURL)
+            let before = try Data(contentsOf: settingsURL)
+            #expect(throws: (any Error).self) { try installer.install(.antigravity) }
+            #expect(try Data(contentsOf: settingsURL) == before)
+        }
     }
 
     @Test("merges Cursor hooks without changing other handlers")

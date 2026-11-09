@@ -108,7 +108,7 @@ public struct AntigravityStatusLineSnapshot: Equatable, Sendable, Codable {
                 )
             }
         guard !limits.isEmpty else { return nil }
-        return AgentUsageSummary(cost: nil, limits: limits)
+        return AgentUsageSummary(cost: nil, limits: limits, planName: planName)
     }
 
     private static func number(_ value: Any?) -> Double? {
@@ -188,17 +188,20 @@ public struct AntigravityStatusLineStore: Sendable {
         )
     }
 
-    /// The most recently written snapshot no older than `maxAge`. Quota is
-    /// account-wide, so any live session's numbers will do.
+    /// The most recently written snapshot no older than `maxAge` that
+    /// satisfies `matching`. Quota is account-wide, so any live session's
+    /// numbers will do; a newer snapshot that is unreadable or lacks quota
+    /// doesn't hide an older usable one.
     public func latest(
         maxAge: TimeInterval,
-        now: Date = Date()
+        now: Date = Date(),
+        matching: (AntigravityStatusLineSnapshot) -> Bool = { _ in true }
     ) -> AntigravityStatusLineSnapshot? {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey]
         ) else { return nil }
-        let newest = entries
+        let candidates = entries
             .filter { $0.pathExtension == "json" }
             .compactMap { entry -> (URL, Date)? in
                 guard let date = try? entry.resourceValues(
@@ -208,14 +211,18 @@ public struct AntigravityStatusLineStore: Sendable {
                 else { return nil }
                 return (entry, date)
             }
-            .max { $0.1 < $1.1 }
-        guard let newest,
-              let data = try? Data(contentsOf: newest.0)
-        else { return nil }
-        return try? JSONDecoder().decode(
-            AntigravityStatusLineSnapshot.self,
-            from: data
-        )
+            .sorted { $0.1 > $1.1 }
+        for (url, _) in candidates {
+            if let data = try? Data(contentsOf: url),
+               let snapshot = try? JSONDecoder().decode(
+                   AntigravityStatusLineSnapshot.self,
+                   from: data
+               ),
+               matching(snapshot) {
+                return snapshot
+            }
+        }
+        return nil
     }
 }
 
