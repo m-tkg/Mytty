@@ -948,7 +948,7 @@ private struct Mapping {
     }
 }
 
-private enum StableAgentUUID {
+enum StableAgentUUID {
     static func make(from string: String) -> UUID {
         make(from: Data(string.utf8))
     }
