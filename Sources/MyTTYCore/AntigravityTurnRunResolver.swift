@@ -13,14 +13,27 @@ import Foundation
 /// and the conversation's newest run is already terminal, this opens the next
 /// turn's run; every other event follows the newest run.
 public enum AntigravityTurnRunResolver {
-    /// Run ID of the `turn`th run (0 is the adapter's own ID) of a
-    /// conversation.
-    public static func runID(conversationID: String, turn: Int) -> AgentRunID {
+    /// The adapter's own run ID for a conversation (the first turn's run).
+    public static func baseRunID(conversationID: String) -> AgentRunID {
         AgentHookEventAdapter.hookAlignedRunID(
             provider: .antigravity,
-            runKey: turn == 0
-                ? conversationID
-                : "\(conversationID)\u{0}turn\u{0}\(turn)"
+            runKey: conversationID
+        )
+    }
+
+    /// Run ID for a later turn, derived from the event that opens it. It
+    /// is deterministic (a redelivery of the opener maps to the same run)
+    /// and does not depend on how many earlier runs still exist, so
+    /// `AttentionCenter.prune` dropping old turns cannot make it collide
+    /// with or skip over another turn.
+    static func turnRunID(
+        conversationID: String,
+        opening event: AgentEvent
+    ) -> AgentRunID {
+        let millis = Int64((event.occurredAt.timeIntervalSince1970 * 1000).rounded())
+        return AgentHookEventAdapter.hookAlignedRunID(
+            provider: .antigravity,
+            runKey: "\(conversationID)\u{0}turn\u{0}\(event.id.rawValue.uuidString)\u{0}\(millis)"
         )
     }
 
@@ -34,28 +47,45 @@ public enum AntigravityTurnRunResolver {
         guard event.provider == .antigravity,
               !AgentHookEventAdapter.isMyttySynthesizedHookName(event.hookName),
               let conversationID = event.sessionID,
-              event.runID == runID(conversationID: conversationID, turn: 0)
+              event.runID == baseRunID(conversationID: conversationID)
         else { return event }
 
-        let byID = Dictionary(
-            existingRuns.filter { $0.surfaceID == event.surfaceID }
-                .map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var turn = 0
-        while byID[runID(conversationID: conversationID, turn: turn + 1)] != nil {
-            turn += 1
+        // Every turn's run carries the conversation ID as its session, so
+        // the newest one is found by time rather than by counting turns
+        // (earlier turns may already have been pruned).
+        let latest = existingRuns
+            .filter {
+                $0.surfaceID == event.surfaceID
+                    && $0.provider == .antigravity
+                    && $0.sessionID == conversationID
+            }
+            .max { lhs, rhs in
+                (lhs.startedAt ?? lhs.updatedAt ?? .distantPast)
+                    < (rhs.startedAt ?? rhs.updatedAt ?? .distantPast)
+            }
+        guard let latest else { return event }
+
+        let targetID: AgentRunID
+        if event.kind == .running, latest.state.isTerminalForTurn {
+            targetID = turnRunID(conversationID: conversationID, opening: event)
+        } else {
+            targetID = latest.id
         }
-        if event.kind == .running,
-           let latest = byID[runID(conversationID: conversationID, turn: turn)],
-           latest.state.isTerminalForTurn {
-            turn += 1
-        }
-        guard turn > 0 else { return event }
+        guard targetID != event.runID else { return event }
+
+        // Redirected events get an identity of their own: the adapter
+        // derives `id` from the payload alone, so an identical payload in
+        // a later turn (same `executionNum`, same prompt) would otherwise
+        // be dropped as a duplicate of the earlier turn's event. Deriving
+        // it from (original id, run) keeps redelivery idempotent.
         return AgentEvent(
             schemaVersion: event.schemaVersion,
-            id: event.id,
-            runID: runID(conversationID: conversationID, turn: turn),
+            id: AgentEventID(
+                rawValue: StableAgentUUID.make(
+                    from: "event\u{0}antigravity-turn\u{0}\(event.id.rawValue.uuidString)\u{0}\(targetID.rawValue.uuidString)"
+                )
+            ),
+            runID: targetID,
             sessionID: event.sessionID,
             surfaceID: event.surfaceID,
             provider: event.provider,

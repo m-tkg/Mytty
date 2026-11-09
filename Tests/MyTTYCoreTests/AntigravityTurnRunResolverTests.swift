@@ -9,9 +9,11 @@ struct AntigravityTurnRunResolverTests {
     private let t0 = Date(timeIntervalSince1970: 1_000)
 
     private func event(_ kind: AgentEventKind, at offset: TimeInterval) -> AgentEvent {
+        // Like the adapter, the id depends on the payload only, so the same
+        // kind of event in a later turn carries the same id.
         AgentEvent(
-            id: AgentEventID(),
-            runID: AntigravityTurnRunResolver.runID(conversationID: conversation, turn: 0),
+            id: AgentEventID(rawValue: StableAgentUUID.make(from: "agy-\(kind.rawValue)")),
+            runID: AntigravityTurnRunResolver.baseRunID(conversationID: conversation),
             sessionID: conversation,
             surfaceID: surface,
             provider: .antigravity,
@@ -61,10 +63,52 @@ struct AntigravityTurnRunResolverTests {
         #expect(Set(result.events.map(\.runID)).count == 1)
     }
 
+    @Test("a late duplicate Stop after the turn ended opens no new run")
+    func lateStopOpensNothing() {
+        let result = feed([.running, .succeeded, .running, .succeeded, .succeeded, .failed])
+        #expect(Set(result.events.map(\.runID)).count == 2)
+    }
+
+    @Test("a turn after .disconnected opens a new run")
+    func afterDisconnected() {
+        let result = feed([.running, .disconnected, .running])
+        #expect(Set(result.events.map(\.runID)).count == 2)
+        #expect(result.runs[result.events[2].runID]?.state == .running)
+    }
+
+    @Test("pruned earlier turns do not misroute events of the newest turn")
+    func prunedHistory() {
+        let all = feed([.running, .succeeded, .running, .succeeded, .running])
+        let newest = all.events[4].runID
+        // Only the in-progress newest run survives pruning.
+        let survivors = all.runs.values.filter { $0.id == newest }
+        let stop = AntigravityTurnRunResolver.resolve(
+            event(.succeeded, at: 10), existingRuns: Array(survivors))
+        #expect(stop.runID == newest)
+        // After it finishes and is pruned too, the next turn still opens a
+        // run distinct from every earlier one.
+        let next = AntigravityTurnRunResolver.resolve(event(.running, at: 20), existingRuns: [])
+        #expect(next.runID == AntigravityTurnRunResolver.baseRunID(conversationID: conversation))
+        let fresh = AntigravityTurnRunResolver.resolve(
+            event(.running, at: 30),
+            existingRuns: Array(AgentEventReducer.reduce([event(.running, at: 21), event(.succeeded, at: 22)]).values))
+        #expect(fresh.runID != newest)
+        #expect(!all.events.prefix(4).map(\.runID).contains(fresh.runID))
+    }
+
+    @Test("a redelivered opening event maps to the same run and id")
+    func redeliveryIdempotent() {
+        let done = AgentEventReducer.reduce([event(.running, at: 0), event(.succeeded, at: 1)])
+        let opener = event(.running, at: 5)
+        let a = AntigravityTurnRunResolver.resolve(opener, existingRuns: Array(done.values))
+        let b = AntigravityTurnRunResolver.resolve(opener, existingRuns: Array(done.values))
+        #expect(a == b)
+    }
+
     @Test("other providers are untouched")
     func otherProvider() {
         let e = AgentEvent(
-            runID: AntigravityTurnRunResolver.runID(conversationID: conversation, turn: 0),
+            runID: AntigravityTurnRunResolver.baseRunID(conversationID: conversation),
             sessionID: conversation, surfaceID: surface, provider: .codex,
             kind: .running, occurredAt: t0)
         #expect(AntigravityTurnRunResolver.resolve(e, existingRuns: []) == e)
