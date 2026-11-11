@@ -10,6 +10,19 @@ required_version=$(
         "$ghostty_dir/build.zig.zon"
 )
 
+# Mirrors Ghostty's own check (src/build/zig.zig): the required major.minor
+# with any patch release at or above the required one.
+zig_satisfies() {
+    actual=$1
+    [ "${actual%.*}" = "${required_version%.*}" ] || return 1
+    actual_patch=${actual##*.}
+    required_patch=${required_version##*.}
+    case "$actual_patch$required_patch" in
+        ""|*[!0-9]*) return 1 ;;
+    esac
+    [ "$actual_patch" -ge "$required_patch" ]
+}
+
 find_zig() {
     if [ -n "${ZIG:-}" ]; then
         printf '%s\n' "$ZIG"
@@ -22,7 +35,7 @@ find_zig() {
         "$(command -v zig 2>/dev/null || true)"
     do
         if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-            if [ "$($candidate version)" = "$required_version" ]; then
+            if zig_satisfies "$("$candidate" version)"; then
                 printf '%s\n' "$candidate"
                 return
             fi
@@ -34,8 +47,9 @@ find_zig() {
 
 zig=$(find_zig || true)
 if [ -z "$zig" ]; then
-    printf 'error: Ghostty requires Zig %s\n' "$required_version" >&2
-    printf 'install it with: brew install zig@0.17 (or set ZIG to Zig %s)\n' "$required_version" >&2
+    printf 'error: Ghostty requires Zig %s or a later %s patch release\n' \
+        "$required_version" "${required_version%.*}" >&2
+    printf 'install it with: brew install zig@0.17 (or set ZIG to a matching Zig)\n' >&2
     exit 1
 fi
 

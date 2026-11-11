@@ -4,12 +4,12 @@
 
 - Apple Silicon の Mac(macOS 15 以降)
 - Swift 6.2 を含む Xcode toolchain
-- Homebrew の `zig@0.15`
+- Homebrew の `zig@0.17`
 
 Zig のバージョンは固定した Ghostty submodule が要求するもので、`scripts/build-ghostty.sh` がビルド前に確認します。入っていなければ入れておきます。
 
 ```sh
-brew install zig@0.15
+brew install zig@0.17
 ```
 
 ## libghostty をビルドする
