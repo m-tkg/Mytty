@@ -112,8 +112,19 @@ async function handlePush(request, env, nowSeconds) {
     return json({ error: "unauthorized" }, 401);
   }
 
-  const body = JSON.parse(raw);
-  if (typeof body.ciphertext !== "string" || typeof body.macID !== "string") {
+  // Authenticated, but still not trusted to be well-formed: a body that
+  // is not a JSON object is the caller's mistake (400), not ours (500).
+  let body = null;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    body = null;
+  }
+  if (
+    !body ||
+    typeof body.ciphertext !== "string" ||
+    typeof body.macID !== "string"
+  ) {
     return json({ error: "invalid payload" }, 400);
   }
 
