@@ -16,20 +16,19 @@ struct AgentUsagePresentationTests {
             ]
         )
 
-        #expect(
-            summary.compactDescription(
-                localizer: MyTTYLocalizer(language: .english)
-            ) == "$0.42 · 5h 73% left · 7d 48% left"
-        )
-        #expect(
-            summary.compactDescription(
-                localizer: MyTTYLocalizer(language: .japanese)
-            ) == "$0.42 · 5h 残り73% · 7d 残り48%"
-        )
-
         let statusContent = try #require(summary.statusContent())
         #expect(statusContent.costDescription == "$0.42")
         #expect(statusContent.limits.map(\.title) == ["5h", "7d"])
+        #expect(
+            statusContent.limits.map {
+                $0.tooltip(localizer: MyTTYLocalizer(language: .english))
+            } == ["5h 73% left", "7d 48% left"]
+        )
+        #expect(
+            statusContent.limits.map {
+                $0.tooltip(localizer: MyTTYLocalizer(language: .japanese))
+            } == ["5h 残り73%", "7d 残り48%"]
+        )
         #expect(statusContent.limits.map(\.percent) == [73, 48])
         #expect(statusContent.limits.map(\.progress) == [0.73, 0.48])
         #expect(statusContent.limits.map(\.isStale) == [false, false])
@@ -73,11 +72,9 @@ struct AgentUsagePresentationTests {
             ),
             limits: []
         )
-        #expect(
-            budget.compactDescription(
-                localizer: MyTTYLocalizer(language: .english)
-            ) == "$12.30 / $50.00"
-        )
+        let budgetContent = try #require(budget.statusContent())
+        #expect(budgetContent.costDescription == "$12.30 / $50.00")
+        #expect(budgetContent.limits.isEmpty)
     }
 
     @Test("flags a meter as low only below the warning threshold")
@@ -171,11 +168,11 @@ struct AgentUsagePresentationTests {
         )
         let content = try #require(summary.statusContent(display: .used))
         #expect(content.limits.map(\.percent) == [27])
+        #expect(content.costDescription == "$0.42")
         #expect(
-            summary.compactDescription(
-                localizer: MyTTYLocalizer(language: .english),
-                display: .used
-            ) == "$0.42 · 5h 27% used"
+            content.limits.map {
+                $0.tooltip(localizer: MyTTYLocalizer(language: .english))
+            } == ["5h 27% used"]
         )
     }
 

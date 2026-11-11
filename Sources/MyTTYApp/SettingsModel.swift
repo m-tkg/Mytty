@@ -75,10 +75,6 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    func setTabPlacement(_ placement: MyTTYTabPlacement) {
-        updateApplication { $0.tabPlacement = placement }
-    }
-
     func setKeyBinding(
         _ binding: MyTTYKeyBinding?,
         for command: MyTTYCommand

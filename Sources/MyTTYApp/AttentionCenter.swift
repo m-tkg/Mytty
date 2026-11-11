@@ -457,12 +457,6 @@ final class AttentionCenter: ObservableObject {
         }.count
     }
 
-    func mostRelevantState(
-        for surfaceIDs: [TerminalSurfaceID]
-    ) -> AgentRunState? {
-        mostRelevantRun(for: Set(surfaceIDs))?.state
-    }
-
     /// `preferredProvider` is the pane's primary agent (what its
     /// foreground process is). When it has any run on the pane, only its
     /// runs are considered, so a run of a child agent that never reported

@@ -75,21 +75,6 @@ struct AgentUsageStatusContent: Equatable, Sendable {
 }
 
 extension AgentUsageSummary {
-    func compactDescription(
-        localizer: MyTTYLocalizer,
-        display: AgentMeterDisplay = .remaining
-    ) -> String? {
-        guard let content = statusContent(display: display) else { return nil }
-        var components = content.costDescription.map { [$0] } ?? []
-        components.append(contentsOf: content.limits.map {
-            $0.tooltip(localizer: localizer)
-        })
-        if content.onDemandUnavailable {
-            components.append(localizer.onDemandUnavailableNote())
-        }
-        return components.isEmpty ? nil : components.joined(separator: " · ")
-    }
-
     func statusContent(
         display: AgentMeterDisplay = .remaining
     ) -> AgentUsageStatusContent? {
