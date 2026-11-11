@@ -12,7 +12,7 @@
 #                          OTA install and deploy them to ota.mtkg
 #     OTA_URL may override the deploy base URL (e.g. OTA_URL=https://example.com)
 #   make test             run the SwiftPM test suite
-#   make clean            remove build products
+#   make clean            remove build products (.build, dist, build/ota)
 
 IOS_DIR := ios/MyttyRemote
 IOS_PROJECT := $(IOS_DIR)/MyttyRemote.xcodeproj
@@ -69,4 +69,4 @@ test:
 
 clean:
 	swift package clean
-	rm -rf dist
+	rm -rf dist build

@@ -127,7 +127,6 @@ cp -R "$GHOSTTY_TERMINFO" "$APP/Contents/Resources/terminfo"
   "$APP/Contents/Info.plist"
 
 ICONSET_SOURCE="$ROOT/Resources/AppIcon.appiconset"
-ICON_SOURCE="$ROOT/Sources/MyTTYApp/Resources/AppIcon.png"
 if [[ -d "$ICONSET_SOURCE" ]]; then
   BUNDLED_ICON_UPDATED=false
   for BUNDLED_ICON in \
@@ -159,25 +158,9 @@ if [[ -d "$ICONSET_SOURCE" ]]; then
   cp "$ICONSET_SOURCE/512.png" "$ICONSET/icon_512x512.png"
   cp "$ICONSET_SOURCE/1024.png" "$ICONSET/icon_512x512@2x.png"
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-elif [[ -f "$ICON_SOURCE" ]]; then
-  echo "==> Generating AppIcon.icns"
-  ICON_WORK="$(mktemp -d)"
-  trap 'rm -rf "$ICON_WORK"' EXIT
-  ICONSET="$ICON_WORK/AppIcon.iconset"
-  SQUARE="$ICON_WORK/AppIcon-square.png"
-  mkdir -p "$ICONSET"
-  WIDTH="$(sips -g pixelWidth "$ICON_SOURCE" | awk '/pixelWidth/ { print $2 }')"
-  HEIGHT="$(sips -g pixelHeight "$ICON_SOURCE" | awk '/pixelHeight/ { print $2 }')"
-  if (( WIDTH < HEIGHT )); then EDGE="$WIDTH"; else EDGE="$HEIGHT"; fi
-  sips -c "$EDGE" "$EDGE" "$ICON_SOURCE" --out "$SQUARE" >/dev/null
-  for SIZE in 16 32 128 256 512; do
-    sips -z "$SIZE" "$SIZE" "$SQUARE" \
-      --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
-    RETINA=$((SIZE * 2))
-    sips -z "$RETINA" "$RETINA" "$SQUARE" \
-      --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+else
+  echo "error: application icon set was not found: $ICONSET_SOURCE" >&2
+  exit 1
 fi
 
 # Finder metadata on copied resources (e.g. an icon PNG previewed in
