@@ -59,8 +59,8 @@ open dist/Mytty.app
 
 It signs with a Developer ID identity if one can be found through `SIGN_IDENTITY` or `scripts/resolve-signing-identity.sh`, and falls back to an ad-hoc signature otherwise. An ad-hoc signature is fine for checking a build locally but can't be distributed to other Macs. Distributed builds go through the release workflow's signing and notarization instead; see [Release a version](release-a-version.md).
 
-## SIMD build fails on Xcode 27 beta
+## Building without SIMD
 
-The pinned Ghostty revision needs Zig 0.15.2, but its bundled libc++ can't compile Ghostty's SIMD C++ sources against the Xcode 27 beta SDK, because that SDK no longer exposes the `INFINITY` macro this compilation expects at compile time.
+`scripts/build-ghostty.sh` builds Ghostty's SIMD C++ sources by default. If a newer SDK or Zig toolchain can't compile them, run the script with `MYTTY_GHOSTTY_SIMD=false` to build the scalar paths instead. This only affects the vendor library build, not Mytty itself.
 
-`scripts/build-ghostty.sh` works around this by disabling SIMD by default. This only affects the vendor library build, not Mytty itself. Once the pinned toolchain moves past this beta SDK generation, run the script with `MYTTY_GHOSTTY_SIMD=true` to confirm it still builds through the real SIMD path.
+SIMD used to be off by default: the previously pinned Ghostty needed Zig 0.15.2, whose bundled libc++ couldn't compile these sources against the Xcode 27 beta SDK. With Zig 0.17 and the Xcode 27.2 SDK they compile.
