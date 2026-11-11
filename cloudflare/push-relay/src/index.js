@@ -21,6 +21,11 @@ import {
  *  abandoned entries do not accumulate. Refreshed on every delivery. */
 const REGISTRATION_TTL_SECONDS = 180 * 24 * 60 * 60;
 
+/** How stale a registration's TTL may get before a delivery rewrites it.
+ *  Rewriting on every push would spend a KV write per notification to
+ *  move a 180-day expiry forward by minutes. */
+const REGISTRATION_REFRESH_SECONDS = 24 * 60 * 60;
+
 /** Cached across requests within one isolate; minting a provider token
  *  per push is what Apple returns TooManyProviderTokenUpdates for. The
  *  key id is part of the cache identity so that rotating the signing key
@@ -59,7 +64,17 @@ function json(body, status = 200) {
  * the only thing an attacker gains by registering is a mailbox for a
  * device token they already had to know.
  */
-async function handleRegister(request, env) {
+async function handleRegister(request, env, nowSeconds) {
+  // Nothing authenticates this endpoint, so the only brake on someone
+  // filling the namespace with junk registrations is a per-address limit.
+  // Optional so tests and `wrangler dev` run without the binding.
+  if (env.REGISTER_LIMITER) {
+    const { success } = await env.REGISTER_LIMITER.limit({
+      key: request.headers.get("cf-connecting-ip") ?? "unknown",
+    });
+    if (!success) return json({ error: "rate limited" }, 429);
+  }
+
   const body = await request.json().catch(() => null);
   if (!body || !isValidDeviceToken(body.deviceToken)) {
     return json({ error: "invalid deviceToken" }, 400);
@@ -76,6 +91,7 @@ async function handleRegister(request, env) {
       deviceToken: body.deviceToken,
       environment: body.environment,
       relaySecret,
+      refreshedAt: nowSeconds,
     }),
     { expirationTtl: REGISTRATION_TTL_SECONDS },
   );
@@ -95,7 +111,9 @@ async function handlePush(request, env, nowSeconds) {
   }
 
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  // `raw.length` counts UTF-16 code units, which undercounts any
+  // non-ASCII body by up to three times.
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
     return json({ error: "payload too large" }, 413);
   }
 
@@ -164,10 +182,18 @@ async function handlePush(request, env, nowSeconds) {
   );
 
   if (response.ok) {
-    // Keep an actively used registration from ageing out.
-    await env.REGISTRATIONS.put(`push:${pushID}`, JSON.stringify(stored), {
-      expirationTtl: REGISTRATION_TTL_SECONDS,
-    });
+    // Keep an actively used registration from ageing out. Registrations
+    // written before `refreshedAt` existed count as due.
+    const refreshedAt = Number.isFinite(stored.refreshedAt)
+      ? stored.refreshedAt
+      : 0;
+    if (nowSeconds - refreshedAt >= REGISTRATION_REFRESH_SECONDS) {
+      await env.REGISTRATIONS.put(
+        `push:${pushID}`,
+        JSON.stringify({ ...stored, refreshedAt: nowSeconds }),
+        { expirationTtl: REGISTRATION_TTL_SECONDS },
+      );
+    }
     return json({ ok: true });
   }
 
@@ -208,7 +234,7 @@ export default {
     const nowSeconds = Math.floor(Date.now() / 1000);
 
     if (request.method === "POST" && url.pathname === "/v1/register") {
-      return handleRegister(request, env);
+      return handleRegister(request, env, nowSeconds);
     }
     if (request.method === "POST" && url.pathname === "/v1/push") {
       return handlePush(request, env, nowSeconds);

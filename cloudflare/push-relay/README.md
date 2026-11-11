@@ -31,14 +31,17 @@ cannot decrypt (an older build, or a Mac it has since unpaired).
 
 `/v1/register` is unauthenticated because there is nothing to authenticate:
 the caller already holds the device token, and registering only creates a
-mailbox for a phone they can already push to. `/v1/push` requires
+mailbox for a phone they can already push to. It is rate limited per client
+address (ten a minute, answered with `429`) so a loop cannot fill the
+namespace. `/v1/push` requires
 `x-mytty-push-id`, `x-mytty-timestamp`, and `x-mytty-signature` — a
 hex HMAC-SHA256 of `<timestamp>.<body>` under the registration's secret.
 Timestamps more than five minutes from the relay's clock are refused, and
 an unknown push ID answers exactly like a bad signature so live IDs cannot
 be enumerated.
 
-Registrations expire after 180 days of no deliveries, and are dropped
+Registrations expire after 180 days of no deliveries (a delivery pushes the
+expiry out again at most once a day), and are dropped
 immediately when APNs reports the token is dead (`Unregistered`,
 `BadDeviceToken`, `DeviceTokenNotForTopic`).
 
@@ -71,6 +74,7 @@ npm test    # node --test, no dependencies
 ```
 
 Covers the parts worth getting wrong: ES256 provider tokens (verified
-against a real public key), request signing and its replay window, and
-which APNs rejections are permanent. Routing itself is left to `wrangler
-dev`.
+against a real public key), request signing and its replay window, which
+APNs rejections are permanent, and the request handlers against an
+in-memory KV (body validation and size limit, registration refresh, the
+register rate limit). The APNs call itself is stubbed.

@@ -16,6 +16,18 @@ preview_urls = false
 binding = "REGISTRATIONS"
 id = "74d4eee44d0e434c99f6887e50c0f285"
 
+# /v1/register is unauthenticated, so it is throttled per client address:
+# a phone registers once per token change, never ten times a minute.
+# Counted per Cloudflare location and only approximately, which is enough
+# to stop a loop from filling the namespace. Needs wrangler 4.36 or later.
+[[ratelimits]]
+name = "REGISTER_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
 [vars]
 # The iOS app's bundle identifier, sent to APNs as apns-topic.
 APNS_TOPIC = "com.m-tkg.mytty.remote"
