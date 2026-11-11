@@ -29,6 +29,11 @@ targets:
         aps-environment: development
         # Shared with the notification service extension so it can read
         # the pairing secrets and decrypt Attention pushes.
+        # The group uses the project's internal `dev.mytty.*` namespace
+        # (like the Keychain services and log subsystems), not the
+        # `com.m-tkg.*` bundle identifier. Do not rename it to match:
+        # items already stored under this group would become unreadable
+        # and every phone would have to pair again.
         keychain-access-groups:
           - $(AppIdentifierPrefix)dev.mytty.remote.shared
     info:
