@@ -35,7 +35,7 @@ adding or removing a Swift file under `ios/MyttyRemote`, run `make ios` and
 commit the regenerated `project.pbxproj` together with the file, or the
 Xcode Cloud build fails with "Cannot find … in scope".
 
-One-time prerequisite after cloning or after changing the Ghostty revision (needs Homebrew `zig@0.15`):
+One-time prerequisite after cloning or after changing the Ghostty revision (needs Homebrew `zig@0.17`):
 
 ```sh
 git submodule update --init --recursive

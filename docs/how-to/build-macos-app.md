@@ -4,12 +4,12 @@
 
 - Apple Silicon Mac running macOS 15 or later
 - Xcode toolchain with Swift 6.2 support
-- Homebrew `zig@0.15`
+- Homebrew `zig@0.17`
 
 The Zig version is what the pinned Ghostty submodule requires; `scripts/build-ghostty.sh` checks for it before building. Install it if you don't already have it.
 
 ```sh
-brew install zig@0.15
+brew install zig@0.17
 ```
 
 ## Build libghostty
