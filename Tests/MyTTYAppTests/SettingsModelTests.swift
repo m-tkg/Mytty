@@ -25,7 +25,7 @@ struct SettingsModelTests {
             preferences.fontFamily = "JetBrains Mono"
             preferences.fontSize = 16
         }
-        model.setTabPlacement(.bottom)
+        model.updateApplication { $0.tabPlacement = .bottom }
         let newTabBinding = MyTTYKeyBinding(
             key: "x",
             modifiers: [.control]

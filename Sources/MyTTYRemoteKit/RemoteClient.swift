@@ -63,11 +63,6 @@ public final class RemoteClient: ObservableObject {
     /// unknown message type, so callers must gate on this before sending.
     public var supportsPaneSchedules: Bool { serverProtocolVersion >= 4 }
 
-    /// True once the connected Mac reports the agent status and attention
-    /// fields on each pane. Older servers simply leave them nil, so this is
-    /// only needed where the absence has to be told apart from "no agent".
-    public var supportsPaneAgentStatus: Bool { serverProtocolVersion >= 5 }
-
     /// True once the connected Mac understands `acknowledgeAttention`;
     /// older servers close the connection on an unknown message type, so
     /// `acknowledgeAttention(paneID:)` silently no-ops without this.

@@ -45,12 +45,6 @@ public final class ClosedPaneHistory {
     }
 
     @discardableResult
-    public func popMostRecent() -> ClosedPaneHistoryEntry? {
-        guard !entries.isEmpty else { return nil }
-        return entries.removeFirst()
-    }
-
-    @discardableResult
     public func remove(id: UUID) -> ClosedPaneHistoryEntry? {
         guard let index = entries.firstIndex(where: { $0.id == id }) else {
             return nil

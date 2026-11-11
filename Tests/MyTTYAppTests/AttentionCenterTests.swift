@@ -35,7 +35,7 @@ struct AttentionCenterTests {
             at: 3
         ))
 
-        #expect(center.mostRelevantState(for: [surfaceID]) == .running)
+        #expect(center.mostRelevantRun(for: surfaceID)?.state == .running)
     }
 
     @Test("a run starting or ending expires the pane's status note")
@@ -132,7 +132,7 @@ struct AttentionCenterTests {
             try center.append(event)
         }
 
-        #expect(center.mostRelevantState(for: [surfaceID]) == .succeeded)
+        #expect(center.mostRelevantRun(for: surfaceID)?.state == .succeeded)
     }
 
     @Test("reports the provider only while work is active on a surface")
@@ -560,7 +560,7 @@ struct AttentionCenterTests {
         #expect(center.items.count == 2)
         #expect(center.actionableCount == 2)
         #expect(center.actionableCount(for: [spawnedSurface]) == 1)
-        #expect(center.mostRelevantState(for: [spawnedSurface]) == .waitingApproval)
+        #expect(center.mostRelevantRun(for: spawnedSurface)?.state == .waitingApproval)
     }
 
     @Test("a hidden surface stays hidden after its pane is gone")
