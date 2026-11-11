@@ -519,7 +519,7 @@ final class RemoteAccessServer {
         guard let deviceID = connectionStates[id]?.authenticatedDeviceID
         else { return }
         guard !pushID.isEmpty else {
-            try? deviceStore.updatePushRegistration(
+            _ = try? deviceStore.updatePushRegistration(
                 id: deviceID,
                 pushRelayID: nil,
                 relaySecretBase64: nil

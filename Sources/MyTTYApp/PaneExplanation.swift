@@ -80,6 +80,7 @@ enum PaneExplainer {
 
 /// Floating panel showing the explanation of the focused pane: a spinner
 /// while the model runs, then the selectable result text.
+@MainActor
 final class PaneExplanationPanelController {
     private let panel: NSPanel
     private let textView: NSTextView

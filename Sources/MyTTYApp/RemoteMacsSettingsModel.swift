@@ -25,7 +25,6 @@ final class RemoteMacsSettingsModel: ObservableObject {
     private let connections: RemotePaneConnectionCoordinator
     private let discovery = MacDiscovery()
     private let client = RemoteClient()
-    private var discoveryObserver: NSObjectProtocol?
     private var pairingTask: Task<Void, Never>?
 
     init(connections: RemotePaneConnectionCoordinator) {

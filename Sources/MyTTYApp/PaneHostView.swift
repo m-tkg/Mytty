@@ -144,7 +144,6 @@ final class PaneHostView: NSView {
     var isSizeIndicatorVisible: Bool { !sizeIndicatorView.isHidden }
     var countdownText: String { countdownView.stringValue }
     var isCountdownVisible: Bool { !countdownView.isHidden }
-    var isSwapClickCatcherActive: Bool { !swapClickCatcher.isHidden }
 
     init(content: NSView) {
         super.init(frame: .zero)
