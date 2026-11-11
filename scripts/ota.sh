@@ -18,6 +18,9 @@
 
 set -euo pipefail
 
+# 以降のパスはリポジトリルートからの相対なので、どこから呼ばれても動くようにする。
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 DEPLOY=1
 BASE_URL=""
 for arg in "$@"; do
