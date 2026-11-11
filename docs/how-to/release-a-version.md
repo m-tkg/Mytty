@@ -22,7 +22,7 @@ The workflow detects the suffix and passes `--prerelease` to `gh release create`
 
 Pushing a `v*` tag starts [the release workflow](../../.github/workflows/release.yml), which:
 
-1. runs `swift test` and `Tests/ReleasePackagingTests.sh`
+1. runs `swift test --no-parallel` and `Tests/ReleasePackagingTests.sh`
 2. builds an Apple Silicon app
 3. signs and notarizes it, then staples the notarization ticket
 4. publishes `Mytty.zip` to GitHub Releases
