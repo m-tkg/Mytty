@@ -62,10 +62,10 @@ else
     exit 1
 fi
 
-# Zig 0.15.2's bundled libc++ is incompatible with the Xcode 27 beta SDK when
-# Ghostty's SIMD C++ sources are enabled. Keep this local to the vendor build;
-# remove the workaround once the pinned Ghostty toolchain supports SDK 27.
-simd=${MYTTY_GHOSTTY_SIMD:-false}
+# Ghostty's SIMD C++ sources are built by default, as upstream does. Set
+# MYTTY_GHOSTTY_SIMD=false to fall back to the scalar paths if a newer SDK
+# or Zig toolchain cannot compile them.
+simd=${MYTTY_GHOSTTY_SIMD:-true}
 
 (
     cd "$ghostty_dir"

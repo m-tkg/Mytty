@@ -59,8 +59,8 @@ open dist/Mytty.app
 
 `SIGN_IDENTITY` または `scripts/resolve-signing-identity.sh` から Developer ID が見つかればそれで署名し、見つからなければ ad-hoc 署名になります。ad-hoc 署名は手元での確認には使えますが、他の Mac には配布できません。配布する成果物はリリースワークフローの署名と notarize を通します。手順は [バージョンをリリースする](release-a-version_ja.md) を参照してください。
 
-## Xcode 27 beta で SIMD のビルドが失敗する
+## SIMD を無効にしてビルドする
 
-固定した Ghostty のリビジョンは Zig 0.15.2 を必要としますが、同梱の libc++ が Xcode 27 beta の SDK に対して Ghostty の SIMD の C++ ソースをコンパイルできません。この SDK が、コンパイル時に期待される `INFINITY` マクロを公開しなくなったためです。
+`scripts/build-ghostty.sh` は既定で Ghostty の SIMD の C++ ソースをビルドします。新しい SDK や Zig の toolchain でコンパイルできない場合は、`MYTTY_GHOSTTY_SIMD=false` を付けてスクリプトを実行すると、SIMD を使わない経路でビルドします。影響するのは vendor ライブラリのビルドだけで、Mytty 本体には及びません。
 
-`scripts/build-ghostty.sh` は既定で SIMD を無効にして回避しています。影響するのは vendor ライブラリのビルドだけで、Mytty 本体には及びません。固定 toolchain がこの beta SDK 世代を過ぎたら、`MYTTY_GHOSTTY_SIMD=true` を付けてスクリプトを実行し、本来の SIMD 経路でビルドできることを確認してください。
+以前は既定で SIMD を無効にしていました。当時固定していた Ghostty は Zig 0.15.2 を必要とし、同梱の libc++ が Xcode 27 beta の SDK に対してこれらのソースをコンパイルできなかったためです。Zig 0.17 と Xcode 27.2 の SDK ではコンパイルできます。
