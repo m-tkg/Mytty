@@ -865,7 +865,13 @@ final class RemotePaneScreenView: NSView, @preconcurrency NSTextInputClient {
 
     override func responds(to selector: Selector!) -> Bool {
         if selector == #selector(copy(_:)) {
-            return normalizedSelection() != nil
+            // `responds(to:)` is nonisolated on NSObject. AppKit asks a
+            // view on the main thread; anywhere else, don't touch the
+            // selection state and answer like any other selector.
+            guard Thread.isMainThread else {
+                return super.responds(to: selector)
+            }
+            return MainActor.assumeIsolated { normalizedSelection() != nil }
         }
         return super.responds(to: selector)
     }

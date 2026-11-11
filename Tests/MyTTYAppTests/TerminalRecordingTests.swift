@@ -234,7 +234,7 @@ struct TerminalRecordingTests {
             withIntermediateDirectories: true
         )
         defer { try? FileManager.default.removeItem(at: directory) }
-        let frameURLs = try [
+        let frameURLs = [
             try writePNG(try makeImage(red: 1, green: 0, blue: 0), in: directory, name: "0"),
             try writePNG(try makeImage(red: 0, green: 0, blue: 1), in: directory, name: "1"),
         ]

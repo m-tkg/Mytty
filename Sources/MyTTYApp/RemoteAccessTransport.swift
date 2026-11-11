@@ -57,9 +57,9 @@ final class RemoteAccessTransport: @unchecked Sendable {
                         self.onListenerError?(error)
                         return
                     }
-                    fallback.stateUpdateHandler = { [weak self] state in
+                    fallback.stateUpdateHandler = { [weak transport = self] state in
                         if case let .failed(error) = state {
-                            self?.onListenerError?(error)
+                            transport?.onListenerError?(error)
                         }
                     }
                     fallback.start(queue: self.queue)
