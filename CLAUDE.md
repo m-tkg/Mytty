@@ -44,7 +44,7 @@ scripts/build-ghostty.sh    # builds Vendor/ghostty/macos/GhosttyKit.xcframework
 
 - Debug builds run as **Mytty Dev** and isolate all state under `~/.config/mytty-dev/`, `~/Library/Application Support/mytty-dev/`, etc., so they never disturb an installed release. Agent hook installation is shared (providers use global user config).
 - To verify GUI behavior in the running app, use the `verify` skill (`.claude/skills/verify/SKILL.md`): build, launch `.build/debug/Mytty`, drive it with CGEvent/screencapture.
-- Releases only happen from a clean `main` via `scripts/release.sh`; the GitHub Actions Release workflow re-runs `swift test` plus `Tests/ReleasePackagingTests.sh` before packaging.
+- Releases only happen from a clean `main` via `scripts/release.sh`; the GitHub Actions Release workflow re-runs `swift test --no-parallel` plus `Tests/ReleasePackagingTests.sh` before packaging.
 
 ## Architecture
 

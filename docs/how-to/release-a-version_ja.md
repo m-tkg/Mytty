@@ -22,7 +22,7 @@ workflow が tag の suffix を検出し、`gh release create` に `--prerelease
 
 `v*` tag を push すると [release workflow](../../.github/workflows/release.yml) が始まり、次を行います。
 
-1. `swift test` と `Tests/ReleasePackagingTests.sh` を実行します
+1. `swift test --no-parallel` と `Tests/ReleasePackagingTests.sh` を実行します
 2. Apple Silicon app を build します
 3. 署名・notarize し、notarization ticket を staple します
 4. `Mytty.zip` を GitHub Releases に公開します

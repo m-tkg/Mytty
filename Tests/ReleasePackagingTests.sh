@@ -42,7 +42,7 @@ grep -F 'Set :NSServices:0:NSPortName $APP_NAME' "$bundle_script" >/dev/null
 grep -F 'Set :NSServices:0:NSMenuItem:default Open in $APP_NAME' \
     "$bundle_script" >/dev/null
 grep -F 'tags: ["v*"]' "$workflow" >/dev/null
-grep -F 'actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd' \
+grep -F 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \
     "$workflow" >/dev/null
 grep -F 'persist-credentials: false' "$workflow" >/dev/null
 grep -F 'gh release create' "$workflow" >/dev/null

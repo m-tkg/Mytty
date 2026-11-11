@@ -51,7 +51,9 @@ if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; the
     exit 1
 fi
 
-swift test
+# Serially, like the Release workflow: the Ghostty surface integration
+# tests contend with each other when run in parallel under load.
+swift test --no-parallel
 Tests/ReleasePackagingTests.sh
 
 printf 'Tagging %s as a GitHub %s\n' "$tag" "$kind"
