@@ -44,6 +44,13 @@ findings_a=$(mytty-ctl agent result "$job_a" | jq -r '.content.text')
 findings_b=$(mytty-ctl agent result "$job_b" | jq -r '.content.text')
 ```
 
+どちらの spawn にも `--direction` を付けていないので、2つの worker はバランス配置が選んだ位置に入ります(後述の「バランス配置と、完了した worker の退避」を参照)。worker の結果を集め終えたら、閉じずに退避しておきます。ペインはタブの done タブへ移って邪魔にならず、あとで見返したくなったときにも残っています。
+
+```bash
+mytty-ctl agent park "$job_a"
+mytty-ctl agent park "$job_b"
+```
+
 worker が2つ程度なら、逐次の `wait` 2回で十分です。もっと多くの worker を同時に見張る場合は、ペインごとに `wait`/`agent wait` をブロックさせるのではなく、`events` をループでポーリングしてください。1回の long-poll 呼び出しで、どのペインでもよいので次に状態が変わった worker を拾えます。
 
 ```bash
@@ -69,6 +76,14 @@ mytty-ctl agent wait "$job_impl" --until completed
 ```
 
 `agent send` でテキストを送っても `claude` の承認ダイアログは反応しません。`send-key` で実際のキー入力を送る必要があります。この手順には worker の provider の hook 連携が必要です。詳しくは後述の「hook は必須ではない」を参照してください。
+
+## バランス配置と、完了した worker の退避
+
+`split` も `agent spawn` も `--direction` を指定する必要はありません。どちらも既定は `auto` で、タブのレイアウトが均等なグリッドに最も近くなるペインを選び、長いほうの辺に沿って分割します。`--direction auto` で worker を1つずつ6個起動すると、ウィンドウの端まで伸びる 1x6 の帯にはならず、おおよそ 3x2 のグリッドに落ち着きます。`left`/`right`/`up`/`down` を明示するのは、worker を `--anchor` の隣に置きたいときだけにしてください。対象のペインと方向の選び方は、[リファレンス](../reference/mytty-ctl_ja.md)の「バランス配置(`--direction auto`)」を参照してください。
+
+worker が完了して結果を読み終えたら(`agent result` を呼んだ後、または `agent wait --until completed` が返った後)、`agent close` ではなく `agent park "$job"` を実行します。job で追跡していないペインには `park "$pane_id"` を使います。ペインは削除されず、同じウィンドウの `done_<tab>_<id>` タブへ移ります。作業用タブには動いている worker だけが残り、終わった worker の出力もあとから見返せます。
+
+done タブは、あるタブから初めてペインを退避したときに作られます。タブ列の末尾に追加され、選択はされないので、退避がユーザーの見ている画面を邪魔することはありません。同じタブからそれ以降に退避したペインも、同じ done タブに入ります。`agent close` を使うのは、その worker のペインがもう必要ないと分かっているときだけにしてください。done タブの名前と再利用のルールは、[リファレンス](../reference/mytty-ctl_ja.md)の「完了した worker を退避する(`park` / `agent park`)」を参照してください。
 
 ## worker に専用のタブを与える
 

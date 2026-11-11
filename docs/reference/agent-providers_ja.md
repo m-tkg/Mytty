@@ -25,10 +25,10 @@ hook helper の共有バイナリは `~/Library/Application Support/mytty/bin/my
 | Codex | `~/.codex/hooks.json` | prompt、permission、post-tool、stop イベント用の command handler |
 | Claude Code | `~/.claude/settings.json` | prompt、permission、post-tool、notification、stop、failure イベント用の command handler |
 | OpenCode | `~/.config/opencode/plugins/mytty.js` | mytty 専有の global plugin ファイル1つ |
-| Antigravity | `~/.gemini/config/plugins/mytty/` | invocation と stop hook を持つ mytty 専有の plugin ディレクトリ1つ |
+| Antigravity | `~/.gemini/config/plugins/mytty/` と、`~/.gemini/antigravity-cli/settings.json` の `statusLine` | invocation と stop hook を持つ mytty 専有の plugin ディレクトリ1つと、mytty の status line コマンド(後述) |
 | Cursor | `~/.cursor/hooks.json` | prompt、pre-tool、post-tool、stop イベント用の command handler |
 
-Codex、Claude Code、Cursor の設定は JSON で、構造的にパースしてから atomic に書き戻します。無関係なトップレベルの値、matcher グループ、handler はそのまま残ります。削除時は、mytty 自身の helper パスを該当する provider 引数付きで呼んでいる handler だけを取り除きます。OpenCode の無効化は `mytty.js` だけを削除し、Antigravity の無効化は mytty の plugin ディレクトリだけを削除します。壊れた JSON は決して上書きされません。設定画面はその provider の設定を invalid として報告し、ファイルはそのまま残します。
+Codex、Claude Code、Cursor の設定は JSON で、構造的にパースしてから atomic に書き戻します。無関係なトップレベルの値、matcher グループ、handler はそのまま残ります。削除時は、mytty 自身の helper パスを該当する provider 引数付きで呼んでいる handler だけを取り除きます。OpenCode の無効化は `mytty.js` だけを削除し、Antigravity の無効化は mytty の plugin ディレクトリを削除し、`statusLine` コマンドのラップを外します(ユーザー自身のコマンドがあった場合はそれに戻します。後述の「Antigravity の status line」を参照)。壊れた JSON は決して上書きされません。設定画面はその provider の設定を invalid として報告し、ファイルはそのまま残します。
 
 各 provider の設定画面の行は、トグルを押したかどうかではなく実際のファイルの中身から **Installed** / **Needs Repair** / **Not Installed** を導出します。手で編集された、あるいは部分的に削除されたインストールは **Needs Repair** と表示されます。
 
@@ -67,6 +67,16 @@ Cursor にも permission prompt 専用の hook はありませんが、mytty は
 
 provider ネイティブの識別子は次のように mytty の run 識別子へ変換されます: Codex の `turn_id`、Claude Code の `prompt_id`、OpenCode の現在のユーザーメッセージ ID、Antigravity の `conversationId`、Cursor の `generation_id`。hook のペイロード自体が保存されたり、人間が読むターミナル出力から解析されたりすることはありません。
 
+## Antigravity の status line
+
+Antigravity は、設定された `statusLine.command` に対して、表示を更新するたびに JSON(コンテキストウィンドウの使用量、クォータの区分、モデル、セッション ID)をパイプで渡します。Antigravity のコンテキストとクォータの数値を取得できる手段は、これしかありません。会話データベースは protobuf で、ローカルの language server のクォータ用エンドポイントは、agy が外に出していない CSRF トークンを要求するようになったためです。
+
+Antigravity を有効化すると、`~/.gemini/antigravity-cli/settings.json` の `statusLine.command` が `mytty-agent-hook antigravity-statusline` に設定されます。連携を解除すると、この設定も消えます。agy の status line は1枠しかないので、すでにコマンドが入っている場合は残します。Mytty は `mytty-agent-hook antigravity-statusline --wrap '<あなたのコマンド>'` を設定し、元のコマンドに同じ入力を渡して、その出力をそのまま通します。解除時には元のコマンドに戻します。他の設定には触れず、壊れた JSON を上書きすることもありません。status line が入るまで Antigravity の行は **Needs Repair** と表示されるので、既存のユーザーは修復を実行すれば導入できます。
+
+このコマンドは、内容を絞ったスナップショット(セッション ID、モデル、コンテキスト残量の割合、クォータの割合、プラン。メールアドレスは含みません)を `agy-statusline/<session-id>.json` として保存します。保存先はアプリの event ソケットと同じ場所で、ペインの `MYTTY_EVENT_SOCKET` から求めます。そのため、dev ビルドとインストール済みのリリース版は、それぞれ自分が起動したペインの分だけを読みます。
+
+status bar のコンテキストメーターは、そのペインのセッションのスナップショットを読みます。使用量メーターは、6時間以内で最も新しいスナップショットを読み、モデルファミリー(Gemini、Claude/GPT)ごとに、最も余裕のない時間枠のメーターを1つずつ表示します。以前の language server への問い合わせは、古い agy ビルド向けのフォールバックとしてだけ残っています。agy が Mytty の外で動いているペインでは何も記録されず、コマンドは何も出力せずに終了します。
+
 ## Status bar のセッション識別子
 
 2 つの status bar は同じペイン単位の状態を読みます。ウィンドウ下部のバーはフォーカス中のペインを、ペイン自身のバー（タブが分割されているときに出ます）はそのペインを表します。ペインのバーではセッション識別子を先頭 8 文字に短縮します。
@@ -93,7 +103,7 @@ status bar のモデル名と(取得できる場合の)残りコンテキスト�
 | Claude Code | `ClaudeCodeSessionInspector` | `~/.claude/projects/<session-id>.jsonl`(複数の project ディレクトリを横断検索)、hook session ID が無い場合は `~/.claude/projects/<slug>/` 配下で最も新しく更新された transcript。最後の `assistant` 行の `message.model`、トークン数は `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` の合計 | `[1m]` モデルは 1,000,000、それ以外は 200,000 |
 | OpenCode | `OpenCodeSessionInspector` | `opencode.db` の `message` テーブル、hook session ID に対応する最新の assistant 行の `modelID` | ローカルでは取得不可 |
 | Cursor | `CursorSessionInspector` | `~/.cursor/chats/<workspace-hash>/<session-id>/` 配下の chat ディレクトリ(hook session ID、または `cwd` がペインと一致する最新の `meta.json`)。`store.db` の `blobs` テーブルを新しい順に、`providerOptions.cursor.modelName` をテキストスキャン | 最新の "root" blob の protobuf レコード: トップレベルのフィールド 5 に使用済み/合計トークン数が入っている。そのブロブを一切書き込まない古い Cursor CLI では `nil` |
-| Antigravity | `AntigravitySessionInspector` | `~/.gemini/antigravity-cli/settings.json` の global な `model` 設定。セッションに紐づかない値なので、無関係なペインに誤帰属させないよう hook session ID が無いと何も表示しない | ローカルでは取得不可(会話 DB は protobuf エンコードで安定したスキーマが無い) |
+| Antigravity | `AntigravitySessionInspector` | Mytty の `statusLine` コマンドが記録するセッションごとのスナップショット(前述)の `model.display_name`。agy が status line を更新するまでは、`~/.gemini/antigravity-cli/settings.json` の global な `model` 設定にフォールバックする。どちらもペインに紐づかない値なので、先に hook session ID が必要 | スナップショットの `context_window.remaining_percentage`。スナップショットが無ければ `nil`(会話 DB は protobuf エンコードで安定したスキーマが無い) |
 
 残りコンテキストが一定の割合を下回ると、コンテキストメーターは赤くなります。通知を出さずに、残量が尽きかけているペインを見分けられます。**設定 > Agents > コンテキスト残量が少ないときに警告** で、この警告を切ったり割合を変えたり(既定は 30%)できます。判定には、メーターがどちらを表示していても、丸めた後の残量の割合を使います。
 

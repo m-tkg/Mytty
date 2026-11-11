@@ -46,19 +46,20 @@ mytty-ctl list | jq .
 
 | コマンド | 引数 | 成功時のレスポンス |
 | --- | --- | --- |
-| `agent spawn` | `--provider <codex\|claude\|cursor\|antigravity> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--reasoning-effort <level>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]] [--notify]` | `{"type":"agentJob","job":{...}}` |
+| `agent spawn` | `--provider <codex\|claude\|cursor\|antigravity> (--task <text>\|--task-file <path>) [--anchor <pane-id>] [--direction <left\|right\|up\|down\|auto>] [--cwd <path>] [--access <review\|workspace-write\|inherit>] [--model <text>] [--reasoning-effort <level>] [--label <text>] [--worktree <branch>] [--new-tab [--tab-title <text>]] [--notify]` | `{"type":"agentJob","job":{...}}` |
 | `agent wait` | `<job-id> --until <running\|attention\|completed> [--timeout-seconds <n>]` | `{"type":"agentWaitResult","job":{...},"timedOut":false}` |
 | `agent result` | `<job-id>` | `{"type":"agentResult","job":{...},"content":{...}}` |
 | `agent send` | `<job-id> <text> [--enter]` | `{"type":"ok"}` |
 | `agent focus` | `<job-id>` | `{"type":"ok"}` |
 | `agent close` | `<job-id>` | `{"type":"ok"}` |
+| `agent park` | `<job-id>` | `{"type":"ok"}` |
 | `integration list` | なし | `{"type":"integrationStatuses","integrations":[...]}` |
 | `integration enable` | `<codex\|claude-code\|opencode\|antigravity\|cursor>` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `integration repair` | `[<provider>]` | `{"type":"integrationStatuses","integrations":[...]}` |
 | `guide` | なし | ペインチームの手順書をプレーンテキストで標準出力、ソケット不要 |
 | `list` | なし | `{"type":"list","panes":[...]}` |
 | `new-tab` | `[--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
-| `split` | `<pane-id> <left\|right\|up\|down> [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
+| `split` | `<pane-id> [<left\|right\|up\|down\|auto>] [--cwd <path>] [--command <text>]` | `{"type":"pane","paneID":"..."}` |
 | `send` | `<pane-id> <text> [--enter]` | `{"type":"ok"}` |
 | `send-key` | `<pane-id> <key> [--modifiers <mod,mod,...>]` | `{"type":"ok"}` |
 | `read` | `<pane-id>` | `{"type":"content","content":{...}}` |
@@ -67,13 +68,18 @@ mytty-ctl list | jq .
 | `events` | `[--after <seq>] [--timeout <seconds>]` | `{"type":"events","records":[...],"latestSequence":7,"timedOut":false}` |
 | `close-pane` | `<pane-id>` | `{"type":"ok"}` |
 | `focus` | `<pane-id>` | `{"type":"ok"}` |
+| `park` | `<pane-id>` | `{"type":"ok"}` |
 | `rename-tab` | `<pane-id> <name>` | `{"type":"ok"}` |
+
+`--direction` と `split` の方向引数は、省略すると `auto` になります。anchor ペインの横へ帯状に並べていくのではなく、タブのレイアウトが均等なグリッドに最も近くなる位置に新しいペインを置きます(後述の「バランス配置(`--direction auto`)」を参照)。
 
 pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポンス、`pane` レスポンス、`$MYTTY_SURFACE_ID` のいずれかから取得できます。job ID は `AgentJobID` の `{"rawValue":"..."}` 形式の UUID で、`agentJob`/`agentWaitResult`/`agentResult` レスポンスの `job.jobID.rawValue` から取得します。
 
 ### agent spawn
 
 `--anchor`(デフォルトは `$MYTTY_SURFACE_ID`)を分割して新しいペインを作り、指定した provider を起動します。`--task`(または `--task-file` の内容。ファイルはリクエストを送る前に `mytty-ctl` 自身が読みます)は、起動コマンドと合わせて1回のシェル入力として渡すので、worker の TUI 起動と競合しうる別の `send` は発生しません。
+
+`--direction` の既定値は `auto` です。`--anchor` の横へ帯状に並べ続けるのではなく、タブのレイアウトが均等なグリッドに最も近くなるペインと分割方向を Mytty が選びます(後述の「バランス配置(`--direction auto`)」を参照)。worker を `--anchor` の隣に置きたいときだけ、`left`/`right`/`up`/`down` を明示してください。
 
 **推奨: 自分と同じ provider の worker を起動するときは `--access` を省略してください。** 省略した場合、`--provider` が anchor ペインの現在の前面エージェントと一致していれば `inherit` として、一致していなければ `workspace-write` として解決されます。つまり自分と同じ provider の worker を `--access` なしで起動すると、固定のフラグ集合に絞られるのではなく、自分の現在の permission/sandbox モードを自動的に引き継ぎます。`inherit` は、anchor ペインで動いているエージェント(つまり呼び出し元自身のプロセス)のモードを worker の起動コマンドに引き継ぎます(例: `--permission-mode acceptEdits` や `--dangerously-skip-permissions` で動いている `claude` の lead は、同じフラグの `claude` worker を起動します)。`inherit` はまず起動時のフラグを見ますが、Claude Code または Cursor の lead に限っては、フラグにモード関連の指定がなければ自分自身のローカルデータ(Claude Code は transcript、Cursor は `store.db`)から読み取った *現在の* モードを使います。そのため起動後に対話的に切り替えたモード(Claude Code の shift+tab によるモード切り替えなど)も引き継がれます(起動時のフラグだけしか見ないわけではありません)。Codex の lead は今のところ起動時のフラグからしか引き継ぎません。どちらの手段でも何も得られなかった場合(lead がデフォルトモードで動いていて transcript にもモードの記録がない場合)、`inherit` は `workspace-write` と同じフラグにフォールバックします。明示的に `--access inherit` を指定した場合も同じ引き継ぎをしますが、anchor ペインの前面プロセスが読み取れない、または `--provider` と別の provider だった場合は `workspace-write` へ黙ってフォールバックせず `inherit-unavailable` で失敗します。provider をまたいでフラグを引き継ぐことに意味はないためです。
 
@@ -172,13 +178,14 @@ mytty-ctl agent result "$job"
 
 これは provider のトランスクリプトではなく、ペインの現在の画面を読みます。そのため起動時のプロンプトには、最終的な要約を画面上で読める程度に簡潔にまとめるよう指示しています。
 
-### agent send / agent focus / agent close
+### agent send / agent focus / agent close / agent park
 
-job ID をそのペインに解決し、ペイン単位の `send`/`focus`/ `close-pane` の挙動をそのまま再利用します。途中で他のペインが開いたり閉じたりしていても、追加指示は常に意図した worker に届きます。
+job ID をそのペインに解決し、ペイン単位の `send`/`focus`/`close-pane`/`park` の挙動をそのまま再利用します。途中で他のペインが開いたり閉じたりしていても、追加指示は常に意図した worker に届きます。
 
 ```bash
 mytty-ctl agent send "$job" "回帰テストも追加して。" --enter
 mytty-ctl agent focus "$job"
+mytty-ctl agent park "$job"
 mytty-ctl agent close "$job"
 ```
 
@@ -187,6 +194,8 @@ mytty-ctl agent close "$job"
 ```
 
 `agent close` は job のペインを閉じ、まだ完了していない job を `lost` に遷移させます。ユーザーがペインを閉じた、シェルが終了したなど、自然にペインが消えた場合も同じ扱いです。どの `agent` コマンドでも、`pane-not-found` ではなく `lost` として報告されます。
+
+結果を読み終えた worker(`agent result` を呼んだ後、または `agent wait --until completed` が返った後)を片付けるには `agent park` を推奨します。ペインを閉じてしまうのではなく、同じウィンドウの `done_<tab>_<id>` タブへ移します(後述の「完了した worker を退避する(`park` / `agent park`)」を参照)。`agent close` は、そのペインの出力をもう誰も読まない場合にだけ使ってください。
 
 ### guide
 
@@ -250,7 +259,7 @@ mytty-ctl list
 
 ### new-tab
 
-アクティブウィンドウ(なければ最初に見つかったウィンドウ)に新規タブを作成します。特定のウィンドウを狙って指定する方法はありません。特定のウィンドウに作りたい場合は、そのウィンドウの既存ペインを `split` してください。
+アクティブウィンドウ(なければ最初に見つかったウィンドウ)に新規タブを作成します。タブはバックグラウンドで開き、ユーザーが選択しているタブとキーボードフォーカスは動きません。前面に出すには `focus` を使います。特定のウィンドウを狙って指定する方法はありません。特定のウィンドウに作りたい場合は、そのウィンドウの既存ペインを `split` してください。
 
 ```bash
 mytty-ctl new-tab --cwd /path/to/project
@@ -271,9 +280,10 @@ mytty-ctl new-tab --cwd /path/to/project \
 
 ### split
 
-指定ペインを対象方向に分割します。分割対象のペインは、自動でフォーカスしてから分割します。
+指定ペインを対象方向に分割します。方向を省略すると、後述の「バランス配置(`--direction auto`)」で説明する位置に分割します。分割はバックグラウンドで行われ、対象ペインのタブは選択されず、キーボードフォーカスも動きません。前面に出すには、返ってきた pane ID に `focus` を使います。
 
 ```bash
+mytty-ctl split "$MYTTY_SURFACE_ID"              # auto: バランス配置
 mytty-ctl split "$MYTTY_SURFACE_ID" right --cwd /tmp
 ```
 
@@ -450,6 +460,20 @@ mytty-ctl focus "$paneA"
 { "type": "ok" }
 ```
 
+### park
+
+指定ペインを、そのペインがあるタブの done タブへ移します。orchestrated な worker が並ぶ作業用タブに、終わった worker が溜まっていくのを防げます。
+
+```bash
+mytty-ctl park "$paneA"
+```
+
+```json
+{ "type": "ok" }
+```
+
+done タブの名前、再利用、作成のルールは、後述の「完了した worker を退避する(`park` / `agent park`)」を参照してください。
+
 ### rename-tab
 
 指定ペインを含むタブの手動名を設定します。GUI の Rename Tab と同じ扱いで、設定した名前は保たれ、自動命名で上書きされません。名前を空文字にすると手動名を解除します。新しい名前は `list` の `title` に反映されます。
@@ -465,6 +489,31 @@ mytty-ctl rename-tab "$paneA" ""   # 解除
 
 別の Mac のターミナルを映しているペインは `remote-pane` で拒否されます。
 
+## バランス配置(`--direction auto`)
+
+`split` と `agent spawn` はどちらも `--direction <left|right|up|down|auto>` を受け付け、方向を省略すると `auto` になります。方向を固定した場合は、必ず指定したペイン(`agent spawn` なら `--anchor`、`split` なら対象ペイン)の隣に分割します。`auto` の場合は、そのタブにあるペインのうち最も大きいものを選び、長いほうの辺に沿って分割します。こうするとレイアウトが均等なグリッドに近い形を保ちます。`--direction auto` で worker を1つずつ6個起動すると、ウィンドウの端まで伸びる 1x6 の帯にはならず、おおよそ 3x2 のグリッドに落ち着きます。
+
+具体的な手順は次のとおりです(`Sources/MyTTYCore/TabSession.swift` の `BalancedPaneInsertion.target`)。まず各ペインの frame を、タブの実際のペイン領域と同じ形のコンテナに合わせてスケールします。そのため横長のウィンドウでは、行より先に列が埋まります。次に面積が最も大きいペインを選びます。面積が同じなら、結果が毎回同じになるよう、最も左上にあるペインを選びます。最後に、そのペインを長いほうの辺に沿って分割します。幅が高さ以上なら `right`、そうでなければ `down` です。
+
+選ばれるペインは、`--anchor` やコマンドラインで指定したペインと違うことがあります。新しいペインはタブ内のどれかのペインの隣に入りますが、指定したペインの隣とは限りません。その代わり、チームが大きくなってもレイアウトが読みやすいままになります。タブにターミナルペインが1つでもあれば、候補はターミナルペインに限られます。分割先にできるターミナルがあるのに、ブラウザペインやリモートペインの隣へ分割されることはありません。
+
+以前の、anchor を基準に固定方向へ分割する動作に戻すには、`left`/`right`/`up`/`down` を明示します。同じタスクの補助用ペインのように、worker を起動元のペインの隣に置きたい場合に使います。
+
+## 完了した worker を退避する(`park` / `agent park`)
+
+`park <pane-id>` と `agent park <job-id>` は、ペインを今のタブから外し、同じウィンドウにあるタブごとの done タブへ移します。worker が終わるたびに、オーケストレーターがもう毎回見る必要のないペインが作業用タブに溜まっていくのを防ぎ、作業用タブを読みやすく保てます。worker の結果を読み終えた時点(`agent result` を呼んだ後、または `agent wait --until completed` が返った後)で実行してください。そのペインの出力をもう誰も読まないのであれば、これまでどおり `agent close` を使います。
+
+done タブの名前は `done_<parent-tab-title>_<id8>` です。`<parent-tab-title>` は移動元タブの現在の表示タイトル(名前を変更していれば固定したタイトル、そうでなければペイン一覧に出るのと同じタイトル)、`<id8>` は移動元タブの ID の先頭8文字(小文字の16進数)です。done タブは、あるタブから初めてペインを退避したときに作られます。orchestrated な `new-tab` と同じくタブ列の末尾に追加され、選択はされません。そのため、退避がユーザーの見ている画面を邪魔することはありません。
+
+同じ移動元タブからそれ以降に `park`/`agent park` したペインは、同じ done タブに入ります。done タブは名前全体ではなく末尾の `_<id8>` で探すので、名前に埋め込まれた親タブのタイトルが後から変わっても(タブ名を変更した場合など)見失いません。done タブの中でも、新しいペインは外側の端ではなく `--direction auto` と同じバランス配置の位置に入ります。退避した worker が複数あっても、done タブは 1xN の帯にならず、読みやすいグリッドのままです。
+
+タブに残った最後のペインを退避すると、空になった移動元タブは削除されます。ペイン一覧のコンテキストメニューからペインを移動したときと同じ動作です。それまで使っていた done タブ(無ければ、消える時点の移動元タブのタイトルから名前を付けた新しい done タブ)は、それ以降も同じ名前のままです。すでに done タブの中にあるペインを退避しようとすると `already-parked` で失敗します。done タブのさらに done タブは作りません。
+
+```bash
+mytty-ctl agent park "$job_a"
+mytty-ctl park "$paneA"
+```
+
 ## 失敗時のレスポンス
 
 失敗したリクエストには、サーバーから `{"type":"failure","code":"..."}` が返ります。CLI 側はこれを JSON として出力せず、非ゼロの終了コードと標準エラーへのメッセージとして表現します。
@@ -475,7 +524,9 @@ mytty-ctl rename-tab "$paneA" ""   # 解除
 | `not-ready` | control server にまだ delegate が設定されていない(アプリ起動中) |
 | `new-tab-failed` | `new-tab` がタブを作成できなかった |
 | `split-failed` | `split` が指定ペインを分割できなかった |
-| `pane-not-found` | 指定した `pane-id` が生存中のペインに解決できない(`send`、`send-key`、`read`、`wait`、`close-pane`、`focus` でも返り得る)。`agent spawn` も `--anchor` が生存中のペインに解決できない場合にこれを返す |
+| `pane-not-found` | 指定した `pane-id` が生存中のペインに解決できない(`send`、`send-key`、`read`、`wait`、`close-pane`、`focus`、`park` でも返り得る)。`agent spawn` も `--anchor` が生存中のペインに解決できない場合にこれを返す |
+| `already-parked` | `park`/`agent park`: ペインがすでに done タブの中にある(done タブのさらに done タブは作らない) |
+| `park-failed` | `park`/`agent park`: `pane-not-found`/`already-parked` 以外の理由で、ペインを done タブへ移せなかった |
 | `invalid-title` | `rename-tab`: 名前に制御文字が含まれる、または 100 Unicode スカラー値を超えている |
 | `remote-pane` | `rename-tab`: 別の Mac のターミナルを映しているペインで、名前を変えるローカルのタブがない |
 | `invalid-tab-title` | `agent spawn --new-tab`: `--tab-title` が空、制御文字を含む、または 100 Unicode スカラー値を超えている |
@@ -492,9 +543,9 @@ mytty-ctl rename-tab "$paneA" ""   # 解除
 | `invalid-status` | `status`: テキストが空、制御文字を含む、または 100 Unicode スカラーを超えている |
 | `invalid-task` | `agent spawn`: 解決後のタスクテキストが空 |
 | `spawn-failed` | `agent spawn`: ペインを作成できなかった |
-| `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`: 指定した job ID が未知(そもそも存在しない、または直前の Mytty 再起動より前に発行されたもの。job ID は永続化されない) |
+| `job-not-found` | `agent wait`/`agent result`/`agent send`/`agent focus`/`agent close`/`agent park`: 指定した job ID が未知(そもそも存在しない、または直前の Mytty 再起動より前に発行されたもの。job ID は永続化されない) |
 | `integration-declined` | `integration enable`/`integration repair`: Mac の前にいる人間が確認ダイアログを拒否した(または誰も回答しなかった) |
-| `job-lost` | `agent send`/`agent focus`: job のペインが消えている(下記 `lost` を参照)。`agent result` と `agent close` はこのコードを使わない -- job の `lost` 状態と空の結果を返し、すでに消えているペインを閉じる操作も終了コード `0` になる |
+| `job-lost` | `agent send`/`agent focus`/`agent park`: job のペインが消えている(下記 `lost` を参照)。`agent result` と `agent close` はこのコードを使わない -- job の `lost` 状態と空の結果を返し、すでに消えているペインを閉じる操作も終了コード `0` になる |
 
 ## wait の挙動
 
@@ -526,7 +577,8 @@ job のレジストリは実行中のアプリのメモリ上にしかなく、�
 - `close-pane` は確認ダイアログを出さずに即座に閉じます。唯一の例外(ウィンドウ内最後のタブの最後のペインを閉じる場合にウィンドウ自体の確認ダイアログが出るケース)は、サブエージェント用ペインの通常運用ではまず発生しません。
 - pane ID は `TerminalSurfaceID` の UUID 文字列です。`list` のレスポンス、`pane` レスポンス、`$MYTTY_SURFACE_ID` のいずれかから取得します。
 - control ソケットが受け付けるリクエストの最大サイズは、エージェントイベントソケットと同じ 64 KiB のエンベロープ上限に合わせてあります。非常に大きな `send` の引数は、1つの巨大なリテラルとして渡すのではなく、分割するか shell 経由でパイプしてください。`agent spawn` も、エンコード後のリクエスト(タスク本文 + 自動追記される worker contract)に対して同じ上限を接続前にチェックします。そのため、大きすぎるタスクはソケット書き込みが黙って失敗するのではなく、その場で CLI のエラーになります。
-- `agent spawn` は既存ペインに worker を起動することは一切なく、必ず新しいペインを作ります。これは job のバインディングを正しく保つための前提(上の「job のバインディング」を参照)です。少数のペインを手動で管理する場合よりも、不要になった job を `agent close` で閉じることの重要性が増すということでもあります。
+- `agent spawn` は既存ペインに worker を起動することは一切なく、必ず新しいペインを作ります。これは job のバインディングを正しく保つための前提(上の「job のバインディング」を参照)です。少数のペインを手動で管理する場合よりも、見張る必要のなくなった job を片付けること(結果を読み終えた worker は `agent park`、出力をもう誰も読まないなら `agent close`)の重要性が増すということでもあります。
+- `park`/`agent park` は、ペインの移動先の done タブを選択しません。`new-tab` がバックグラウンドで開くのと同じ動作です。done タブが前面に出るのは、その中のペインを `focus` したときだけです。
 - job ID は `AgentJobID` の `{"rawValue":"..."}` 形式の UUID で、どの `agent` レスポンスでも `job.jobID.rawValue` から取得します。pane ID とは互換性がありません。
 
 ## 参考
