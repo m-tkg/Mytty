@@ -12,7 +12,6 @@ struct PushRelayAlert: Codable, Equatable, Sendable {
 
 enum PushRelayError: Error, Equatable {
     case notRegistered
-    case invalidRelaySecret
     /// The relay answered with a non-2xx status; `reason` is the `error`
     /// field it reports, which for APNs rejections is Apple's own reason
     /// string (`BadDeviceToken`, `InvalidProviderToken`, …).

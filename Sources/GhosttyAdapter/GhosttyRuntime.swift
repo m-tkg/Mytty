@@ -97,11 +97,6 @@ public final class GhosttyRuntime {
         }
     }
 
-    func withNative<T>(_ body: (ghostty_app_t) throws -> T) rethrows -> T? {
-        guard let native else { return nil }
-        return try body(native)
-    }
-
     var nativeApp: ghostty_app_t? {
         native
     }

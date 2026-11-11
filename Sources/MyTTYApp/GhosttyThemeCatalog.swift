@@ -158,24 +158,6 @@ enum GhosttyThemeCatalog {
         )
     }
 
-    static func currentNames(
-        resourcesDirectory: URL? = GhosttyResourceLocator.current(),
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
-    ) -> [String] {
-        let directories = themeDirectories(
-            resourcesDirectory: resourcesDirectory,
-            homeDirectory: homeDirectory,
-            environment: environment
-        )
-        return availableNames(
-            bundledThemesDirectory: directories.bundled,
-            userThemesDirectory: directories.user,
-            fileManager: fileManager
-        )
-    }
-
     static func availableNames(
         bundledThemesDirectory: URL?,
         userThemesDirectory: URL?,
